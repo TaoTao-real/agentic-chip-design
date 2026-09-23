@@ -6,6 +6,7 @@
 <p>面向真实 AI 工作负载的设计表示、工程反馈与受控优化闭环</p>
 
 <p>
+  <a href="#项目全景与生态">项目全景</a> ·
   <a href="#项目目标">项目目标</a> ·
   <a href="#整体架构">整体架构</a> ·
   <a href="#当前进展">当前进展</a> ·
@@ -21,6 +22,20 @@
 我们从真实 BOOM 模块的优化实验起步，逐步建设两段式证据准备和 PyCircuit 原生设计能力，长期面向 **AI 工作负载、编译器与硬件资源的协同设计**。衡量项目价值的标准不是生成了多少 RTL，而是同一个 Agent 能否以更低的端到端成本，找到通过独立验证的更优设计。
 
 > **项目阶段：架构规划与早期 POC。** 当前仓库公开架构文档、实验摘要、示例配置和实施任务，尚未发布可直接运行的一体化平台。下文将目标能力、已有实验记录和待验证工作分别说明。
+
+<!-- original-concept-diagrams:v1 -->
+## 项目全景与生态
+
+从使用者与应用场景，到设计核心、工具运行时和评价目标，下图展示项目的整体愿景。
+
+<p align="center">
+  <a href="docs/assets/project-ecosystem.png">
+    <img src="docs/assets/project-ecosystem.png" width="1280" alt="Agentic Chip Design 项目全景原图：用户与应用、ChipContext、AgentLoop、PyCircuit、知识库、工具运行时、评价目标和概念路线图。" />
+  </a>
+</p>
+<p align="center"><sub>项目全景与生态 · 点击查看原图</sub></p>
+
+> 两张概念原图展示目标方案，并非已实现功能清单；图中的多 Agent 与生态方向是规划视图，当前职责和 M0–M4 阶段以正文及 [ROADMAP](ROADMAP.md) 为准。
 
 ## 项目目标
 
@@ -60,6 +75,16 @@ AI 工作负载与工程目标
 目标架构由 **Design Core、ChipContext、Loop Engine、KnowledgeStore** 四个领域模块构成，复用外部 Agent runtime 和现有工程工具。模块表示责任边界，第一版不要求微服务或复杂图数据库。
 
 <p align="center">
+  <a href="docs/assets/architecture-concept.png">
+    <img src="docs/assets/architecture-concept.png" width="1280" alt="Agentic Chip Design 整体架构原图：用户目标、证据准备、分析优化角色、PyCircuit 设计核心、独立评估反馈、知识库与工具生态。" />
+  </a>
+</p>
+<p align="center"><sub>整体架构概念图 · ChipContext → Agent 分析优化 → Design Core → Evaluation &amp; Feedback · 点击查看原图</sub></p>
+
+<details>
+<summary>查看受控优化闭环的详细职责图</summary>
+
+<p align="center">
   <a href="docs/assets/architecture-overview.svg">
     <img src="docs/assets/architecture-overview.svg" width="1280" alt="Agentic Chip Design 目标架构：Loop Engine 统一控制；ChipContext 准备证据，Design Agent 分析并修改 PyCircuit 设计，独立评估产生反馈；KnowledgeStore 提供按任务隔离的历史。" />
   </a>
@@ -70,6 +95,8 @@ AI 工作负载与工程目标
 </p>
 
 **读图方式：** 顶部的 **Loop Engine** 统一控制合同、权限、预算与最终验收；沿主循环依次阅读 **ChipContext → Design Agent → Design Core → 独立评估 → ChipContext**。左侧 **KnowledgeStore** 提供按任务隔离的历史，虚线表示 **DesignIndex** 向证据准备层提供来源与契约信息。图示为目标设计，不表示全部能力已实现；详细职责见下表与[架构说明](docs/architecture.md)。
+
+</details>
 
 ### 四个核心模块
 
