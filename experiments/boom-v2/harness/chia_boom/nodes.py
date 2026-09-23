@@ -4,6 +4,7 @@ import fcntl
 import json
 import os
 import re
+import signal
 import shutil
 import subprocess
 import time
@@ -22,6 +23,7 @@ from .artifacts import (
 )
 from .core import classify_failure, update_validity
 from .environment import chipyard_environment_command, vivado_environment_command
+from .frozen import baseline_rtl, tool_file
 
 
 def _tail(stdout: str, stderr: str, limit: int = 32_000) -> str:
@@ -59,25 +61,58 @@ def _run(
     env: dict[str, str] | None = None,
 ) -> tuple[int, str, str, float]:
     started = time.monotonic()
+    proc = subprocess.Popen(
+        ["bash", "-lc", command],
+        cwd=cwd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={**os.environ, **(env or {})},
+        start_new_session=True,
+    )
     try:
-        proc = subprocess.run(
-            ["bash", "-lc", command],
-            cwd=cwd,
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            env={**os.environ, **(env or {})},
-        )
-        stdout, stderr, returncode = proc.stdout, proc.stderr, proc.returncode
-    except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        stdout, stderr = proc.communicate(timeout=timeout)
+        returncode = proc.returncode
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            stdout, stderr = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            stdout, stderr = proc.communicate(timeout=10)
         stderr += f"\ncommand timeout after {timeout}s"
         returncode = -9
+        try:
+            os.killpg(proc.pid, 0)
+        except ProcessLookupError:
+            pass
+        else:
+            _quarantine_workspace(cwd, "process group survived timeout cleanup")
+            raise RuntimeError("process_group_cleanup_failed")
+    except BaseException:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.communicate()
+        raise
     stdout_path.parent.mkdir(parents=True, exist_ok=True)
     stdout_path.write_text(stdout)
     stderr_path.write_text(stderr)
     return returncode, stdout, stderr, time.monotonic() - started
+
+
+def _quarantine_workspace(cwd: Path, reason: str) -> None:
+    for path in (cwd, *cwd.parents):
+        if (path / "candidate.lock").exists():
+            (path / "QUARANTINED").write_text(reason + "\n")
+            return
 
 
 def parse_vivado_ppa(timing: Path, utilization: Path, period_ns: float) -> dict[str, Any]:
@@ -114,6 +149,8 @@ def acquire_workspace(remote: dict[str, Any]) -> Iterator[Path]:
     deadline = time.monotonic() + int(remote.get("workspace_wait_seconds", 7200))
     while time.monotonic() < deadline:
         for workspace in sorted(slots.glob("slot-*/chipyard")):
+            if (workspace.parent / "QUARANTINED").exists():
+                continue
             lock_path = workspace.parent / "candidate.lock"
             handle = lock_path.open("a+")
             try:
@@ -306,10 +343,10 @@ class BoomDifferentialNode:
         output = Path(output_dir)
         output.mkdir(parents=True, exist_ok=True)
         stdout_path, stderr_path = output / "driver.stdout", output / "driver.stderr"
-        baseline_rtl = Path(config["remote"]["baseline_rtl_root"]) / target["id"]
+        golden_rtl = baseline_rtl(config, target["id"])
         command = (
-            f"python3 {shlex_quote(Path(config['remote']['tools_root']) / 'differential_test.py')} "
-            f"--baseline {shlex_quote(baseline_rtl)} --candidate {shlex_quote(Path(rtl_dir))} "
+            f"python3 {shlex_quote(tool_file(config, 'differential_test.py'))} "
+            f"--baseline {shlex_quote(golden_rtl)} --candidate {shlex_quote(Path(rtl_dir))} "
             f"--top {shlex_quote(target['rtl_top'])} --out {shlex_quote(output / 'run')} "
             f"--cycles {int(cycles)} --seed {int(seed)} --scenario {shlex_quote(target['id'])} "
             f"--jobs {int(config['physical']['cpus_per_job'])}"
@@ -324,7 +361,11 @@ class BoomDifferentialNode:
             message = _differential_failure_message(output, stdout, stderr, result)
             failure, retryable = classify_failure(message, returncode=rc)
             if not retryable:
-                failure = "candidate_correctness_failure"
+                failure = (
+                    result.get("failure_class")
+                    if isinstance(result, dict) and result.get("failure_class")
+                    else "candidate_correctness_failure"
+                )
             return StageResult(
                 stage="correctness", success=False,
                 status="infra_blocked" if retryable else "candidate_invalid",
@@ -358,7 +399,7 @@ class BoomVivadoNode:
         command = (
             vivado_environment_command(config) + "; "
             f"vivado -mode batch -notrace -source "
-            f"{shlex_quote(Path(config['remote']['tools_root']) / script)}"
+            f"{shlex_quote(tool_file(config, script))}"
         )
         env = {
             "RTL_DIR": str(Path(rtl_dir)), "OUT_DIR": str(output),
@@ -447,7 +488,6 @@ class BoomCandidateEvaluationNode:
                     dump_json(output / "evaluation.json", evaluation)
                     return evaluation
                 evaluation.build_ok = True
-                evaluation.lint_ok = True
                 differential = BoomDifferentialNode().run(
                     target=target, config=config,
                     rtl_dir=elaboration.payload["rtl_dir"], seed=candidate.seed,
@@ -458,6 +498,10 @@ class BoomCandidateEvaluationNode:
                 if not differential.success:
                     dump_json(output / "evaluation.json", evaluation)
                     return evaluation
+                evaluation.interface_ok = bool(
+                    evaluation.differential.get("interface_ok")
+                    if isinstance(evaluation.differential, dict) else False
+                )
                 evaluation.correctness_ok = True
                 vivado = BoomVivadoNode().run(
                     target=target, config=config,

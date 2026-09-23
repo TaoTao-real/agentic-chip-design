@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import json
-import re
-import time
 from pathlib import Path
 from typing import Any
 
 from chia.base.ChiaFunction import get
 
-from .artifacts import CandidateArtifact, EvaluationArtifact, dump_json, load_json, sha256_text
+from .artifacts import (
+    CandidateArtifact,
+    EvaluationArtifact,
+    dump_json,
+    load_json,
+    sha256_text,
+)
 from .campaign import _evaluate_with_infra_retries
-from .core import apply_exact_edits, make_diff
+from .core import apply_exact_edits, canonical_hash, lineage_fields, make_diff
 from .deepseek import DeepSeekOfficialToolLLM
+from .finalize import BoomFinalizationNode, finalize_candidate
+from .frozen import qualification_request, qualified_artifact_hashes
+from .knowledge import MEMORY_MODES, MEMORY_TOOL_SPECS, KnowledgeStore
 from .nodes import BoomCandidateEvaluationNode
-from .finalize import BoomFinalizationNode
-from .knowledge import KnowledgeStore, MEMORY_MODES, MEMORY_TOOL_SPECS
 
 
 INTERACTIVE_SYSTEM = """You are an autonomous hardware optimization agent.
@@ -205,6 +210,7 @@ def _compact_evaluation(value: dict[str, Any]) -> dict[str, Any]:
         "stage": value.get("stage"),
         "failure_class": value.get("failure_class"),
         "build_ok": value.get("build_ok"),
+        "interface_ok": value.get("interface_ok"),
         "correctness_ok": value.get("correctness_ok"),
         "candidate_valid": value.get("candidate_valid"),
         "promotable": value.get("promotable"),
@@ -247,7 +253,15 @@ def run_interactive_issueq(
     timing = (frozen / target_id / "baseline-timing.txt").read_text()
     baseline = load_json(frozen / target_id / "baseline-ppa.json")
     baseline["maximum_lut_ratio"] = config["physical"]["maximum_lut_ratio"]
+    reference = {
+        "qualification_fingerprint": qualification_request(config)["fingerprint"],
+        "qualified_artifact_hashes": qualified_artifact_hashes(config),
+    }
+    reference["fingerprint"] = canonical_hash(reference)
+    dump_json(output / "INTERACTIVE_REFERENCE.json", reference)
     current_source = baseline_source
+    current_parent_source = baseline_source
+    current_parent_id: str | None = None
     best_source: str | None = None
     best_ppa: dict[str, Any] | None = None
     best_candidate: dict[str, Any] | None = None
@@ -378,8 +392,12 @@ def run_interactive_issueq(
                         if best_source is None:
                             raise ValueError("no measured valid best candidate exists")
                         current_source = best_source
+                        current_parent_source = best_source
+                        current_parent_id = best_candidate["id"]
                     else:
                         current_source = baseline_source
+                        current_parent_source = baseline_source
+                        current_parent_id = None
                     content = {"status": "reverted", "target": args["target"], "source_sha256": sha256_text(current_source)}
                 elif fn == "evaluate_candidate":
                     if evaluations >= max_evaluations:
@@ -391,11 +409,19 @@ def run_interactive_issueq(
                         raise ValueError("this complete source was already evaluated")
                     evaluations += 1
                     evaluated_hashes.add(source_hash)
-                    diff = make_diff(baseline_source, current_source, target["mutable_file"])
+                    lineage = lineage_fields(
+                        parent_id=current_parent_id,
+                        parent_source=current_parent_source,
+                        baseline_source=baseline_source,
+                        candidate_source=current_source,
+                        mutable_file=target["mutable_file"],
+                    )
                     candidate = CandidateArtifact(
                         campaign_id=output.name, target=target_id, arm="I", seed=seed,
-                        index=evaluations, parent_id=(best_candidate or {}).get("id"),
-                        source=current_source, diff=diff,
+                        index=evaluations, parent_id=lineage["parent_id"],
+                        source=current_source, diff=lineage["diff"],
+                        baseline_diff=lineage["baseline_diff"],
+                        parent_source_sha256=lineage["parent_source_sha256"],
                         diagnosis=[{
                             "evidence": "interactive DS tool trajectory",
                             "source_region": target["mutable_file"],
@@ -412,16 +438,27 @@ def run_interactive_issueq(
                     )
                     candidate_dir = output / "evaluations" / f"candidate-{evaluations:02d}"
                     dump_json(candidate_dir / "candidate.json", candidate)
-                    evaluation, attempts_used = _evaluate_with_infra_retries(
+                    evaluation, attempts_used, attempt_records = _evaluate_with_infra_retries(
                         node=evaluator, candidate=candidate, target=target, config=config,
                         baseline=baseline, candidate_dir=candidate_dir,
                     )
-                    row = {"candidate": candidate.to_dict(), "evaluation": evaluation.to_dict(), "infrastructure_attempts": attempts_used}
+                    row = {
+                        "candidate": candidate.to_dict(),
+                        "search_evaluation": evaluation.to_dict(),
+                        "evaluation_attempts": attempt_records,
+                        "search_active_seconds_total": sum(
+                            float(item.get("active_seconds", 0.0))
+                            for item in attempt_records
+                        ),
+                        "infrastructure_attempts": attempts_used,
+                    }
                     dump_json(candidate_dir / "result.json", row)
                     ppa = evaluation.post_synth or {}
                     if evaluation.candidate_valid and isinstance(ppa.get("critical_delay_ns"), (int, float)):
                         if best_ppa is None or (ppa["critical_delay_ns"], ppa.get("slice_luts", 10**18)) < (best_ppa["critical_delay_ns"], best_ppa.get("slice_luts", 10**18)):
                             best_source, best_ppa, best_candidate = current_source, ppa, candidate.to_dict()
+                    current_parent_source = current_source
+                    current_parent_id = candidate.id
                     content = _compact_evaluation(evaluation.to_dict())
                     content["evaluations_remaining"] = max_evaluations - evaluations
                     content["baseline_post_synth"] = {
@@ -499,28 +536,42 @@ def finalize_interactive_issueq(config: dict[str, Any], output: Path) -> dict[st
     if not best:
         raise RuntimeError("interactive campaign has no measured valid candidate")
     candidate = CandidateArtifact.from_dict(best)
+    saved_reference = load_json(output / "INTERACTIVE_REFERENCE.json")
+    current_reference = {
+        "qualification_fingerprint": qualification_request(config)["fingerprint"],
+        "qualified_artifact_hashes": qualified_artifact_hashes(config),
+    }
+    current_reference["fingerprint"] = canonical_hash(current_reference)
+    if current_reference != saved_reference:
+        raise RuntimeError("interactive source, golden, test, or tool reference drift")
     candidate_dir = output / "evaluations" / f"candidate-{candidate.index:02d}"
-    early = EvaluationArtifact.from_dict(load_json(candidate_dir / "result.json")["evaluation"])
+    result_row = load_json(candidate_dir / "result.json")
+    early = EvaluationArtifact.from_dict(
+        result_row.get("search_evaluation") or result_row["evaluation"]
+    )
     target = config["targets"][candidate.target]
     frozen = Path(config["remote"]["frozen_inputs_root"])
     baseline = load_json(frozen / candidate.target / "baseline-ppa.json")
     baseline["maximum_lut_ratio"] = config["physical"]["maximum_lut_ratio"]
     final_dir = output / "finalization"
-    if (final_dir / "evaluation.json").exists():
-        final = EvaluationArtifact.from_dict(load_json(final_dir / "evaluation.json"))
-    else:
-        node = BoomFinalizationNode()
-        final = get(node.run.chia_remote(
-            node, candidate=candidate, early=early, target=target, config=config,
-            baseline=baseline, output_dir=str(final_dir),
-            _chia_display_name=f"finalize-interactive:{candidate.id}",
-        ))
+    node = BoomFinalizationNode()
+    final, finalization_meta = finalize_candidate(
+        node=node,
+        candidate=candidate,
+        early=early,
+        target=target,
+        config=config,
+        baseline=baseline,
+        root=final_dir,
+        display_name=f"finalize-interactive:{candidate.id}",
+    )
     payload = {
         "candidate_id": candidate.id,
         "status": "complete" if final.final_valid else final.status,
         "final_valid": final.final_valid,
         "valid_improvement": final.valid_improvement,
         "evaluation": final.to_dict(),
+        "metadata": finalization_meta,
     }
     dump_json(output / "FINAL_RESULT.json", payload)
     return payload

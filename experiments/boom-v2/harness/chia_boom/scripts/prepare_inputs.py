@@ -20,6 +20,15 @@ def git_head(path: Path) -> str:
     return result.stdout.strip()
 
 
+def git_blob(path: Path, revision: str, relative: str) -> bytes:
+    result = subprocess.run(
+        ["git", "-C", str(path), "show", f"{revision}:{relative}"],
+        capture_output=True,
+        check=True,
+    )
+    return result.stdout
+
+
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -49,13 +58,25 @@ def main() -> None:
         "boom_commit": expected_boom,
         "targets": {},
     }
+    required_patch = config.get("remote", {}).get("required_patch")
+    if required_patch:
+        patch_path = Path(required_patch)
+        manifest["required_patch"] = {
+            "path": patch_path.name,
+            "sha256": sha256(patch_path),
+        }
     for target_id, target in sorted(config["targets"].items()):
-        source = source_workspace / target["mutable_file"]
-        if not source.is_file():
-            raise SystemExit(f"target source is missing: {source}")
+        prefix = "generators/boom/"
+        mutable_file = target["mutable_file"]
+        if not mutable_file.startswith(prefix):
+            raise SystemExit("target source must be inside generators/boom")
+        relative = mutable_file[len(prefix):]
+        source = git_blob(
+            source_workspace / "generators/boom", expected_boom, relative
+        )
         output = frozen / target_id / "baseline-source.scala"
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_bytes(source.read_bytes())
+        output.write_bytes(source)
         manifest["targets"][target_id] = {
             "mutable_file": target["mutable_file"],
             "baseline_source_sha256": sha256(output),

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -16,12 +16,12 @@ from chia_boom.core import (
     build_iteration_digest,
     build_iteration_digest_rows,
     build_user_prompt,
-    candidate_valid,
     choose_parent,
     classify_failure,
     duplicate_candidate_id,
     evaluation_feedback,
     evaluation_feedback_rows,
+    lineage_fields,
     update_validity,
     validate_config,
     validate_generic_episode_bundle,
@@ -152,7 +152,7 @@ END EPISODES"""
         }
         evaluation = EvaluationArtifact(
             candidate_id="c", status="complete", build_ok=True, lint_ok=True,
-            correctness_ok=True,
+            interface_ok=True, correctness_ok=True,
             post_synth={"critical_delay_ns": 10.5, "slice_luts": 101},
         )
         update_validity(evaluation, baseline)
@@ -279,6 +279,45 @@ END EPISODES"""
         failed = SimpleNamespace(success=False, returncode=1, log="assertion failed")
         self.assertTrue(_verilator_run_passed(normal_rsort))
         self.assertFalse(_verilator_run_passed(failed))
+
+    def test_lineage_separates_actual_parent_from_baseline(self) -> None:
+        first = lineage_fields(
+            parent_id=None,
+            parent_source="base\n",
+            baseline_source="base\n",
+            candidate_source="first\n",
+            mutable_file="Issue.scala",
+        )
+        second = lineage_fields(
+            parent_id="candidate-01",
+            parent_source="first\n",
+            baseline_source="base\n",
+            candidate_source="second\n",
+            mutable_file="Issue.scala",
+        )
+        reverted = lineage_fields(
+            parent_id=None,
+            parent_source="base\n",
+            baseline_source="base\n",
+            candidate_source="third\n",
+            mutable_file="Issue.scala",
+        )
+        self.assertIn("-first", second["diff"])
+        self.assertIn("+second", second["diff"])
+        self.assertIn("-base", second["baseline_diff"])
+        self.assertEqual(reverted["parent_id"], None)
+        self.assertEqual(reverted["diff"], reverted["baseline_diff"])
+        self.assertNotEqual(first["parent_source_sha256"], second["parent_source_sha256"])
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "Issue.scala").write_text("first\n")
+            patch = root / "candidate.patch"
+            patch.write_text(second["diff"])
+            subprocess.run(
+                ["git", "apply", str(patch)], cwd=root,
+                text=True, capture_output=True, check=True,
+            )
+            self.assertEqual((root / "Issue.scala").read_text(), "second\n")
 
 
 if __name__ == "__main__":

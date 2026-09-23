@@ -11,9 +11,8 @@ from pathlib import Path
 
 
 PORT = re.compile(
-    r"^\s*(input|output)\s+(?:wire\s+|reg\s+|logic\s+)?"
-    r"(?:\[([^]]+)\]\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*,?",
-    re.M,
+    r"^\s*(input|output)\s+(?:(?:wire|reg|logic)\s+)?"
+    r"(?:\[([^]]+)\]\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*$"
 )
 
 
@@ -22,10 +21,22 @@ def ports(path: Path, top: str) -> list[tuple[str, str, int, str]]:
     match = re.search(rf"module\s+{re.escape(top)}\s*\((.*?)\n\);", text, re.S)
     if not match:
         raise RuntimeError(f"cannot find ANSI port list for {top}")
+    body = re.sub(r"/\*.*?\*/", "", match.group(1), flags=re.S)
+    body = re.sub(r"//[^\n]*", "", body)
+    declarations = [item.strip() for item in body.split(",") if item.strip()]
     result = []
-    for direction, width, name in PORT.findall(match.group(1)):
+    for declaration_text in declarations:
+        declaration_match = PORT.fullmatch(declaration_text)
+        if not declaration_match:
+            raise RuntimeError(
+                f"unsupported or malformed port declaration: {declaration_text!r}"
+            )
+        direction, width, name = declaration_match.groups()
         if width:
-            nums = [int(value) for value in re.findall(r"\d+", width)]
+            width_match = re.fullmatch(r"\s*(\d+)\s*:\s*(\d+)\s*", width)
+            if not width_match:
+                raise RuntimeError(f"unsupported non-numeric port width: [{width}]")
+            nums = [int(value) for value in width_match.groups()]
             bits, declaration = abs(nums[0] - nums[1]) + 1, f"[{width}]"
         else:
             bits, declaration = 1, ""
@@ -33,6 +44,40 @@ def ports(path: Path, top: str) -> list[tuple[str, str, int, str]]:
     if not result:
         raise RuntimeError("no ports parsed")
     return result
+
+
+def top_file(root: Path, top: str) -> Path:
+    result = next(
+        (
+            path for path in sorted(root.glob("*.sv"))
+            if re.search(
+                rf"(?m)^module\s+{re.escape(top)}\b",
+                path.read_text(errors="replace"),
+            )
+        ),
+        None,
+    )
+    if result is None:
+        raise RuntimeError(f"top module {top} not found")
+    return result
+
+
+def port_signature(path: Path, top: str) -> dict[str, dict[str, int | str]]:
+    entries = ports(path, top)
+    result: dict[str, dict[str, int | str]] = {}
+    for direction, _, bits, name in entries:
+        if name in result:
+            raise RuntimeError(f"duplicate port declaration: {name}")
+        result[name] = {"direction": direction, "bits": bits}
+    return result
+
+
+def compare_port_signatures(
+    baseline_root: Path, candidate_root: Path, top: str
+) -> tuple[bool, dict[str, dict[str, int | str]], dict[str, dict[str, int | str]]]:
+    baseline = port_signature(top_file(baseline_root, top), top)
+    candidate = port_signature(top_file(candidate_root, top), top)
+    return baseline == candidate, baseline, candidate
 
 
 def rename_modules(source: Path, target: Path, suffix: str) -> None:
@@ -167,16 +212,27 @@ def main() -> None:
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=False)
     base_files = list(args.baseline.glob("*.sv"))
+    interface_ok, baseline_signature, candidate_signature = compare_port_signatures(
+        args.baseline, args.candidate, args.top
+    )
+    baseline_top = top_file(args.baseline, args.top)
+    if not interface_ok:
+        result = {
+            "cycles": 0,
+            "seed": args.seed,
+            "scenario": args.scenario,
+            "passed": False,
+            "interface_ok": False,
+            "failure_class": "candidate_interface_mismatch",
+            "baseline_signature": baseline_signature,
+            "candidate_signature": candidate_signature,
+        }
+        (args.out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+        raise SystemExit(2)
     candidate_dir = args.out / "candidate-renamed"
     candidate_dir.mkdir()
     rename_modules(args.candidate, candidate_dir, "__candidate")
-    top_file = next(
-        (path for path in base_files if re.search(rf"(?m)^module\s+{re.escape(args.top)}\b", path.read_text(errors="replace"))),
-        None,
-    )
-    if not top_file:
-        raise RuntimeError(f"top module {args.top} not found")
-    port_list = ports(top_file, args.top)
+    port_list = ports(baseline_top, args.top)
     inputs = [entry for entry in port_list if entry[0] == "input"]
     outputs = [entry for entry in port_list if entry[0] == "output"]
     lines = ["module diff_tb;", "integer cycle;", f"integer seed = {args.seed};"]
@@ -231,6 +287,8 @@ def main() -> None:
     result = {
         "cycles": args.cycles, "seed": args.seed, "scenario": args.scenario,
         "directed_phases": phases, "returncode": run.returncode,
+        "interface_ok": True,
+        "interface_signature": baseline_signature,
         "passed": run.returncode == 0 and f"PASS cycles={args.cycles}" in run.stdout,
     }
     (args.out / "result.json").write_text(json.dumps(result, indent=2) + "\n")

@@ -236,7 +236,7 @@ def build_iteration_digest_rows(rows: list[dict[str, Any]]) -> str:
         return ""
     row = rows[-1]
     candidate = row.get("candidate") or {}
-    evaluation = row.get("evaluation") or {}
+    evaluation = search_evaluation_data(row)
     raw = evaluation.get("raw_error") or ""
     markers = (
         "error", "failed", "mismatch", "fatal", "exception", "not found",
@@ -356,6 +356,25 @@ def make_diff(parent_source: str, candidate_source: str, mutable_file: str) -> s
     )
 
 
+def lineage_fields(
+    *,
+    parent_id: str | None,
+    parent_source: str,
+    baseline_source: str,
+    candidate_source: str,
+    mutable_file: str,
+) -> dict[str, Any]:
+    """Describe the actual edit parent and the independent baseline delta."""
+    return {
+        "parent_id": parent_id,
+        "parent_source_sha256": hashlib.sha256(parent_source.encode()).hexdigest(),
+        "diff": make_diff(parent_source, candidate_source, mutable_file),
+        "baseline_diff": make_diff(
+            baseline_source, candidate_source, mutable_file
+        ),
+    }
+
+
 def evaluation_feedback(
     candidates: list[tuple[CandidateArtifact, EvaluationArtifact]],
 ) -> str:
@@ -381,7 +400,7 @@ def evaluation_feedback_rows(rows: list[dict[str, Any]]) -> str:
     feedback = []
     for row in rows:
         candidate = row.get("candidate") or {}
-        evaluation = row.get("evaluation") or {}
+        evaluation = search_evaluation_data(row)
         proposal = row.get("model_proposal") or {}
         feedback.append(
             {
@@ -397,8 +416,13 @@ def evaluation_feedback_rows(rows: list[dict[str, Any]]) -> str:
     return json.dumps(feedback, indent=2, sort_keys=True)
 
 
+def search_evaluation_data(row: dict[str, Any]) -> dict[str, Any]:
+    """Read immutable search evidence while accepting pre-v14 artifacts."""
+    return row.get("search_evaluation") or row.get("evaluation") or {}
+
+
 def candidate_valid(evaluation: EvaluationArtifact, baseline: dict[str, Any]) -> bool:
-    if not (evaluation.build_ok and evaluation.lint_ok and evaluation.correctness_ok):
+    if not (evaluation.build_ok and evaluation.interface_ok and evaluation.correctness_ok):
         return False
     ppa = evaluation.post_synth or {}
     return (
@@ -481,7 +505,10 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         subset = [row for row in rows if row["arm"] == arm]
         delays = [row["best_post_route_delay_ns"] for row in subset if row.get("best_post_route_delay_ns") is not None]
         tokens = [row["provider_tokens"] for row in subset if row.get("provider_tokens") is not None]
-        times = [row["active_seconds"] for row in subset]
+        times = [row.get("search_active_seconds", 0.0) for row in subset]
+        finalization_times = [
+            row.get("finalization_active_seconds", 0.0) for row in subset
+        ]
         by_arm[arm] = {
             "runs": len(subset),
             "valid_improved_runs": sum(bool(row.get("valid_improvement")) for row in subset),
@@ -493,6 +520,10 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "delay_iqr_ns": [percentile(delays, 0.25), percentile(delays, 0.75)] if delays else None,
             "median_provider_tokens": statistics.median(tokens) if tokens else None,
             "median_active_seconds": statistics.median(times) if times else None,
+            "median_finalization_active_seconds": (
+                statistics.median(finalization_times)
+                if finalization_times else None
+            ),
         }
     return by_arm
 

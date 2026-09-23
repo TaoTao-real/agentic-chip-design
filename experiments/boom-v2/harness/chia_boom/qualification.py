@@ -4,7 +4,6 @@ import json
 import shutil
 import subprocess
 import threading
-import time
 from pathlib import Path
 from typing import Any
 
@@ -13,9 +12,19 @@ import psutil
 from chia.base.ChiaFunction import ChiaFunction, get
 
 from .artifacts import CandidateArtifact, dump_json, load_json, sha256_file
-from .nodes import BoomCandidateEvaluationNode
-from .nodes import BoomElaborationNode, BoomVivadoNode, acquire_workspace
 from .environment import vivado_environment_command
+from .frozen import (
+    qualification_request,
+    qualified_artifact_hashes,
+    qualified_target_artifact_hashes,
+    runtime_tool_versions,
+)
+from .nodes import (
+    BoomCandidateEvaluationNode,
+    BoomElaborationNode,
+    BoomVivadoNode,
+    acquire_workspace,
+)
 
 
 class _MemorySampler:
@@ -59,6 +68,8 @@ class BoomQualificationTargetNode:
         *,
         target: dict[str, Any],
         config: dict[str, Any],
+        qualification_input_fingerprint: str,
+        tool_versions: dict[str, str],
         output_dir: str,
     ) -> dict[str, Any]:
         output = Path(output_dir)
@@ -87,6 +98,8 @@ class BoomQualificationTargetNode:
                         result = {
                             "target": target["id"], "passed": False,
                             "failure": elaboration.to_dict(), "repeats": repeats,
+                            "qualification_input_fingerprint": qualification_input_fingerprint,
+                            "tool_versions": tool_versions,
                         }
                         dump_json(output / "qualification.json", result)
                         return result
@@ -99,6 +112,8 @@ class BoomQualificationTargetNode:
                         result = {
                             "target": target["id"], "passed": False,
                             "failure": route.to_dict(), "repeats": repeats,
+                            "qualification_input_fingerprint": qualification_input_fingerprint,
+                            "tool_versions": tool_versions,
                         }
                         dump_json(output / "qualification.json", result)
                         return result
@@ -145,6 +160,11 @@ class BoomQualificationTargetNode:
             "target": target["id"], "passed": passed, "repeats": repeats,
             "peak_tree_rss_bytes": peak,
             "baseline_ppa_sha256": sha256_file(baseline_path),
+            "qualified_target_artifact_hashes": qualified_target_artifact_hashes(
+                config, target["id"]
+            ),
+            "qualification_input_fingerprint": qualification_input_fingerprint,
+            "tool_versions": tool_versions,
         }
         dump_json(output / "qualification.json", result)
         return result
@@ -152,6 +172,9 @@ class BoomQualificationTargetNode:
 
 def qualify(config: dict[str, Any], output: Path) -> dict[str, Any]:
     output.mkdir(parents=True, exist_ok=True)
+    tool_versions = runtime_tool_versions(config)
+    input_fingerprint = qualification_request(config)["fingerprint"]
+    dump_json(output / "TOOL_VERSIONS.json", tool_versions)
     versions = subprocess.run(
         ["bash", "-lc", (
             "hostname; nproc; free -b; python3 --version; java -version; "
@@ -166,12 +189,22 @@ def qualify(config: dict[str, Any], output: Path) -> dict[str, Any]:
     targets_by_id: dict[str, dict[str, Any]] = {}
     pending: list[tuple[str, Any]] = []
     for target_id, target in sorted(config["targets"].items()):
-        prior = _load_reusable_target_qualification(config, output, target_id)
+        prior = _load_reusable_target_qualification(
+            config,
+            output,
+            target_id,
+            input_fingerprint=input_fingerprint,
+            tool_versions=tool_versions,
+        )
         if prior is not None:
             targets_by_id[target_id] = prior
             continue
         ref = node.run.chia_remote(
-            node, target=target, config=config,
+            node,
+            target=target,
+            config=config,
+            qualification_input_fingerprint=input_fingerprint,
+            tool_versions=tool_versions,
             output_dir=str(output / target_id),
             _chia_display_name=f"qualify:{target_id}",
         )
@@ -203,12 +236,22 @@ def qualify(config: dict[str, Any], output: Path) -> dict[str, Any]:
         "qualified_parallel_runs": slots,
         "q1_replay": replay,
     }
+    request = qualification_request(config)
+    result["qualification_fingerprint"] = request["fingerprint"]
+    result["qualification_request"] = request
+    result["qualified_artifact_hashes"] = qualified_artifact_hashes(config)
+    result["tool_versions"] = tool_versions
     dump_json(output / "QUALIFICATION.json", result)
     return result
 
 
 def _load_reusable_target_qualification(
-    config: dict[str, Any], output: Path, target_id: str,
+    config: dict[str, Any],
+    output: Path,
+    target_id: str,
+    *,
+    input_fingerprint: str,
+    tool_versions: dict[str, str],
 ) -> dict[str, Any] | None:
     """Reuse only a complete, hash-verified Q0 result after driver failure."""
     result_path = output / target_id / "qualification.json"
@@ -228,7 +271,11 @@ def _load_reusable_target_qualification(
             not result.get("passed")
             or result.get("target") != target_id
             or len(result.get("repeats", [])) != 3
+            or result.get("qualification_input_fingerprint") != input_fingerprint
+            or result.get("tool_versions") != tool_versions
             or result.get("baseline_ppa_sha256") != sha256_file(baseline_path)
+            or result.get("qualified_target_artifact_hashes")
+            != qualified_target_artifact_hashes(config, target_id)
             or timing_path.stat().st_size == 0
         ):
             return None

@@ -39,6 +39,10 @@ class CandidateArtifact:
     attempts: list[dict[str, Any]] = field(default_factory=list)
     model_elapsed_seconds: float = 0.0
     provider_model: str | None = None
+    baseline_diff: str = ""
+    parent_source_sha256: str | None = None
+    visible_knowledge_sha256: str | None = None
+    visible_knowledge_episode_ids: list[str] = field(default_factory=list)
 
     @property
     def id(self) -> str:
@@ -48,7 +52,10 @@ class CandidateArtifact:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return dataclasses.asdict(self) | {"id": self.id}
+        return dataclasses.asdict(self) | {
+            "id": self.id,
+            "source_sha256": sha256_text(self.source),
+        }
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "CandidateArtifact":
@@ -87,6 +94,7 @@ class EvaluationArtifact:
     raw_error: str = ""
     build_ok: bool = False
     lint_ok: bool = False
+    interface_ok: bool = False
     correctness_ok: bool = False
     candidate_valid: bool = False
     promotable: bool = False

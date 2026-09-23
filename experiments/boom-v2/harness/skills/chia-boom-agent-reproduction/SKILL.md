@@ -37,6 +37,12 @@ different states. Retry infrastructure failures in place without consuming a
 new model call. Candidate failures retain their raw stage, error, source, diff
 and parent as feedback. Formal autonomous campaigns do not permit manual repair.
 
+Require an exact top-level port name/direction/width signature before cycle
+differential testing. Bind reusable qualification and finalization evidence to
+the current config, tool versions, source, golden RTL, verification tools and
+candidate source hash. Never accept a retryable infrastructure result as a
+completed finalization cache entry.
+
 Report provider usage, model calls, EDA count, active tool time, wall time,
 correctness, post-synthesis and post-route PPA, area and processor regression.
 State that results are FPGA out-of-context module evidence, not ASIC PPA,

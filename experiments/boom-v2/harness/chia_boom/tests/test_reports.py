@@ -144,6 +144,61 @@ class ReportTests(unittest.TestCase):
                 "c_feedback_contains_full_prior_diff_and_evaluation"
             ])
 
+    def test_finalization_does_not_rewrite_search_cost_or_history(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            campaign = Path(raw)
+            (campaign / "manifest.json").write_text(json.dumps({
+                "kind": "formal", "schedule": [{"id": "T0-C-seed42"}],
+            }))
+            baseline_dir = campaign / "frozen/targets/T0"
+            baseline_dir.mkdir(parents=True)
+            (baseline_dir / "baseline-ppa.json").write_text(json.dumps({
+                "critical_delay_ns": 10.0,
+                "post_route_critical_delay_ns": 11.0,
+            }))
+            run_dir = campaign / "runs/T0-C-seed42"
+            run_dir.mkdir(parents=True)
+            state = {
+                "target": "T0", "arm": "C", "seed": 42,
+                "status": "search_complete", "model_calls": 1,
+                "started_epoch": 100.0, "completed_epoch": 130.0,
+                "candidates": [{
+                    "provider_tokens": 100,
+                    "search_active_seconds_total": 7.0,
+                    "candidate": {
+                        "id": "c1", "model_elapsed_seconds": 3.0,
+                    },
+                    "search_evaluation": {
+                        "candidate_id": "c1", "candidate_valid": True,
+                        "promotable": True, "active_seconds": 7.0,
+                        "post_synth": {"critical_delay_ns": 9.0, "slice_luts": 10},
+                    },
+                }],
+            }
+            (run_dir / "run.json").write_text(json.dumps(state))
+            before = campaign_report(campaign)["rows"][0]
+            state["status"] = "complete"
+            state["finalization_completed_epoch"] = 150.0
+            state["finalization"] = {
+                "candidate_id": "c1",
+                "evaluation": {
+                    "candidate_id": "c1", "final_valid": True,
+                    "valid_improvement": True, "active_seconds": 5.0,
+                    "post_route": {"critical_delay_ns": 8.0, "slice_luts": 10},
+                },
+                "metadata": {"attempts": [{"attempt": 1, "active_seconds": 5.0}]},
+            }
+            (run_dir / "run.json").write_text(json.dumps(state))
+            after = campaign_report(campaign)["rows"][0]
+            for key in (
+                "provider_tokens", "search_model_active_seconds",
+                "search_eda_active_seconds", "search_active_seconds",
+                "first_improvement_tokens", "first_improvement_active_seconds",
+            ):
+                self.assertEqual(before[key], after[key])
+            self.assertEqual(after["finalization_active_seconds"], 5.0)
+            self.assertEqual(after["total_active_seconds"], 15.0)
+
 
 if __name__ == "__main__":
     unittest.main()

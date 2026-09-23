@@ -122,6 +122,13 @@ Q0 会三次独立 elaboration、综合和布局布线，生成基线 RTL、原�
 PPA；关键延迟重复差异必须不超过 1%。它还依据两项代表作业的内存峰值
 决定开放一个还是两个并行槽。
 
+资格证据同时绑定实验配置、资源设置、源文件、黄金 RTL、验证脚本、
+回归二进制和 Python/Java/Verilator/Vivado 版本。启动 campaign 时这些
+内容会复制进 campaign 私有的 `frozen/` 目录并整体封印；后续全程只读
+这份副本。配置、文件或工具版本漂移会拒绝启动，必须重新执行资格门禁。
+如果没有外部通用经验包，D 组会冻结仓库内非空的跨目标过程知识，不能
+静默退化成 C 组。
+
 公开配置将 `qualification.q1_replay_required` 设为 `false`，因为仓库不能
 分发历史候选源码。要严格重放内部 v13 Q1，需在私有目录挂载三类固定
 fixture（基础设施恢复、递归 elaboration、no-op），提供 `manifest.json`，
@@ -157,6 +164,12 @@ chia-boom report --campaign "$CAMPAIGN" > "$CAMPAIGN/report.json"
 布线和完整 MegaBOOM `rsort.riscv` 回归。只有 `final_valid=true` 且延迟
 优于基线，才计为 `valid_improvement`。
 
+搜索评估、基础设施重试和 finalization 分别保存。finalization 缓存绑定
+候选 ID、完整源码哈希、目标、约束、黄金输入和回归二进制；不匹配或可
+重试的基础设施失败不会作为成功缓存复用。报告分别列出搜索模型时间、
+搜索 EDA 时间、finalization 时间和端到端墙钟时间，finalization 不会改写
+原始搜索成本或候选历史。
+
 ## 8. 交互式盲盒与知识消融
 
 交互式 Agent 通过工具自主读源码、原始时序、生成 RTL、应用编辑和发起
@@ -187,6 +200,19 @@ provider usage、阶段状态、原始错误尾部、PPA、耗时和哈希。正
 - `promotable`：相对父候选更优，可进入下一轮；
 - `final_valid`：干净重建、后布线和处理器回归全通过；
 - `valid_improvement`：最终有效且优于基线。
+
+`interface_ok` 来自 baseline/candidate 顶层端口名称、方向和位宽的严格
+签名比较；它不由 Chisel elaboration 结果代替，也不再把未执行的 lint
+标记为通过。
+
+### 运行时信任边界
+
+单文件 allowlist 只约束实验结果，不是 OS 级安全沙箱。配置、冻结输入、
+构建脚本和验证程序必须来自可信维护者。生产部署应把模型凭据服务与构建
+worker 分开：构建 worker 使用非特权用户或容器，不持有 API key，不能
+写入评分器和黄金输入，只读挂载 campaign 的 `frozen/` 目录。当前 harness
+保证密钥值不进入提示、命令和证据文件，但同一 Unix 用户下的任意构建进程
+仍可能读取该用户可访问的环境和文件。
 
 提交公开 PR 前至少运行：
 

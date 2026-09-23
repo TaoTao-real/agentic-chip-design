@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -20,8 +21,15 @@ from .artifacts import (
     load_json,
     sha256_file,
 )
-from .core import update_validity
+from .core import canonical_hash, search_evaluation_data, update_validity
 from .environment import chipyard_environment_command
+from .frozen import (
+    immutable_contract,
+    qualification_request,
+    qualified_artifact_hashes,
+    regression_binary,
+    verify_frozen_run,
+)
 from .nodes import (
     BoomDifferentialNode,
     BoomElaborationNode,
@@ -56,6 +64,146 @@ def _verilator_run_passed(run: Any) -> bool:
     return bool(run.success and run.returncode == 0)
 
 
+def build_finalization_identity(
+    candidate: CandidateArtifact,
+    target: dict[str, Any],
+    config: dict[str, Any],
+    baseline: dict[str, Any],
+) -> dict[str, Any]:
+    frozen_root = config.get("frozen_run_root")
+    if frozen_root:
+        frozen_manifest = load_json(Path(frozen_root) / "FROZEN_RUN_MANIFEST.json")
+        reference = {"frozen_run_fingerprint": frozen_manifest["fingerprint"]}
+    else:
+        request = qualification_request(config)
+        reference = {
+            "qualification_fingerprint": request["fingerprint"],
+            "qualified_artifact_hashes": qualified_artifact_hashes(config),
+        }
+    value = {
+        "schema_version": "finalization-identity-v1",
+        "candidate_id": candidate.id,
+        "candidate_source_sha256": hashlib.sha256(candidate.source.encode()).hexdigest(),
+        "target": target,
+        "contract": immutable_contract(config),
+        "baseline": baseline,
+        "differential_seeds": [42, 43, 44],
+        "regression_binary_sha256": sha256_file(regression_binary(config)),
+        "reference": reference,
+    }
+    return value | {"fingerprint": canonical_hash(value)}
+
+
+def _cached_finalization(
+    root: Path,
+    identity: dict[str, Any],
+) -> tuple[EvaluationArtifact | None, int, list[dict[str, Any]]]:
+    paths = []
+    legacy = root / "evaluation.json"
+    if legacy.exists():
+        paths.append(legacy)
+    paths.extend(sorted(root.glob("attempt-*/evaluation.json")))
+    rejections = []
+    for path in paths:
+        evaluation = EvaluationArtifact.from_dict(load_json(path))
+        identity_path = path.parent / "IDENTITY.json"
+        stored = load_json(identity_path) if identity_path.exists() else {}
+        reasons = []
+        if stored.get("fingerprint") != identity["fingerprint"]:
+            reasons.append("identity_mismatch")
+        if evaluation.candidate_id != identity["candidate_id"]:
+            reasons.append("candidate_mismatch")
+        if evaluation.hashes.get("candidate_source_sha256") != identity["candidate_source_sha256"]:
+            reasons.append("source_mismatch")
+        if reasons:
+            rejections.append({"path": str(path), "reasons": reasons})
+            continue
+        if evaluation.status == "infra_blocked" and evaluation.retryable:
+            continue
+        return evaluation, len(list(root.glob("attempt-*"))) + 1, rejections
+    return None, len(list(root.glob("attempt-*"))) + 1, rejections
+
+
+def _finalization_attempts(
+    root: Path, identity: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Return every attempt for this exact finalization contract."""
+    attempts = []
+    for path in sorted(root.glob("attempt-*/evaluation.json")):
+        identity_path = path.parent / "IDENTITY.json"
+        if not identity_path.exists():
+            continue
+        stored = load_json(identity_path)
+        if stored.get("fingerprint") != identity["fingerprint"]:
+            continue
+        evaluation = EvaluationArtifact.from_dict(load_json(path))
+        attempts.append({
+            "attempt": int(path.parent.name.split("-")[-1]),
+            "path": str(path),
+            "status": evaluation.status,
+            "retryable": evaluation.retryable,
+            "failure_class": evaluation.failure_class,
+            "active_seconds": evaluation.active_seconds,
+        })
+    return attempts
+
+
+def finalize_candidate(
+    *,
+    node: "BoomFinalizationNode",
+    candidate: CandidateArtifact,
+    early: EvaluationArtifact,
+    target: dict[str, Any],
+    config: dict[str, Any],
+    baseline: dict[str, Any],
+    root: Path,
+    display_name: str,
+) -> tuple[EvaluationArtifact, dict[str, Any]]:
+    from chia.base.ChiaFunction import get
+
+    root.mkdir(parents=True, exist_ok=True)
+    identity = build_finalization_identity(candidate, target, config, baseline)
+    cached, attempt, rejections = _cached_finalization(root, identity)
+    if rejections:
+        dump_json(root / "CACHE_REJECTIONS.json", rejections)
+    if cached is not None:
+        return cached, {
+            "reused": True,
+            "attempt": None,
+            "identity": identity,
+            "cache_rejections": rejections,
+            "attempts": _finalization_attempts(root, identity),
+        }
+    attempt_dir = root / f"attempt-{attempt:02d}"
+    dump_json(attempt_dir / "IDENTITY.json", identity)
+    final = get(node.run.chia_remote(
+        node,
+        candidate=candidate,
+        early=early,
+        target=target,
+        config=config,
+        baseline=baseline,
+        output_dir=str(attempt_dir),
+        _chia_display_name=display_name + f":attempt-{attempt:02d}",
+    ))
+    final.hashes["finalization_identity"] = identity["fingerprint"]
+    final.hashes["candidate_source_sha256"] = identity["candidate_source_sha256"]
+    if final.candidate_id != candidate.id:
+        raise RuntimeError("finalization returned a different candidate identity")
+    dump_json(attempt_dir / "evaluation.json", final)
+    metadata = {
+        "reused": False,
+        "attempt": attempt,
+        "identity": identity,
+        "cache_rejections": rejections,
+        "completed_epoch": time.time(),
+        "active_seconds": final.active_seconds,
+        "attempts": _finalization_attempts(root, identity),
+    }
+    dump_json(root / "LATEST.json", metadata)
+    return final, metadata
+
+
 class BoomFinalizationNode:
     @ChiaFunction(
         resources={"chipyard": 1, "boom_sim": 1, "boom_vivado": 1, "verilator_run": 1},
@@ -74,8 +222,26 @@ class BoomFinalizationNode:
         output = Path(output_dir)
         output.mkdir(parents=True, exist_ok=True)
         final = EvaluationArtifact.from_dict(early.to_dict())
+        # Preserve the search PPA only as context.  Finalization is a separate
+        # measurement and must not inherit search stages or active time.
+        final.status = "candidate_invalid"
+        final.stage = "materialize"
+        final.failure_class = None
+        final.retryable = False
+        final.raw_error = ""
+        final.build_ok = False
+        final.interface_ok = False
+        final.correctness_ok = False
+        final.candidate_valid = False
+        final.promotable = False
         final.final_valid = False
         final.valid_improvement = False
+        final.post_route = None
+        final.differential = None
+        final.regression = None
+        final.stages = []
+        final.hashes = {}
+        final.active_seconds = 0.0
         try:
             with acquire_workspace(config["remote"]) as workspace:
                 elaboration = BoomElaborationNode().run(
@@ -83,11 +249,17 @@ class BoomFinalizationNode:
                     workspace=str(workspace), output_dir=str(output / "elaboration"),
                 )
                 final.append_stage(elaboration)
+                final.hashes.update(elaboration.payload.get("rtl_hashes", {}))
+                final.candidate_source_path = elaboration.payload.get(
+                    "candidate_source_path"
+                )
+                final.candidate_diff_path = elaboration.payload.get(
+                    "candidate_diff_path"
+                )
                 if not elaboration.success:
                     dump_json(output / "evaluation.json", final)
                     return final
                 final.build_ok = True
-                final.lint_ok = True
                 differential_results = []
                 for seed in (42, 43, 44):
                     differential = BoomDifferentialNode().run(
@@ -103,6 +275,10 @@ class BoomFinalizationNode:
                         dump_json(output / "evaluation.json", final)
                         return final
                 final.correctness_ok = True
+                final.interface_ok = all(
+                    isinstance(item, dict) and item.get("interface_ok")
+                    for item in differential_results
+                )
                 final.differential = {"seeds": differential_results, "passed": True}
                 route = BoomVivadoNode().run(
                     target=target, config=config,
@@ -189,7 +365,7 @@ class BoomRegressionNode:
             simulator_path.write_bytes(build.simulator_binary_content)
             simulator_path.chmod(0o755)
             simulator_sha = hashlib.sha256(build.simulator_binary_content).hexdigest()
-            rsort = Path(config["remote"]["rsort_binary"])
+            rsort = regression_binary(config)
             run = VerilatorRunNode().run(
                 artifact=build, test_binary_content=rsort.read_bytes(),
                 test_binary_name=rsort.name, work_dir=str(output / "verilator"),
@@ -326,9 +502,10 @@ def reconcile_interactive_finalization(
 
 
 def finalize_campaign(campaign: Path) -> list[dict[str, Any]]:
-    from chia.base.ChiaFunction import get
-
     manifest = json.loads((campaign / "manifest.json").read_text())
+    verify_frozen_run(
+        campaign / "frozen", manifest.get("frozen_run_fingerprint")
+    )
     config = manifest["config"]
     node = BoomFinalizationNode()
     results = []
@@ -343,9 +520,10 @@ def finalize_campaign(campaign: Path) -> list[dict[str, Any]]:
         baseline["maximum_lut_ratio"] = config["physical"]["maximum_lut_ratio"]
         options = []
         for row in state["candidates"]:
-            if not row.get("candidate") or not row.get("evaluation"):
+            evaluation_data = search_evaluation_data(row)
+            if not row.get("candidate") or not evaluation_data:
                 continue
-            evaluation = EvaluationArtifact.from_dict(row["evaluation"])
+            evaluation = EvaluationArtifact.from_dict(evaluation_data)
             if evaluation.candidate_valid:
                 options.append((row, evaluation))
         if not options:
@@ -362,30 +540,24 @@ def finalize_campaign(campaign: Path) -> list[dict[str, Any]]:
         )
         candidate = CandidateArtifact.from_dict(row["candidate"])
         final_dir = run_path / "finalization"
-        if (final_dir / "evaluation.json").exists():
-            final = EvaluationArtifact.from_dict(
-                json.loads((final_dir / "evaluation.json").read_text())
-            )
-        else:
-            final = get(
-                node.run.chia_remote(
-                    node,
-                    candidate=candidate,
-                    early=early,
-                    target=target,
-                    config=config,
-                    baseline=baseline,
-                    output_dir=str(final_dir),
-                    _chia_display_name=f"finalize:{candidate.id}",
-                )
-            )
-        row["evaluation"] = final.to_dict()
+        final, finalization_meta = finalize_candidate(
+            node=node,
+            candidate=candidate,
+            early=early,
+            target=target,
+            config=config,
+            baseline=baseline,
+            root=final_dir,
+            display_name=f"finalize:{candidate.id}",
+        )
         state["finalization"] = {
             "status": "complete" if final.final_valid else final.status,
             "candidate_id": candidate.id,
             "evaluation": final.to_dict(),
+            "metadata": finalization_meta,
         }
         state["status"] = "complete" if final.final_valid else "finalization_failed"
+        state["finalization_completed_epoch"] = time.time()
         dump_json(state_path, state)
         results.append(state["finalization"])
     return results

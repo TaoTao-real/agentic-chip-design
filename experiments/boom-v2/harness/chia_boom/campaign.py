@@ -30,7 +30,8 @@ from .core import (
     choose_parent,
     duplicate_candidate_id,
     evaluation_feedback_rows,
-    make_diff,
+    lineage_fields,
+    search_evaluation_data,
     summarize,
     update_validity,
     validate_config,
@@ -39,6 +40,13 @@ from .core import (
 )
 from .deepseek import DeepSeekOfficialLLM, parse_result
 from .environment import load_config
+from .frozen import (
+    TOOL_FILES,
+    baseline_rtl,
+    regression_binary,
+    tool_file,
+    verify_frozen_run,
+)
 from .nodes import BoomCandidateEvaluationNode
 
 
@@ -48,6 +56,30 @@ _STATE_LOCK = threading.Lock()
 def _copy_file(source: Path, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
+
+
+def validate_process_memory_bundle(value: Any) -> None:
+    validate_generic_episode_bundle(value)
+    if isinstance(value, list):
+        count = len(value)
+    elif isinstance(value, dict) and isinstance(value.get("episodes"), list):
+        count = len(value["episodes"])
+    else:
+        count = 1
+    if count == 0:
+        raise RuntimeError("formal arm D requires non-empty process memory")
+
+
+def packaged_process_memory() -> list[dict[str, Any]]:
+    """Load the non-empty public cross-target bundle used by arm D."""
+    episode_root = Path(__file__).resolve().parent / "design_episodes"
+    episodes = []
+    for path in sorted(episode_root.glob("*.json")):
+        episode = load_json(path)
+        if episode.get("knowledge_class") == "cross-target-process-memory":
+            episodes.append(episode)
+    validate_process_memory_bundle(episodes)
+    return episodes
 
 
 def init_campaign(
@@ -61,7 +93,9 @@ def init_campaign(
     validate_config(config, formal=not preflight)
     if campaign.exists():
         if not force:
-            return load_json(campaign / "manifest.json")
+            raise FileExistsError(
+                f"campaign already exists; use resume or a new path: {campaign}"
+            )
         shutil.rmtree(campaign)
     campaign.mkdir(parents=True)
     schedule = build_schedule(config, preflight=preflight)
@@ -72,10 +106,36 @@ def init_campaign(
                 frozen_source / target / filename,
                 campaign / "frozen/targets" / target / filename,
             )
+        rtl_source = baseline_rtl(config, target)
+        rtl_target = campaign / "frozen/targets" / target / "baseline-rtl"
+        if not rtl_source.is_dir():
+            raise RuntimeError(f"qualified baseline RTL is missing: {rtl_source}")
+        shutil.copytree(rtl_source, rtl_target)
+    for name in TOOL_FILES:
+        _copy_file(tool_file(config, name), campaign / "frozen/tools" / name)
+    _copy_file(regression_binary(config), campaign / "frozen/tests/rsort.riscv")
+    required_patch = config.get("remote", {}).get("required_patch")
+    if required_patch:
+        frozen_patch = campaign / "frozen/base/required.patch"
+        _copy_file(Path(required_patch), frozen_patch)
+        config["remote"]["required_patch"] = str(frozen_patch.resolve())
+    replay_source = Path(config["remote"]["replay_root"])
+    frozen_replay = campaign / "frozen/q1-replay"
+    if replay_source.is_dir():
+        shutil.copytree(replay_source, frozen_replay)
+    else:
+        frozen_replay.mkdir(parents=True)
+    config["remote"]["replay_root"] = str(frozen_replay.resolve())
     episodes_source = frozen_source / "design-episodes.json"
     if episodes_source.exists():
-        validate_generic_episode_bundle(load_json(episodes_source))
+        episodes = load_json(episodes_source)
+        validate_process_memory_bundle(episodes)
         _copy_file(episodes_source, campaign / "frozen/design-episodes.json")
+    else:
+        dump_json(
+            campaign / "frozen/design-episodes.json", packaged_process_memory()
+        )
+    config["frozen_run_root"] = str((campaign / "frozen").resolve())
     manifest = {
         "version": config["version"],
         "kind": "preflight" if preflight else "formal",
@@ -100,7 +160,6 @@ def init_campaign(
                 "candidates": [],
             },
         )
-    write_evidence_hashes(campaign / "frozen", campaign / "frozen/SHA256SUMS.json")
     return manifest
 
 
@@ -116,11 +175,12 @@ def write_evidence_hashes(root: Path, output: Path) -> None:
 def _load_pairs(state: dict[str, Any]) -> list[tuple[CandidateArtifact, EvaluationArtifact]]:
     pairs = []
     for row in state["candidates"]:
-        if row.get("candidate") and row.get("evaluation"):
+        evaluation_data = search_evaluation_data(row)
+        if row.get("candidate") and evaluation_data:
             pairs.append(
                 (
                     CandidateArtifact.from_dict(row["candidate"]),
-                    EvaluationArtifact.from_dict(row["evaluation"]),
+                    EvaluationArtifact.from_dict(evaluation_data),
                 )
             )
     return pairs
@@ -145,10 +205,12 @@ def _evaluate_with_infra_retries(
     baseline: dict[str, Any],
     candidate_dir: Path,
     start_attempt: int = 1,
-) -> tuple[EvaluationArtifact, int]:
+    prior_attempts: list[dict[str, Any]] | None = None,
+) -> tuple[EvaluationArtifact, int, list[dict[str, Any]]]:
     attempt_limit = int(config["search"]["infrastructure_attempt_limit"])
     last = EvaluationArtifact(candidate_id=candidate.id)
     attempts_used = start_attempt - 1
+    records = list(prior_attempts or [])
     for attempt in range(start_attempt, attempt_limit + 1):
         attempts_used = attempt
         output = candidate_dir / f"evaluation-attempt-{attempt:02d}"
@@ -163,13 +225,23 @@ def _evaluate_with_infra_retries(
         )
         last = get(ref)
         dump_json(candidate_dir / "evaluation.json", last)
+        records.append({
+            "attempt": attempt,
+            "output_dir": str(output),
+            "active_seconds": last.active_seconds,
+            "status": last.status,
+            "retryable": last.retryable,
+            "failure_class": last.failure_class,
+            "evaluation": last.to_dict(),
+        })
         if last.status != "infra_blocked" or not last.retryable:
-            return last, attempts_used
-    return last, attempts_used
+            return last, attempts_used, records
+    return last, attempts_used, records
 
 
 def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
     manifest = load_json(campaign / "manifest.json")
+    verify_frozen_run(campaign / "frozen", manifest.get("frozen_run_fingerprint"))
     config = manifest["config"]
     run_path = campaign / "runs" / run_id
     state_path = run_path / "run.json"
@@ -181,6 +253,22 @@ def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
     baseline["maximum_lut_ratio"] = config["physical"]["maximum_lut_ratio"]
     episodes_path = campaign / "frozen/design-episodes.json"
     episodes = episodes_path.read_text() if episodes_path.exists() else ""
+    knowledge_episode_ids: list[str] = []
+    knowledge_sha256: str | None = None
+    if state["arm"] == "D" and not episodes.strip():
+        raise RuntimeError("arm D requires a non-empty frozen process-memory bundle")
+    if state["arm"] == "D":
+        knowledge_value = json.loads(episodes)
+        validate_process_memory_bundle(knowledge_value)
+        knowledge_rows = (
+            knowledge_value
+            if isinstance(knowledge_value, list)
+            else knowledge_value.get("episodes", [knowledge_value])
+        )
+        knowledge_episode_ids = [
+            str(item.get("episode_id")) for item in knowledge_rows
+        ]
+        knowledge_sha256 = sha256_text(episodes)
     llm = DeepSeekOfficialLLM(
         system_message=SYSTEM_PROMPT,
         model=config["model"]["id"],
@@ -200,21 +288,27 @@ def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
     # issuing or counting a new model request.
     if state["candidates"]:
         pending = state["candidates"][-1]
-        evaluation_data = pending.get("evaluation")
+        evaluation_data = search_evaluation_data(pending)
         if evaluation_data and evaluation_data.get("status") == "infra_blocked" and evaluation_data.get("retryable"):
             candidate = CandidateArtifact.from_dict(pending["candidate"])
             next_attempt = int(pending.get("infrastructure_attempts", 0)) + 1
             if next_attempt <= config["search"]["infrastructure_attempt_limit"]:
-                evaluation, attempts = _evaluate_with_infra_retries(
+                evaluation, attempts, attempt_records = _evaluate_with_infra_retries(
                     node=evaluator, candidate=candidate, target=target,
                     config=config, baseline=baseline,
                     candidate_dir=run_path / f"candidate-{candidate.index:02d}",
                     start_attempt=next_attempt,
+                    prior_attempts=pending.get("evaluation_attempts", []),
                 )
-                pending["evaluation"] = evaluation.to_dict()
+                pending["search_evaluation"] = evaluation.to_dict()
+                pending.pop("evaluation", None)
+                pending["evaluation_attempts"] = attempt_records
+                pending["search_active_seconds_total"] = sum(
+                    float(item.get("active_seconds", 0.0)) for item in attempt_records
+                )
                 pending["infrastructure_attempts"] = attempts
                 _save_state(state_path, state)
-            if pending["evaluation"]["status"] == "infra_blocked":
+            if search_evaluation_data(pending)["status"] == "infra_blocked":
                 state["status"] = "infra_blocked"
                 _save_state(state_path, state)
                 return state
@@ -298,13 +392,22 @@ def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
             dump_json(model_dir / "proposal.json", proposal)
             candidate_source = apply_exact_edits(source, proposal["edits"])
             (model_dir / "candidate-source.scala").write_text(candidate_source)
-            diff = make_diff(source, candidate_source, target["mutable_file"])
+            lineage = lineage_fields(
+                parent_id=parent.id if parent else None,
+                parent_source=source,
+                baseline_source=baseline_source,
+                candidate_source=candidate_source,
+                mutable_file=target["mutable_file"],
+            )
+            diff = lineage["diff"]
             (model_dir / "candidate.patch").write_text(diff)
             candidate = CandidateArtifact(
                 campaign_id=campaign.name, target=state["target"], arm=state["arm"],
                 seed=int(state["seed"]), index=index,
-                parent_id=parent.id if parent else None,
+                parent_id=lineage["parent_id"],
                 source=candidate_source, diff=diff,
+                baseline_diff=lineage["baseline_diff"],
+                parent_source_sha256=lineage["parent_source_sha256"],
                 diagnosis=proposal["diagnosis"],
                 selected_hypothesis=proposal["selected_hypothesis"],
                 visible_feedback=feedback if state["arm"] in ("C", "D") else "",
@@ -313,6 +416,8 @@ def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
                 usage=metadata.get("usage"), attempts=metadata.get("attempts", []),
                 model_elapsed_seconds=float(metadata.get("elapsed_seconds", 0.0)),
                 provider_model=metadata.get("provider_model"),
+                visible_knowledge_sha256=knowledge_sha256,
+                visible_knowledge_episode_ids=knowledge_episode_ids,
             )
             dump_json(candidate_dir / "candidate.json", candidate)
             duplicate_of = duplicate_candidate_id(candidate_source, pairs)
@@ -326,8 +431,9 @@ def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
                     raw_error=f"candidate_source_repeats:{duplicate_of}",
                 )
                 infra_attempts = 0
+                attempt_records = []
             else:
-                evaluation, infra_attempts = _evaluate_with_infra_retries(
+                evaluation, infra_attempts, attempt_records = _evaluate_with_infra_retries(
                     node=evaluator, candidate=candidate, target=target,
                     config=config, baseline=baseline, candidate_dir=candidate_dir,
                 )
@@ -342,7 +448,12 @@ def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
                 # next feedback turn to show precisely what must be repaired
                 # or avoided.
                 "model_proposal": proposal,
-                "evaluation": evaluation.to_dict(),
+                "search_evaluation": evaluation.to_dict(),
+                "evaluation_attempts": attempt_records if not duplicate_of else [],
+                "search_active_seconds_total": (
+                    sum(float(item.get("active_seconds", 0.0)) for item in attempt_records)
+                    if not duplicate_of else 0.0
+                ),
                 "infrastructure_attempts": infra_attempts,
                 "provider_tokens": _provider_token_count(metadata),
             }
@@ -352,7 +463,7 @@ def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
                 "candidate": None,
                 "model_proposal": proposal,
                 "visible_feedback": feedback if state["arm"] in ("C", "D") else "",
-                "evaluation": {
+                "search_evaluation": {
                     "candidate_id": f"{run_id}-candidate-{index:02d}",
                     "status": "candidate_invalid",
                     "stage": "model",
@@ -364,7 +475,7 @@ def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
             }
         state["candidates"].append(row)
         _save_state(state_path, state)
-        if row["evaluation"].get("status") == "infra_blocked":
+        if search_evaluation_data(row).get("status") == "infra_blocked":
             state["status"] = "infra_blocked"
             _save_state(state_path, state)
             return state
@@ -377,7 +488,10 @@ def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
 
 def run_campaign(campaign: Path, *, parallel_runs: int | None = None) -> list[dict[str, Any]]:
     manifest = load_json(campaign / "manifest.json")
-    limit = parallel_runs or int(manifest["config"]["search"].get("parallel_runs", 1))
+    verify_frozen_run(campaign / "frozen", manifest.get("frozen_run_fingerprint"))
+    limit = parallel_runs or int(
+        manifest.get("effective_parallel_runs", manifest["config"]["search"].get("parallel_runs", 1))
+    )
     pending = []
     for item in manifest["schedule"]:
         state = load_json(campaign / "runs" / item["id"] / "run.json")
@@ -407,11 +521,16 @@ def campaign_report(campaign: Path) -> dict[str, Any]:
             "post_route_critical_delay_ns", baseline.get("critical_delay_ns")
         )
         evaluations = [
-            EvaluationArtifact.from_dict(row["evaluation"])
+            EvaluationArtifact.from_dict(search_evaluation_data(row))
             for row in state["candidates"]
-            if row.get("candidate") and row.get("evaluation")
+            if row.get("candidate") and search_evaluation_data(row)
         ]
-        final = [evaluation for evaluation in evaluations if evaluation.final_valid]
+        finalization_data = state.get("finalization") or {}
+        final_evaluation_data = finalization_data.get("evaluation") or {}
+        final = (
+            [EvaluationArtifact.from_dict(final_evaluation_data)]
+            if final_evaluation_data.get("final_valid") else []
+        )
         best = min(
             final,
             key=lambda evaluation: evaluation.post_route["critical_delay_ns"],
@@ -428,15 +547,56 @@ def campaign_report(campaign: Path) -> dict[str, Any]:
                 cumulative_tokens += row["provider_tokens"]
             candidate_data = row.get("candidate") or {}
             cumulative_active += float(candidate_data.get("model_elapsed_seconds", 0.0))
-            evaluation_data = row.get("evaluation") or {}
-            cumulative_active += float(evaluation_data.get("active_seconds", 0.0))
+            evaluation_data = search_evaluation_data(row)
+            cumulative_active += float(
+                row.get(
+                    "search_active_seconds_total",
+                    evaluation_data.get("active_seconds", 0.0),
+                )
+            )
             if evaluation_data.get("promotable") and first_improvement_tokens is None:
                 first_improvement_tokens = cumulative_tokens
                 first_improvement_active_seconds = cumulative_active
         best_delay = best.post_route["critical_delay_ns"] if best else None
         improvement = max(0.0, baseline_route - best_delay) if best_delay is not None else 0.0
         provider_tokens = sum(known_tokens) if len(known_tokens) == len(tokens) else None
-        active_seconds = sum(evaluation.active_seconds for evaluation in evaluations)
+        search_eda_active_seconds = sum(
+            float(row.get(
+                "search_active_seconds_total",
+                search_evaluation_data(row).get("active_seconds", 0.0),
+            ))
+            for row in state["candidates"]
+        )
+        search_model_active_seconds = sum(
+            float((row.get("candidate") or {}).get("model_elapsed_seconds", 0.0))
+            for row in state["candidates"]
+        )
+        search_active_seconds = (
+            search_model_active_seconds + search_eda_active_seconds
+        )
+        finalization_attempts = (
+            (finalization_data.get("metadata") or {}).get("attempts") or []
+        )
+        finalization_active_seconds = sum(
+            float(item.get("active_seconds", 0.0))
+            for item in finalization_attempts
+        )
+        if not finalization_attempts and final_evaluation_data:
+            finalization_active_seconds = float(
+                final_evaluation_data.get("active_seconds", 0.0)
+            )
+        active_seconds = search_active_seconds + finalization_active_seconds
+        end_epoch = state.get("finalization_completed_epoch") or state.get("completed_epoch")
+        wall_seconds = (
+            float(end_epoch) - float(state["started_epoch"])
+            if end_epoch and state.get("started_epoch") else None
+        )
+        final_acceptance_wall_seconds = (
+            wall_seconds if best is not None else None
+        )
+        final_acceptance_active_seconds = (
+            active_seconds if best is not None else None
+        )
         rows.append(
             {
                 "target": state["target"], "arm": state["arm"], "seed": state["seed"],
@@ -448,13 +608,21 @@ def campaign_report(campaign: Path) -> dict[str, Any]:
                 "best_post_route_delay_ns": best_delay,
                 "delay_improvement_ns": improvement,
                 "provider_tokens": provider_tokens,
-                "active_seconds": active_seconds,
+                "search_model_active_seconds": search_model_active_seconds,
+                "search_eda_active_seconds": search_eda_active_seconds,
+                "search_active_seconds": search_active_seconds,
+                "finalization_active_seconds": finalization_active_seconds,
+                "total_active_seconds": active_seconds,
+                "end_to_end_wall_seconds": wall_seconds,
+                "first_final_acceptance_wall_seconds": final_acceptance_wall_seconds,
+                "first_final_acceptance_active_seconds": final_acceptance_active_seconds,
                 "token_efficiency_ns_per_million": (
                     improvement * 1_000_000 / provider_tokens
                     if provider_tokens else 0.0
                 ),
                 "active_time_efficiency_ns_per_hour": (
-                    improvement * 3600 / active_seconds if active_seconds else 0.0
+                    improvement * 3600 / search_active_seconds
+                    if search_active_seconds else 0.0
                 ),
                 "first_improvement_tokens": first_improvement_tokens,
                 "first_improvement_active_seconds": first_improvement_active_seconds,
@@ -494,7 +662,7 @@ def preflight_analysis(campaign: Path, manifest: dict[str, Any] | None = None) -
         ]
         changed_and_functional = any(
             bool((row.get("candidate") or {}).get("diff"))
-            and bool((row.get("evaluation") or {}).get("correctness_ok"))
+            and bool(search_evaluation_data(row).get("correctness_ok"))
             for row in rows
         )
 
@@ -518,11 +686,11 @@ def preflight_analysis(campaign: Path, manifest: dict[str, Any] | None = None) -
                 and feedback_index[prior["candidate"].get("id")].get("candidate_diff")
                     == prior["candidate"].get("diff")
                 and feedback_index[prior["candidate"].get("id")].get("evaluation")
-                    == prior.get("evaluation")
+                    == search_evaluation_data(prior)
                 for prior in prior_rows
             ))
             previous = c_rows[index - 1]
-            previous_eval = previous.get("evaluation") or {}
+            previous_eval = search_evaluation_data(previous)
             if previous.get("candidate") and not previous_eval.get("candidate_valid"):
                 prior_id = previous["candidate"].get("id")
                 raw = previous_eval.get("raw_error")
@@ -570,7 +738,7 @@ def _candidate_row_has_linked_artifacts(
     campaign: Path, state: dict[str, Any], row: dict[str, Any]
 ) -> bool:
     candidate = row.get("candidate")
-    evaluation = row.get("evaluation") or {}
+    evaluation = search_evaluation_data(row)
     if not candidate:
         # Invalid HTTP-200 model outputs are still linked by their model folder.
         index = int(row.get("index", 0))

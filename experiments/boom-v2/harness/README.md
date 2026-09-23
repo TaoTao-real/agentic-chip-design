@@ -42,7 +42,8 @@ Search candidates pass, in order:
 
 1. one-file scope and exact-edit materialization;
 2. Chisel elaboration;
-3. directed and 1,000,000-cycle differential verification;
+3. an exact top-level port signature check, followed by directed and
+   1,000,000-cycle differential verification;
 4. Vivado post-synthesis timing and area;
 5. promotion only when the valid candidate improves the current parent.
 
@@ -80,3 +81,15 @@ failure classification, validity transitions, CHIA decoration, knowledge
 access and the B/C report gates. It does not run Chipyard, Verilator or Vivado.
 Physical results in the parent experiment README remain reported evidence from
 the controlled environment, not a CI reproduction.
+
+## Runtime trust boundary
+
+The one-file mutation rule is an experiment integrity check, not an operating
+system sandbox. Configuration, baseline files, tool drivers, regression
+binaries and Design Episodes are trusted operator inputs. A production
+deployment should run model/API access in a credential-only service and run
+candidate builds in separate unprivileged workers or containers with no model
+credential, no writable scoring inputs, and only the frozen campaign directory
+mounted read-only. The harness never places the API key value in a prompt,
+artifact or command, but a build process with the same user privileges can
+otherwise inspect that user's environment and files.

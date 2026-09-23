@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import ray
@@ -12,8 +11,9 @@ from chia.trace.profiler import get_collector, start_collector, stop_collector
 from .artifacts import dump_json, load_json, sha256_file
 from .campaign import campaign_report, init_campaign, run_campaign
 from .core import validate_config
-from .finalize import finalize_campaign, reconcile_interactive_finalization
 from .environment import load_config
+from .finalize import finalize_campaign, reconcile_interactive_finalization
+from .frozen import seal_frozen_run, verify_frozen_run, verify_qualification
 from .interactive import finalize_interactive_issueq, run_interactive_issueq
 from .qualification import qualify
 
@@ -34,8 +34,7 @@ def require_qualification(config: dict, path: Path) -> dict:
     if not path.exists():
         raise RuntimeError(f"qualification evidence is missing: {path}")
     evidence = load_json(path)
-    if not evidence.get("passed"):
-        raise RuntimeError("Q0/Q1 qualification did not pass")
+    verify_qualification(config, evidence)
     return evidence
 
 
@@ -44,7 +43,7 @@ def apply_qualification(campaign: Path, qualification_path: Path) -> None:
     manifest = load_json(manifest_path)
     evidence = require_qualification(manifest["config"], qualification_path)
     qualified = int(evidence["qualified_parallel_runs"])
-    manifest["config"]["search"]["parallel_runs"] = min(
+    manifest["effective_parallel_runs"] = min(
         qualified, int(manifest["config"]["search"]["parallel_runs"])
     )
     manifest["qualification_sha256"] = sha256_file(qualification_path)
@@ -52,6 +51,15 @@ def apply_qualification(campaign: Path, qualification_path: Path) -> None:
     dump_json(manifest_path, manifest)
     target = campaign / "frozen/QUALIFICATION.json"
     target.write_text(qualification_path.read_text())
+    frozen = seal_frozen_run(campaign / "frozen", manifest["config"])
+    manifest["frozen_run_fingerprint"] = frozen["fingerprint"]
+    dump_json(manifest_path, manifest)
+
+
+def require_campaign_frozen(campaign: Path, manifest: dict) -> None:
+    frozen_root = campaign / "frozen"
+    verify_frozen_run(frozen_root, manifest.get("frozen_run_fingerprint"))
+    require_qualification(manifest["config"], frozen_root / "QUALIFICATION.json")
 
 
 def command_qualify(args: argparse.Namespace) -> int:
@@ -90,6 +98,7 @@ def command_start(args: argparse.Namespace, *, preflight: bool) -> int:
 
 def command_resume(args: argparse.Namespace) -> int:
     manifest = load_json(args.campaign / "manifest.json")
+    require_campaign_frozen(args.campaign, manifest)
     connect(args.campaign.name, args.campaign / "profiler-resume")
     try:
         results = run_campaign(args.campaign)
@@ -101,6 +110,8 @@ def command_resume(args: argparse.Namespace) -> int:
 
 
 def command_finalize(args: argparse.Namespace) -> int:
+    manifest = load_json(args.campaign / "manifest.json")
+    require_campaign_frozen(args.campaign, manifest)
     connect(args.campaign.name + "-finalize", args.campaign / "profiler-finalize")
     try:
         results = finalize_campaign(args.campaign)
@@ -134,6 +145,10 @@ def command_interactive(args: argparse.Namespace) -> int:
 def command_interactive_finalize(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     validate_config(config)
+    require_qualification(
+        config,
+        Path(config["remote"]["install_root"]) / "qualification/QUALIFICATION.json",
+    )
     connect(args.output.name + "-finalize", args.output / "profiler-finalize")
     try:
         result = finalize_interactive_issueq(config, args.output)
@@ -147,6 +162,10 @@ def command_interactive_finalize(args: argparse.Namespace) -> int:
 def command_interactive_reconcile(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     validate_config(config)
+    require_qualification(
+        config,
+        Path(config["remote"]["install_root"]) / "qualification/QUALIFICATION.json",
+    )
     result = reconcile_interactive_finalization(config, args.output)
     print(json.dumps(result, indent=2))
     return 0 if result.get("final_valid") else 3
