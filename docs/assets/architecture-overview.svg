@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1160" viewBox="0 0 1800 1160" role="img" aria-labelledby="title desc">
+<title id="title">Agentic Chip Design：目标架构与两段式分析优化闭环</title>
+<desc id="desc">Loop Engine 统一控制合同、权限、预算、候选谱系与最终验收。ChipContext 准备证据并将 ContextPacket 交给 Design Agent；Agent 修改 Design Core 中的 PyCircuit 或兼容设计；设计产物接受独立评估，运行证据回到 ChipContext。DesignIndex 提供来源与契约，KnowledgeStore 保存按任务隔离的历史。图示为目标架构，不代表所有能力已实现。</desc>
+<!-- Vector export of the final corrected architecture illustration shown in the project discussion. -->
+<rect width="1800" height="1160" fill="#ffffff"/>
+<text x="72" y="81" font-family="Inter, Arial, sans-serif" font-size="53" font-weight="700" text-anchor="start" fill="#173660">Agentic Chip Design</text>
+<text x="75" y="134.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="27" font-weight="400" text-anchor="start" fill="#61758b">目标架构 · 两段式分析优化闭环</text>
+<rect x="1460" y="48" width="268" height="49" rx="12" fill="#eef3f9" stroke="#dde5ef" stroke-width="2"/>
+<text x="1594" y="73" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#173660">PROPOSED ARCHITECTURE</text>
+<rect x="72" y="173" width="1656" height="65" rx="17" fill="#f3f7fc" stroke="#d9e4ef" stroke-width="2"/>
+<text x="900" y="216.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="27" font-weight="400" text-anchor="middle" fill="#173660">AI 工作负载  ·  优化目标  ·  工程约束</text>
+<polyline points="900,239 900,267" fill="none" stroke="#557ea6" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="900,267 905,255 895,255" fill="#557ea6"/>
+<rect x="72" y="269" width="1656" height="83" rx="17" fill="#173660" stroke="#173660" stroke-width="2"/>
+<text x="99" y="315" font-family="Inter, Arial, sans-serif" font-size="31" font-weight="700" text-anchor="start" fill="#ffffff">Loop Engine</text>
+<text x="450" y="318.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="25" font-weight="400" text-anchor="start" fill="#eef5fd">合同  ·  权限  ·  预算  ·  候选谱系  ·  最终验收</text>
+<text x="1547" y="317" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="21" font-weight="400" text-anchor="middle" fill="#c9d9eb">统一控制闭环</text>
+<rect x="372" y="391" width="560" height="222" rx="17" fill="#f0faf7" stroke="#d8e3ed" stroke-width="2"/>
+<rect x="373" y="392" width="6" height="220" rx="3" fill="#14766c"/>
+<text x="402" y="441" font-family="Inter, Arial, sans-serif" font-size="31" font-weight="700" text-anchor="start" fill="#14766c">01  ChipContext</text>
+<text x="402" y="490.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="25" font-weight="400" text-anchor="start" fill="#203850">第一段 · 证据准备</text>
+<text x="402" y="539.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" font-weight="400" text-anchor="start" fill="#203850">解析 · 校验 · 关联 · 比较 · 选择</text>
+<text x="402" y="581.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#61758b">EvidenceStore → Context Compiler</text>
+<rect x="1120" y="391" width="560" height="222" rx="17" fill="#f1f6fe" stroke="#d8e3ed" stroke-width="2"/>
+<rect x="1121" y="392" width="6" height="220" rx="3" fill="#245fa7"/>
+<text x="1150" y="441" font-family="Inter, Arial, sans-serif" font-size="31" font-weight="700" text-anchor="start" fill="#245fa7">02  Design Agent</text>
+<text x="1150" y="490.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="25" font-weight="400" text-anchor="start" fill="#203850">第二段 · 分析与修改</text>
+<text x="1150" y="539.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" font-weight="400" text-anchor="start" fill="#203850">诊断 · 假设 · 查询 · 修改 · 提交</text>
+<text x="1150" y="582" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#61758b">可替换模型 / DSH 等运行时</text>
+<rect x="1120" y="754" width="560" height="222" rx="17" fill="#f5f5fc" stroke="#d8e3ed" stroke-width="2"/>
+<rect x="1121" y="755" width="6" height="220" rx="3" fill="#48558c"/>
+<text x="1150" y="804" font-family="Inter, Arial, sans-serif" font-size="31" font-weight="700" text-anchor="start" fill="#48558c">Design Core</text>
+<text x="1150" y="853.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="25" font-weight="400" text-anchor="start" fill="#203850">PyCircuit · 原生设计核心</text>
+<text x="1150" y="902.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" font-weight="400" text-anchor="start" fill="#203850">设计源码 → IR / RTL / DesignIndex</text>
+<text x="1150" y="945" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#61758b">近期兼容 Chisel / RTL</text>
+<rect x="372" y="754" width="560" height="222" rx="17" fill="#fffbf4" stroke="#d8e3ed" stroke-width="2"/>
+<rect x="373" y="755" width="6" height="220" rx="3" fill="#946326"/>
+<text x="402" y="806.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="31" font-weight="400" text-anchor="start" fill="#946326">独立评估</text>
+<text x="402" y="853.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="25" font-weight="400" text-anchor="start" fill="#203850">复用现有编译与 EDA 工具</text>
+<text x="402" y="902.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" font-weight="400" text-anchor="start" fill="#203850">仿真 · 差分 / 等价 · 综合 · P&amp;R</text>
+<text x="402" y="945.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#61758b">局部通过 ≠ 最终验收</text>
+<polyline points="932,501 1120,501" fill="none" stroke="#557ea6" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="1120,501 1108,496 1108,506" fill="#557ea6"/>
+<text x="1026" y="471" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="400" text-anchor="middle" fill="#61758b">ContextPacket</text>
+<text x="1026" y="540" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="21" font-weight="400" text-anchor="middle" fill="#61758b">按需查询</text>
+<polyline points="1400,613 1400,754" fill="none" stroke="#557ea6" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="1400,754 1405,742 1395,742" fill="#557ea6"/>
+<text x="1425" y="693.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" font-weight="400" text-anchor="start" fill="#61758b">候选修改</text>
+<polyline points="1120,865 932,865" fill="none" stroke="#557ea6" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="932,865 944,870 944,860" fill="#557ea6"/>
+<text x="1026" y="841.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" font-weight="400" text-anchor="middle" fill="#61758b">设计产物</text>
+<polyline points="652,754 652,613" fill="none" stroke="#557ea6" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="652,613 647,625 657,625" fill="#557ea6"/>
+<text x="489" y="693.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" font-weight="400" text-anchor="start" fill="#61758b">运行证据</text>
+<polyline points="1240,754 1240,690 838,690 838,613" fill="none" stroke="#8999b0" stroke-width="2" stroke-linejoin="round" stroke-dasharray="9 8"/>
+<polygon points="838,613 833,625 843,625" fill="#8999b0"/>
+<text x="1032" y="668" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" text-anchor="middle" fill="#61758b">DesignIndex · 来源与契约</text>
+<rect x="72" y="588" width="240" height="236" rx="17" fill="#f5f8fc" stroke="#d8e2ed" stroke-width="2"/>
+<text x="91" y="629" font-family="Inter, Arial, sans-serif" font-size="23" font-weight="700" text-anchor="start" fill="#173660">KnowledgeStore</text>
+<text x="96" y="677.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" font-weight="400" text-anchor="start" fill="#203850">观察与假设</text>
+<text x="96" y="716.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" font-weight="400" text-anchor="start" fill="#203850">实验与结果</text>
+<text x="96" y="755.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" font-weight="400" text-anchor="start" fill="#203850">复验后经验</text>
+<polyline points="92,775 292,775" fill="none" stroke="#d7e2ec" stroke-width="1" stroke-linejoin="round"/>
+<text x="96" y="805" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#61758b">按任务隔离</text>
+<polyline points="312,655 340,655 340,501 372,501" fill="none" stroke="#8a9cb0" stroke-width="2" stroke-linejoin="round"/>
+<polygon points="372,501 360,496 360,506" fill="#8a9cb0"/>
+<text x="190" y="565" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" text-anchor="middle" fill="#61758b">允许访问的历史</text>
+<polyline points="372,865 192,865 192,824" fill="none" stroke="#8a9cb0" stroke-width="2" stroke-linejoin="round"/>
+<polygon points="192,824 187,836 197,836" fill="#8a9cb0"/>
+<text x="185" y="900.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" text-anchor="middle" fill="#61758b">实验记录</text>
+<polyline points="72,1020 1728,1020" fill="none" stroke="#dce5ef" stroke-width="1" stroke-linejoin="round"/>
+<text x="900" y="1071.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="27" font-weight="400" text-anchor="middle" fill="#173660">同一模型 · 更低端到端交付成本 · 独立验证后接受</text>
+<text x="900" y="1117.5" font-family="'Noto Sans CJK JP', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="19" font-weight="400" text-anchor="middle" fill="#61758b">设计事实、运行证据与历史经验分开保存  |  图示为目标架构，不代表全部能力已实现</text>
+</svg>

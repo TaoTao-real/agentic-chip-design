@@ -59,31 +59,17 @@ AI 工作负载与工程目标
 
 目标架构由 **Design Core、ChipContext、Loop Engine、KnowledgeStore** 四个领域模块构成，复用外部 Agent runtime 和现有工程工具。模块表示责任边界，第一版不要求微服务或复杂图数据库。
 
-```mermaid
-flowchart TB
-    G["工作负载 / 优化目标 / 工程约束"] --> L["Loop Engine<br/>合同、权限、候选、预算与最终验收"]
+<p align="center">
+  <a href="docs/assets/architecture-overview.svg">
+    <img src="docs/assets/architecture-overview.svg" width="1280" alt="Agentic Chip Design 目标架构：Loop Engine 统一控制；ChipContext 准备证据，Design Agent 分析并修改 PyCircuit 设计，独立评估产生反馈；KnowledgeStore 提供按任务隔离的历史。" />
+  </a>
+</p>
 
-    D["Design Core<br/>PyCircuit + Chisel/RTL 适配"] --> I["DesignIndex<br/>结构、来源、契约与变更"]
-    D --> V["编译与独立评估<br/>仿真、差分/等价、综合、P&R"]
-    V -->|封存运行产物| F
-    I --> F
+<p align="center">
+  <sub>目标架构 · 两段式分析优化闭环 · 点击图片查看完整 SVG</sub>
+</p>
 
-    subgraph CC["ChipContext：第一段，证据准备"]
-        F["Feedback Compiler<br/>解析、校验、设计关联"] --> E["EvidenceStore<br/>候选与环境绑定的观测"]
-        E --> C["Context Compiler<br/>比较、选择、有界上下文"]
-    end
-
-    I --> C
-    K["KnowledgeStore<br/>观察、假设、经验与适用范围"] -->|允许访问的历史| C
-    C --> P["ContextPacket + 按需查询"]
-    P --> A["第二段：Design Agent<br/>诊断、假设、修改、提交"]
-    A -->|候选修改| D
-    E -->|关联候选记录实验结果| K
-
-    L -.->|限制可改范围| A
-    L -.->|调度与最终门禁| V
-    L -.->|版本与知识可见性| CC
-```
+**读图方式：** 顶部的 **Loop Engine** 统一控制合同、权限、预算与最终验收；沿主循环依次阅读 **ChipContext → Design Agent → Design Core → 独立评估 → ChipContext**。左侧 **KnowledgeStore** 提供按任务隔离的历史，虚线表示 **DesignIndex** 向证据准备层提供来源与契约信息。图示为目标设计，不表示全部能力已实现；详细职责见下表与[架构说明](docs/architecture.md)。
 
 ### 四个核心模块
 
