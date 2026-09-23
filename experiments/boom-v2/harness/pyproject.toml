@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-chip-design-boom-harness"
+version = "0.1.0"
+description = "CHIA-native BOOM optimization experiment harness"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+  "chialoops==1.0.1",
+  "psutil>=5.9,<8",
+  "requests>=2.31,<3",
+]
+
+[project.scripts]
+chia-boom = "chia_boom.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["chia_boom*"]
+
+[tool.setuptools.package-data]
+chia_boom = ["design_episodes/*.json", "tools/*.py", "tools/*.tcl"]

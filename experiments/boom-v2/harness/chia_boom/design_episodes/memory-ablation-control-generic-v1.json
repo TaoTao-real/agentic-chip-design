@@ -1,0 +1,60 @@
+{
+  "schema_version": "design-episode-v2",
+  "episode_id": "memory-ablation-control-generic-v1",
+  "knowledge_class": "cross-target-process-memory",
+  "access_policy": {
+    "allowed_for": ["new hardware targets", "engineering reuse", "future blind discovery runs"],
+    "forbidden_for": ["claiming a target-specific root cause", "selecting a target-specific transformation"],
+    "contains_target_specific_solution": false
+  },
+  "retrieval_keys": [
+    "agent hardware optimization early stop",
+    "time to first valid improvement",
+    "fixed budget versus completion cost",
+    "structured memory ablation",
+    "avoid post-success over-exploration"
+  ],
+  "reusable_observations": [
+    {
+      "observation": "A retrieved Design Episode can reduce repeated analysis yet a fixed turn budget may spend the savings on extra speculative candidates.",
+      "action": "Report both full-budget cost and cost to a predeclared valid-improvement threshold. Do not infer end-to-end speedup from an earlier first edit alone."
+    },
+    {
+      "observation": "The model may continue searching after a correct candidate already clears a useful PPA threshold.",
+      "action": "Freeze an automatic stopping threshold before the run. Trigger it only after correctness, area and measured post-synthesis gates; always retain independent route and processor-regression finalization."
+    },
+    {
+      "observation": "Target-specific memory measures reuse rather than blind discovery.",
+      "action": "Keep a separate cross-target memory arm with no current target root cause or transformation, and label target-memory results as an engineering upper bound."
+    },
+    {
+      "observation": "Search wall time can be distorted by concurrent EDA work even when scheduler slots and memory limits are respected.",
+      "action": "Record concurrent jobs and active tool time. Prefer a serial paired run for wall-time causality; treat provider token, turn and EDA counts as less resource-sensitive metrics."
+    },
+    {
+      "observation": "An index hit does not prove the Agent consumed the episode body.",
+      "action": "Audit search and retrieve separately. If the treatment requires memory use, make the body retrieval an explicit prerequisite while leaving section selection to the Agent."
+    }
+  ],
+  "measured_example_without_target_solution": {
+    "group": "generic process memory versus no memory",
+    "first_valid_search": {
+      "provider_token_reduction_percent": 46.83,
+      "wall_time_reduction_percent": 44.65
+    },
+    "fixed_budget": {
+      "provider_token_reduction_percent": 32.96,
+      "wall_time_reduction_percent": -6.60
+    },
+    "interpretation": "The process memory accelerated arrival at a validated candidate, but fixed-budget continuation erased the wall-time gain."
+  },
+  "provenance": {
+    "derived_from_campaigns": [
+      "issueq-blind-interactive-v13-8b",
+      "issueq-memory-k1-generic-v2",
+      "issueq-memory-k2-target-v3"
+    ],
+    "target_specific_root_cause_removed": true,
+    "report": "results/issueq-memory-ablation-v1/MEMORY_ABLATION.json"
+  }
+}

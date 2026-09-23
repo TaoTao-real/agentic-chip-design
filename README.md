@@ -129,12 +129,12 @@ AI 工作负载与工程目标
 
 ## 当前进展
 
-**状态快照：2026-09-23。** “已有实验记录”不表示对应实现已在本仓库公开；“规划”不表示已完成集成。
+**状态快照：2026-09-23。** BOOM v2 的公开安全执行子集已发布；原始候选和 EDA 证据仍在受控环境。“规划”不表示已完成集成。
 
 | 工作方向 | 当前状态 | 接下来验证什么 |
 |---|---|---|
 | 项目架构与协作 | 已整理总体架构、数据契约、6 份 ADR 草案和 16 项待办 | 团队评审、合同冻结与任务拆解 |
-| BOOM 优化闭环 | 已有 DeepSeek 自主修改、失败恢复、独立评估与回归的实验记录；公开聚合摘要 | 补齐可审计证据，进行独立搜索重复和强基线对照 |
+| BOOM 优化闭环 | 已有 DeepSeek 自主修改、失败恢复、独立评估与回归的实验记录；公开 CHIA/Ray harness 与聚合摘要 | 在受控环境重放 EDA，进行独立搜索重复和强基线对照 |
 | 通用过程知识 | K0/K1/K2 实验出现初步效率信号 | 区分知识内容、交付方式与跨目标迁移效果 |
 | 两段式反馈与 DSH | 接口、清单和薄适配方案处于规划阶段 | 实现数据准备与交付，单独测量其效率增量 |
 | PyCircuit 原生设计 | 局部等价接入、DesignIndex 和验证入口处于规划阶段 | 先验证迁移正确性，再比较表示与反馈的作用 |
@@ -174,7 +174,7 @@ M1 与小范围 M2 可以并行。近期不整体重写 BOOM、不默认扩容�
 
 ## 开始了解与参与
 
-当前仓库的入口是架构、实验与实施计划，而不是安装包。克隆后即可阅读和参与文档评审；**仅克隆本仓库不能运行完整 BOOM 实验或一体化优化平台。**
+当前仓库同时提供架构、实验计划和可安装的 BOOM v2 公开 harness。完整 BOOM 实验仍需外部 Chipyard checkout、Vivado、Verilator、模型密钥及受控证据；它不是一体化优化平台。
 
 ```bash
 git clone https://github.com/TaoTao-real/agentic-chip-design.git
@@ -187,6 +187,7 @@ cd agentic-chip-design
 | 实现数据准备与 Agent 接入 | [ChipContext](docs/chipcontext.md) → [数据契约](docs/data-contracts.md) → [DSH 适配](docs/dsh-integration.md) |
 | 参与 PyCircuit 与编译器工作 | [PyCircuit 路线](docs/pycircuit.md) → [表示与反馈消融](docs/evaluation.md) |
 | 审视实验结论或设计新实验 | [BOOM v2 摘要](experiments/boom-v2/README.md) → [评估协议](docs/evaluation.md) |
+| 部署或重放当前 BOOM harness | [执行代码](experiments/boom-v2/harness/README.md) → [部署说明](experiments/boom-v2/harness/DEPLOYMENT.md) |
 | 领取任务或讨论架构决策 | [任务清单](tracking/BACKLOG.md) → [ADR 草案](docs/adr/README.md) → [Issues](https://github.com/TaoTao-real/agentic-chip-design/issues) |
 
 信息清单的起点见 [`configs/evidence-policy.example.json`](configs/evidence-policy.example.json)；它是领域策略示例，不是已经可执行的 DSH 插件配置。讨论脉络见[设计演进](docs/discussion-map.md)。

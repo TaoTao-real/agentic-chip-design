@@ -1,0 +1,56 @@
+{
+  "schema_version": "design-episode-v2",
+  "episode_id": "interactive-hardware-loop-recovery-generic-v1",
+  "knowledge_class": "cross-target-process-memory",
+  "access_policy": {
+    "allowed_for": ["arm-D cross-target experiments", "new modules", "engineering runs"],
+    "forbidden_for": ["claiming a target-specific bottleneck", "suggesting a target-specific transformation"],
+    "contains_target_specific_solution": false
+  },
+  "retrieval_keys": [
+    "hardware optimization feedback loop",
+    "candidate differential failure",
+    "raw EDA evidence",
+    "revert and repair",
+    "independent finalization",
+    "reduce invalid candidate cost"
+  ],
+  "reusable_observations": [
+    {
+      "observation": "A candidate that elaborates can still change cycle-visible control behavior.",
+      "action": "Run differential verification before spending EDA time; preserve the first mismatching cycle and port verbatim."
+    },
+    {
+      "observation": "A failed edit remains valuable feedback only when the next turn can see the exact source state and raw failure.",
+      "action": "Retain candidate diff, stage, raw error and parent identity; allow an explicit revert to baseline or best valid source."
+    },
+    {
+      "observation": "Source structure alone is insufficient to establish the physical bottleneck.",
+      "action": "Let the agent inspect unannotated timing paths and generated RTL, then require measured post-synthesis deltas."
+    },
+    {
+      "observation": "Search-time success can be affected by cached workspaces and a single random stimulus stream.",
+      "action": "Finalize from a clean workspace with new differential seeds, post-route PPA and a processor-level program regression."
+    },
+    {
+      "observation": "A persistent tool session can recover from an invalid first candidate without human source repair.",
+      "action": "Keep the agent's observation history and tool outputs in one logical session while enforcing an EDA evaluation budget."
+    }
+  ],
+  "minimum_episode_fields": [
+    "objective and immutable invariants",
+    "input artifact versions and hashes",
+    "raw bottleneck evidence",
+    "parent and candidate source hashes",
+    "exact transformation or failed edit",
+    "failure stage and raw diagnostic",
+    "correctness, area and timing results",
+    "applicability preconditions and negative scope",
+    "model/tool usage and elapsed time",
+    "visibility policy for future evaluations"
+  ],
+  "provenance": {
+    "derived_from_campaign": "issueq-blind-interactive-v13-8b",
+    "target_specific_details_removed": true
+  }
+}

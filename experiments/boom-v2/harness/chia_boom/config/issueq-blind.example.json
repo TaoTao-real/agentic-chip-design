@@ -1,0 +1,77 @@
+{
+  "version": "issueq-blind-public-v1",
+  "experiment_kind": "issueq-blind-reproduction",
+  "model": {
+    "provider": "deepseek-official",
+    "api_base": "https://api.deepseek.com/v1",
+    "id": "deepseek-v4-pro",
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "temperature": 0.2,
+    "max_output_tokens": 32000,
+    "attempt_limit": 3,
+    "timeout_seconds": 900,
+    "thinking": "disabled",
+    "interactive_thinking": "enabled",
+    "interactive_reasoning_effort": "high"
+  },
+  "search": {
+    "replicates": [42, 43, 44],
+    "candidate_limit": 5,
+    "schedule_seed": 20260922,
+    "parallel_runs": 2,
+    "infrastructure_attempt_limit": 3
+  },
+  "physical": {
+    "tool": "Vivado 2024.1",
+    "part": "xc7z020clg400-1",
+    "clock_period_ns": 5.0,
+    "maximum_lut_ratio": 1.05,
+    "cpus_per_job": 12,
+    "candidate_timeout_seconds": 5400,
+    "route_timeout_seconds": 10800,
+    "regression_timeout_seconds": 10800
+  },
+  "environment": {
+    "conda_setup": "${CONDA_SETUP}",
+    "vivado_settings": "${VIVADO_SETTINGS}"
+  },
+  "base": {
+    "chipyard_commit": "4ab72313087580a44d647b52923389a06ec0712f",
+    "boom_commit": "3229345a4f6388562f81ce1955deefe1a4f9acbd",
+    "config": "MegaBoomChiaBigCacheConfig",
+    "historical_issue_queue_result_visible_to_model": false
+  },
+  "remote": {
+    "install_root": "${AGENTIC_CHIP_LAB_ROOT}/boom-public-v1",
+    "workspace_slots": "${CHIPYARD_WORKSPACE_ROOT}",
+    "workspace_wait_seconds": 7200,
+    "required_patch": null,
+    "tools_root": "${AGENTIC_CHIP_HARNESS_ROOT}/chia_boom/tools",
+    "baseline_rtl_root": "${AGENTIC_CHIP_LAB_ROOT}/boom-public-v1/frozen/baseline-rtl",
+    "frozen_inputs_root": "${AGENTIC_CHIP_LAB_ROOT}/boom-public-v1/frozen/inputs",
+    "replay_root": "${AGENTIC_CHIP_LAB_ROOT}/boom-public-v1/frozen/q1-fixtures",
+    "campaigns_root": "${AGENTIC_CHIP_LAB_ROOT}/boom-public-v1/campaigns",
+    "rsort_binary": "${CHIPYARD_ROOT}/generators/riscv-sodor/riscv-bmarks/rsort.riscv"
+  },
+  "information_policy": {
+    "forbidden_prompt_terms": []
+  },
+  "qualification": {
+    "q1_replay_required": false
+  },
+  "arms": ["A", "B", "C", "D"],
+  "targets": {
+    "T0-issue-queue": {
+      "id": "T0-issue-queue",
+      "mutable_file": "generators/boom/src/main/scala/v3/exu/issue-units/issue-unit-age-ordered.scala",
+      "rtl_top": "IssueUnitCollapsing_2",
+      "rtl_files": ["IssueUnitCollapsing_2.sv", "IssueSlot_32.sv"],
+      "invariants": [
+        "preserve the complete module interface and cycle-visible behavior",
+        "do not change configured queue entries, issue width, dispatch width, or wakeup ports",
+        "all module behavior must remain exactly equivalent",
+        "do not modify tests, configuration, constraints, or scoring"
+      ]
+    }
+  }
+}

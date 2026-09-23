@@ -1,0 +1,4 @@
+interface:
+  display_name: "CHIA BOOM Agent复现"
+  short_description: "复现并审计BOOM模块的CHIA Agent硬件优化闭环"
+  default_prompt: "使用 $chia-boom-agent-reproduction 核查环境并复现BOOM模块Agent优化实验。"
