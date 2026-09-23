@@ -1,0 +1,205 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="1024" viewBox="0 0 1536 1024" role="img" aria-labelledby="title desc">
+<title id="title">Agentic Chip Design — concept architecture</title><desc id="desc">Vector reconstruction of the selected four-column concept illustration. It shows evidence preparation, analysis and optimization roles, PyCircuit design, evaluation and feedback, shared knowledge and ecosystem. This is a concept view, not an implementation-status claim; the project contract and roadmap remain authoritative.</desc>
+<!-- Editable vector reconstruction of the selected concept image; not the original PNG. -->
+<defs>
+<linearGradient id="bg" x2="1" y2="1"><stop stop-color="#fbfdff"/><stop offset="1" stop-color="#edf4ff"/></linearGradient>
+<linearGradient id="green" x2="1" y2="1"><stop stop-color="#edf9ee"/><stop offset="1" stop-color="#e3f4eb"/></linearGradient>
+<linearGradient id="blue" x2="1" y2="1"><stop stop-color="#eff7ff"/><stop offset="1" stop-color="#e1edff"/></linearGradient>
+<linearGradient id="purple" x2="1" y2="1"><stop stop-color="#f3f0ff"/><stop offset="1" stop-color="#e9e7fe"/></linearGradient>
+<linearGradient id="orange" x2="1" y2="1"><stop stop-color="#fff9ed"/><stop offset="1" stop-color="#fff1e4"/></linearGradient>
+<linearGradient id="slate" x2="1" y2="1"><stop stop-color="#edf4fb"/><stop offset="1" stop-color="#e3eafa"/></linearGradient>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10" fill="none" stroke="#527eae" stroke-width="1.8"/></marker>
+<symbol id="chip" viewBox="0 0 40 40"><rect x="9" y="9" width="22" height="22" rx="3"/><rect x="15" y="15" width="10" height="10" rx="1"/><path d="M14 3v6m6-6v6m6-6v6M14 31v6m6-6v6m6-6v6M3 14h6m-6 6h6m-6 6h6M31 14h6m-6 6h6m-6 6h6"/></symbol>
+<symbol id="db" viewBox="0 0 40 40"><ellipse cx="20" cy="9" rx="13" ry="5"/><path d="M7 9v22c0 7 26 7 26 0V9M7 17c0 7 26 7 26 0M7 25c0 7 26 7 26 0"/></symbol>
+<symbol id="user" viewBox="0 0 40 40"><circle cx="20" cy="11" r="7"/><path d="M6 35c0-18 28-18 28 0z"/></symbol>
+<symbol id="brain" viewBox="0 0 40 40"><path d="M19 5c-7-3-10 3-9 7-7 1-7 10-3 12-3 6 2 12 7 10 2 4 7 3 7-1V9c0-3-1-4-2-4zm4 0c7-3 10 3 9 7 7 1 7 10 3 12 3 6-2 12-7 10-2 4-7 3-7-1"/><path d="M10 14h5v7h5m12-7h-5v7h-5M9 28h6v-5m18 5h-6v-5"/></symbol>
+<symbol id="code" viewBox="0 0 40 40"><path d="m13 9-10 11 10 11m14-22 10 11-10 11M24 5l-8 30"/></symbol>
+<symbol id="chart" viewBox="0 0 40 40"><path d="M7 36V23h6v13zm11 0V12h6v24zm11 0V3h6v33z"/></symbol>
+<symbol id="nodes" viewBox="0 0 40 40"><path d="m10 11 20 5-15 16-5-21m5 21 20-1M10 11l-5 14"/><circle cx="10" cy="11" r="4"/><circle cx="30" cy="16" r="4"/><circle cx="15" cy="32" r="4"/><circle cx="5" cy="25" r="3"/><circle cx="35" cy="31" r="3"/></symbol>
+<symbol id="tool" viewBox="0 0 40 40"><path d="M6 4a10 10 0 0 0 11 14l14 17 5-5-17-14A10 10 0 0 0 8 3l6 7-5 4-6-6m20 13L5 34l-2-3 12-14"/></symbol>
+<symbol id="doc" viewBox="0 0 40 40"><path d="M10 4h16l7 8v24H10zM26 4v9h7M15 19h12m-12 6h12m-12 6h8"/></symbol>
+<symbol id="bulb" viewBox="0 0 40 40"><path d="M13 28c0-8-6-8-6-16 0-15 26-15 26 0 0 8-6 8-6 16zm0 4h14m-11 4h8M20 0v-4M3 1l-4-4m38 4 4-4"/></symbol>
+<symbol id="bolt" viewBox="0 0 40 40"><path d="M24 2 6 23h13l-4 15 20-23H22z"/></symbol>
+</defs>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#14294b} .title{font-size:46px;font-weight:700;fill:#081a39}.heading{font-size:20px;font-weight:700}.body{font-size:15px}.small{font-size:13px}.tiny{font-size:12px}.card-title{font-size:15px;font-weight:600}.muted{fill:#486b96}.white{fill:#fff}.line{fill:none;stroke:#527eae;stroke-width:2;stroke-linejoin:round;marker-end:url(#arrow)}</style>
+<rect width="1536" height="1024" fill="url(#bg)"/>
+<text x="37" y="61" class="title">Agentic Chip Design</text>
+<text x="37" y="95" class="heading" style="fill:#496b96">From design intent to measurable improvement, with AI agents.</text>
+<text x="842" y="77" class="body">Connect design, tools, and domain knowledge.</text>
+<text x="842" y="101" class="body">Let agents explore. Let data decide.</text>
+<path d="M1218 10V130" fill="none" stroke="#d7e3f0" stroke-width="1" stroke-linejoin="round"/>
+<use href="#chip" x="1243" y="12" width="22" height="22" fill="none" stroke="#476b99" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1285" y="28" class="body">Higher Design Productivity</text>
+<use href="#chip" x="1243" y="44" width="22" height="22" fill="none" stroke="#476b99" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1285" y="60" class="body">Better PPA Results</text>
+<use href="#chip" x="1243" y="76" width="22" height="22" fill="none" stroke="#476b99" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1285" y="92" class="body">Reusable Design Knowledge</text>
+<use href="#chip" x="1243" y="108" width="22" height="22" fill="none" stroke="#476b99" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1285" y="124" class="body">Open and Extensible Ecosystem</text>
+<rect x="32" y="150" width="1355" height="87" rx="6" fill="url(#blue)" stroke="#bfd4ee"/>
+<use href="#user" x="54" y="173" width="40" height="40" fill="none" stroke="#1262b5" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="116" y="189" class="heading">User &amp; Goals</text>
+<text x="116" y="216" class="body">Design target · Constraints · Objectives</text>
+<rect x="432" y="165" width="358" height="57" rx="5" fill="#fff" stroke="#bed3ed" fill-opacity="0.35"/>
+<text x="457" y="188" class="body">Natural language</text>
+<text x="457" y="208" class="small">“Optimize BOOM’s issue unit for higher IPC”</text>
+<rect x="806" y="165" width="250" height="57" rx="5" fill="#fff" stroke="#bed3ed" fill-opacity="0.35"/>
+<text x="831" y="188" class="body">Design specs</text>
+<text x="831" y="208" class="small">(ISA, PPA targets, constraints)</text>
+<rect x="1073" y="165" width="295" height="57" rx="5" fill="#fff" stroke="#bed3ed" fill-opacity="0.35"/>
+<text x="1098" y="188" class="body">Project context</text>
+<text x="1098" y="208" class="small">(codebase, prior results, preferences)</text>
+<path d="M735 237V267" fill="none" stroke="#527eae" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="758" y="258" class="body">High-level task</text>
+<path d="M1503 886V193H1392" fill="none" stroke="#527eae" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="1362" y="258" class="small">Results &amp; insights</text>
+<rect x="33" y="269" width="1470" height="450" rx="9" fill="url(#slate)" stroke="#adc9e9" fill-opacity="0.25"/>
+<text x="53" y="297" class="heading" style="fill:#124b91">Agentic Chip Design System</text>
+<rect x="53" y="310" width="333" height="360" rx="6" fill="url(#green)" stroke="#168459"/>
+<use href="#db" x="71" y="325" width="38" height="38" fill="none" stroke="#168459" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="118" y="342" class="heading" style="fill:#168459">1. ChipContext</text>
+<text x="118" y="365" class="heading" style="fill:#168459">Evidence Preparation</text>
+<text x="71" y="393" class="body" style="fill:#168459">Collect, clean and organize all relevant</text>
+<text x="71" y="412" class="body" style="fill:#168459">engineering information.</text>
+<rect x="71" y="424" width="297" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="86" y="447" class="card-title">Code &amp; Design Artifacts</text>
+<text x="86" y="467" class="small">(Chisel/RTL, PyCircuit, configs)</text>
+<rect x="71" y="482" width="297" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="86" y="505" class="card-title">Build &amp; Simulation Results</text>
+<text x="86" y="525" class="small">(logs, waveforms, metrics)</text>
+<rect x="71" y="540" width="297" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="86" y="563" class="card-title">Design Knowledge</text>
+<text x="86" y="583" class="small">(microarchitecture, constraints, docs)</text>
+<rect x="71" y="598" width="297" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="86" y="621" class="card-title">Historical Experience</text>
+<text x="86" y="641" class="small">(past optimizations, patterns)</text>
+<rect x="441" y="310" width="307" height="360" rx="6" fill="url(#blue)" stroke="#1467db"/>
+<use href="#brain" x="459" y="325" width="38" height="38" fill="none" stroke="#1467db" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="506" y="342" class="heading" style="fill:#1467db">2. Agent Team</text>
+<text x="506" y="365" class="heading" style="fill:#1467db">Analysis &amp; Optimization</text>
+<text x="459" y="393" class="body" style="fill:#1467db">Analyze, reason, propose and refine</text>
+<text x="459" y="412" class="body" style="fill:#1467db">design modifications.</text>
+<rect x="459" y="424" width="250" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="474" y="447" class="card-title">Planner</text>
+<text x="474" y="467" class="small">Task decomposition &amp; strategy</text>
+<rect x="459" y="482" width="250" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="474" y="505" class="card-title">Design Analyst</text>
+<text x="474" y="525" class="small">Bottleneck analysis &amp; insight</text>
+<rect x="459" y="540" width="250" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="474" y="563" class="card-title">Design Engineer</text>
+<text x="474" y="583" class="small">Generate &amp; refine design changes</text>
+<rect x="459" y="598" width="250" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="474" y="621" class="card-title">Review &amp; Reflection</text>
+<text x="474" y="641" class="small">Self-check, critique, iterate</text>
+<rect x="803" y="310" width="290" height="360" rx="6" fill="url(#purple)" stroke="#5245d9"/>
+<use href="#chip" x="821" y="325" width="38" height="38" fill="none" stroke="#5245d9" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="868" y="342" class="heading" style="fill:#5245d9">3. Design Core</text>
+<text x="868" y="365" class="heading" style="fill:#5245d9">(PyCircuit)</text>
+<text x="821" y="393" class="body" style="fill:#5245d9">Hardware design representation</text>
+<text x="821" y="412" class="body" style="fill:#5245d9">and manipulation.</text>
+<rect x="821" y="424" width="254" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="836" y="447" class="card-title">PyCircuit IR</text>
+<text x="836" y="467" class="small">(analysis-friendly, LLM-friendly)</text>
+<rect x="821" y="482" width="254" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="836" y="505" class="card-title">Transformations</text>
+<text x="836" y="525" class="small">(programmatic design space exploration)</text>
+<rect x="821" y="540" width="254" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="836" y="563" class="card-title">Equivalence &amp; Constraint Check</text>
+<text x="836" y="583" class="small">(maintain correctness)</text>
+<rect x="821" y="598" width="254" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="836" y="621" class="card-title">Export &amp; Integration</text>
+<text x="836" y="641" class="small">(Chisel/Verilog/others)</text>
+<rect x="1148" y="310" width="336" height="360" rx="6" fill="url(#orange)" stroke="#d06508"/>
+<use href="#chart" x="1166" y="325" width="38" height="38" fill="none" stroke="#d06508" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1213" y="342" class="heading" style="fill:#d06508">4. Evaluation &amp; Feedback</text>
+<text x="1166" y="393" class="body" style="fill:#d06508">Independent evaluation with real tools.</text>
+<text x="1166" y="412" class="body" style="fill:#d06508">Data-driven feedback to guide the next iteration.</text>
+<rect x="1166" y="424" width="300" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="1181" y="447" class="card-title">Build &amp; Simulation</text>
+<text x="1181" y="467" class="small">(e.g., Verilator, FPGA, cycle-accurate sim)</text>
+<rect x="1166" y="482" width="300" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="1181" y="505" class="card-title">PPA Evaluation</text>
+<text x="1181" y="525" class="small">(performance, power, area)</text>
+<rect x="1166" y="540" width="300" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="1181" y="563" class="card-title">Correctness &amp; Regression</text>
+<text x="1181" y="583" class="small">(test suite, formal checks)</text>
+<rect x="1166" y="598" width="300" height="54" rx="5" fill="#fff" stroke="#dce6f1" fill-opacity="0.72"/>
+<text x="1181" y="621" class="card-title">Result Analysis</text>
+<text x="1181" y="641" class="small">compare, summarize, provide feedback</text>
+<path d="M386 508H441" fill="none" stroke="#527eae" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M748 508H803" fill="none" stroke="#527eae" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M1093 508H1148" fill="none" stroke="#527eae" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="413.5" y="481" class="tiny" text-anchor="middle">Structured</text>
+<text x="413.5" y="495" class="tiny" text-anchor="middle">context</text>
+<text x="775.5" y="481" class="tiny" text-anchor="middle">Candidate</text>
+<text x="775.5" y="495" class="tiny" text-anchor="middle">designs</text>
+<text x="1120.5" y="481" class="tiny" text-anchor="middle">Design</text>
+<text x="1120.5" y="495" class="tiny" text-anchor="middle">variants</text>
+<path d="M728 451H713M713 451V624H727" fill="none" stroke="#2476d8" stroke-width="1.5" stroke-linejoin="round"/>
+<path d="M1317 670V703H581V674" fill="none" stroke="#d67624" stroke-width="3" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="825" y="694" class="body">Evaluation results &amp; feedback</text>
+<rect x="32" y="747" width="1460" height="75" rx="6" fill="url(#blue)" stroke="#bfd4ee"/>
+<use href="#db" x="55" y="764" width="41" height="41" fill="none" stroke="#17365f" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="116" y="779" class="heading">Knowledge Store</text>
+<text x="116" y="802" class="body">Turn individual optimizations into reusable knowledge.</text>
+<rect x="475" y="758" width="225" height="53" rx="5" fill="#fff" stroke="#c7d9ee" fill-opacity="0.55"/>
+<text x="490" y="781" class="small">Design Patterns</text>
+<text x="490" y="800" class="small">(what works, when and why)</text>
+<rect x="715" y="758" width="225" height="53" rx="5" fill="#fff" stroke="#c7d9ee" fill-opacity="0.55"/>
+<text x="730" y="781" class="small">Case Studies</text>
+<text x="730" y="800" class="small">(successes and failures)</text>
+<rect x="953" y="758" width="225" height="53" rx="5" fill="#fff" stroke="#c7d9ee" fill-opacity="0.55"/>
+<text x="968" y="781" class="small">Design Index</text>
+<text x="968" y="800" class="small">(modules, metrics, dependencies)</text>
+<rect x="1194" y="758" width="283" height="53" rx="5" fill="#fff" stroke="#c7d9ee" fill-opacity="0.55"/>
+<text x="1209" y="781" class="small">Best Practices</text>
+<text x="1209" y="800" class="small">(domain rules, expert knowledge)</text>
+<path d="M218 747V723" fill="none" stroke="#527eae" stroke-width="1.7" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M547 747V723" fill="none" stroke="#527eae" stroke-width="1.7" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M988 747V723" fill="none" stroke="#527eae" stroke-width="1.7" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M1317 747V723" fill="none" stroke="#527eae" stroke-width="1.7" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="33" y="850" width="1470" height="76" rx="6" fill="url(#slate)" stroke="#bfd4ee"/>
+<use href="#tool" x="55" y="872" width="38" height="38" fill="none" stroke="#174c7e" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="116" y="883" class="heading">Ecosystem &amp; Toolchain</text>
+<text x="116" y="905" class="small">Leverage and integrate the best open-source tools.</text>
+<rect x="415" y="860" width="172" height="55" rx="5" fill="#fff" stroke="#d8e5f1" fill-opacity="0.6"/>
+<use href="#code" x="428" y="873" width="30" height="30" fill="none" stroke="#366b9f" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="470" y="879" class="card-title">PyCircuit</text>
+<text x="470" y="895" class="tiny">Design representation</text>
+<text x="470" y="909" class="tiny">and transformations</text>
+<rect x="602" y="860" width="177" height="55" rx="5" fill="#fff" stroke="#d8e5f1" fill-opacity="0.6"/>
+<use href="#chip" x="615" y="873" width="30" height="30" fill="none" stroke="#366b9f" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="657" y="879" class="card-title">DSH</text>
+<text x="657" y="895" class="tiny">Agent runtime &amp; plugins</text>
+<rect x="798" y="860" width="209" height="55" rx="5" fill="#fff" stroke="#d8e5f1" fill-opacity="0.6"/>
+<use href="#chip" x="811" y="873" width="30" height="30" fill="none" stroke="#366b9f" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="853" y="879" class="card-title">Chisel / FIRRTL</text>
+<text x="853" y="895" class="tiny">Hardware construction</text>
+<text x="853" y="909" class="tiny">and compilation</text>
+<rect x="1024" y="860" width="241" height="55" rx="5" fill="#fff" stroke="#d8e5f1" fill-opacity="0.6"/>
+<use href="#tool" x="1037" y="873" width="30" height="30" fill="none" stroke="#366b9f" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1079" y="879" class="card-title">Simulation &amp; EDA</text>
+<text x="1079" y="895" class="tiny">Verilator, FPGA, commercial tools</text>
+<rect x="1283" y="860" width="204" height="55" rx="5" fill="#fff" stroke="#d8e5f1" fill-opacity="0.6"/>
+<use href="#code" x="1296" y="873" width="30" height="30" fill="none" stroke="#366b9f" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1338" y="879" class="card-title">Custom Tools</text>
+<text x="1338" y="895" class="tiny">(domain-specific plugins)</text>
+<path d="M35 947h215l24 30-24 30H35l24-30z" fill="#b2dff6" stroke="#fff" stroke-width="2"/>
+<text x="143" y="973" class="heading" text-anchor="middle">M0</text>
+<text x="143" y="994" class="body" text-anchor="middle">Foundation</text>
+<path d="M274 947h215l24 30-24 30H274l24-30z" fill="#b4d4f9" stroke="#fff" stroke-width="2"/>
+<text x="382" y="973" class="heading" text-anchor="middle">M1</text>
+<text x="382" y="994" class="body" text-anchor="middle">Core Pipeline</text>
+<path d="M513 947h215l24 30-24 30H513l24-30z" fill="#c3c7f8" stroke="#fff" stroke-width="2"/>
+<text x="621" y="973" class="heading" text-anchor="middle">M2</text>
+<text x="621" y="994" class="body" text-anchor="middle">PyCircuit Integration</text>
+<path d="M752 947h215l24 30-24 30H752l24-30z" fill="#d6c5ee" stroke="#fff" stroke-width="2"/>
+<text x="860" y="973" class="heading" text-anchor="middle">M3</text>
+<text x="860" y="994" class="body" text-anchor="middle">Expanded Targets</text>
+<path d="M991 947h215l24 30-24 30H991l24-30z" fill="#ebc0d6" stroke="#fff" stroke-width="2"/>
+<text x="1099" y="973" class="heading" text-anchor="middle">M4</text>
+<text x="1099" y="994" class="body" text-anchor="middle">Open Ecosystem</text>
+<use href="#bolt" x="1267" y="953" width="37" height="37" fill="none" stroke="#5d83b0" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1310" y="968" class="body">Towards autonomously</text>
+<text x="1310" y="989" class="body">discovering better designs.</text>
+</svg>
