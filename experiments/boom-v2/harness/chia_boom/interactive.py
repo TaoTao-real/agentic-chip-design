@@ -17,7 +17,17 @@ from .campaign import _evaluate_with_infra_retries
 from .core import apply_exact_edits, canonical_hash, lineage_fields, make_diff
 from .deepseek import DeepSeekOfficialToolLLM
 from .finalize import BoomFinalizationNode, finalize_candidate
-from .frozen import qualification_request, qualified_artifact_hashes
+from .frozen import (
+    baseline_input,
+    baseline_rtl,
+    freeze_run_inputs,
+    immutable_contract,
+    load_frozen_run_config,
+    qualification_request,
+    qualified_artifact_hashes,
+    seal_frozen_run,
+    verify_frozen_run,
+)
 from .knowledge import MEMORY_MODES, MEMORY_TOOL_SPECS, KnowledgeStore
 from .nodes import BoomCandidateEvaluationNode
 
@@ -31,6 +41,42 @@ generated RTL, raw timing evidence, and measured candidate results. No human
 diagnosis or historical solution is available. Never ask for a suggested
 optimization. Inspect, form hypotheses, edit, evaluate, repair, and finish with
 the best measured candidate. Do not claim improvement without tool evidence."""
+
+
+def _prepare_interactive_snapshot(
+    config: dict[str, Any], output: Path
+) -> dict[str, Any]:
+    source_reference = {
+        "qualification_fingerprint": qualification_request(config)["fingerprint"],
+        "qualified_artifact_hashes": qualified_artifact_hashes(config),
+    }
+    source_reference["fingerprint"] = canonical_hash(source_reference)
+    frozen_config = freeze_run_inputs(config, output / "frozen")
+    frozen_manifest = seal_frozen_run(output / "frozen", frozen_config)
+    manifest = {
+        "schema_version": "interactive-frozen-run-v1",
+        "source_contract": immutable_contract(config),
+        "source_reference": source_reference,
+        "config": frozen_config,
+        "frozen_run_fingerprint": frozen_manifest["fingerprint"],
+    }
+    dump_json(output / "INTERACTIVE_MANIFEST.json", manifest)
+    dump_json(output / "INTERACTIVE_REFERENCE.json", {
+        **source_reference,
+        "frozen_run_fingerprint": frozen_manifest["fingerprint"],
+    })
+    return frozen_config
+
+
+def _load_interactive_snapshot(
+    requested_config: dict[str, Any], output: Path
+) -> dict[str, Any]:
+    return load_frozen_run_config(
+        requested_config,
+        root=output / "frozen",
+        run_manifest=output / "INTERACTIVE_MANIFEST.json",
+        schema_version="interactive-frozen-run-v1",
+    )
 
 
 def _interactive_system(memory_mode: str) -> str:
@@ -245,20 +291,19 @@ def run_interactive_issueq(
         raise FileExistsError(f"interactive campaign already contains state: {output}")
     if len(config["targets"]) != 1:
         raise ValueError("interactive mode requires exactly one configured target")
+    config = _prepare_interactive_snapshot(config, output)
+    frozen_fingerprint = load_json(output / "INTERACTIVE_MANIFEST.json")[
+        "frozen_run_fingerprint"
+    ]
     target_id = next(iter(config["targets"]))
     target = config["targets"][target_id]
-    frozen = Path(config["remote"]["frozen_inputs_root"])
-    rtl_root = Path(config["remote"]["baseline_rtl_root"]) / target_id
-    baseline_source = (frozen / target_id / "baseline-source.scala").read_text()
-    timing = (frozen / target_id / "baseline-timing.txt").read_text()
-    baseline = load_json(frozen / target_id / "baseline-ppa.json")
+    rtl_root = baseline_rtl(config, target_id)
+    baseline_source = baseline_input(
+        config, target_id, "baseline-source.scala"
+    ).read_text()
+    timing = baseline_input(config, target_id, "baseline-timing.txt").read_text()
+    baseline = load_json(baseline_input(config, target_id, "baseline-ppa.json"))
     baseline["maximum_lut_ratio"] = config["physical"]["maximum_lut_ratio"]
-    reference = {
-        "qualification_fingerprint": qualification_request(config)["fingerprint"],
-        "qualified_artifact_hashes": qualified_artifact_hashes(config),
-    }
-    reference["fingerprint"] = canonical_hash(reference)
-    dump_json(output / "INTERACTIVE_REFERENCE.json", reference)
     current_source = baseline_source
     current_parent_source = baseline_source
     current_parent_id: str | None = None
@@ -371,8 +416,10 @@ def run_interactive_issueq(
                         int(args["context_lines"]),
                     )
                 elif fn == "read_timing":
+                    verify_frozen_run(output / "frozen", frozen_fingerprint)
                     content = _literal_context(timing, str(args["query"]), int(args["max_lines"]), 3)
                 elif fn == "read_generated_rtl":
+                    verify_frozen_run(output / "frozen", frozen_fingerprint)
                     name = str(args["file"])
                     if name not in set(target["rtl_files"]):
                         raise ValueError("RTL file is not allow-listed")
@@ -400,6 +447,7 @@ def run_interactive_issueq(
                         current_parent_id = None
                     content = {"status": "reverted", "target": args["target"], "source_sha256": sha256_text(current_source)}
                 elif fn == "evaluate_candidate":
+                    verify_frozen_run(output / "frozen", frozen_fingerprint)
                     if evaluations >= max_evaluations:
                         raise ValueError("EDA evaluation budget exhausted")
                     source_hash = sha256_text(current_source)
@@ -531,27 +579,21 @@ def run_interactive_issueq(
 
 def finalize_interactive_issueq(config: dict[str, Any], output: Path) -> dict[str, Any]:
     """Independently rebuild and finalize the measured best interactive candidate."""
+    config = _load_interactive_snapshot(config, output)
     result = load_json(output / "RESULT.json")
     best = result.get("best_candidate")
     if not best:
         raise RuntimeError("interactive campaign has no measured valid candidate")
     candidate = CandidateArtifact.from_dict(best)
-    saved_reference = load_json(output / "INTERACTIVE_REFERENCE.json")
-    current_reference = {
-        "qualification_fingerprint": qualification_request(config)["fingerprint"],
-        "qualified_artifact_hashes": qualified_artifact_hashes(config),
-    }
-    current_reference["fingerprint"] = canonical_hash(current_reference)
-    if current_reference != saved_reference:
-        raise RuntimeError("interactive source, golden, test, or tool reference drift")
     candidate_dir = output / "evaluations" / f"candidate-{candidate.index:02d}"
     result_row = load_json(candidate_dir / "result.json")
     early = EvaluationArtifact.from_dict(
         result_row.get("search_evaluation") or result_row["evaluation"]
     )
     target = config["targets"][candidate.target]
-    frozen = Path(config["remote"]["frozen_inputs_root"])
-    baseline = load_json(frozen / candidate.target / "baseline-ppa.json")
+    baseline = load_json(
+        baseline_input(config, candidate.target, "baseline-ppa.json")
+    )
     baseline["maximum_lut_ratio"] = config["physical"]["maximum_lut_ratio"]
     final_dir = output / "finalization"
     node = BoomFinalizationNode()

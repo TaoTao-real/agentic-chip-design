@@ -41,21 +41,13 @@ from .core import (
 from .deepseek import DeepSeekOfficialLLM, parse_result
 from .environment import load_config
 from .frozen import (
-    TOOL_FILES,
-    baseline_rtl,
-    regression_binary,
-    tool_file,
+    freeze_run_inputs,
     verify_frozen_run,
 )
 from .nodes import BoomCandidateEvaluationNode
 
 
 _STATE_LOCK = threading.Lock()
-
-
-def _copy_file(source: Path, target: Path) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, target)
 
 
 def validate_process_memory_bundle(value: Any) -> None:
@@ -100,42 +92,18 @@ def init_campaign(
     campaign.mkdir(parents=True)
     schedule = build_schedule(config, preflight=preflight)
     frozen_source = Path(config["remote"]["frozen_inputs_root"])
-    for target in config["targets"]:
-        for filename in ("baseline-source.scala", "baseline-timing.txt", "baseline-ppa.json"):
-            _copy_file(
-                frozen_source / target / filename,
-                campaign / "frozen/targets" / target / filename,
-            )
-        rtl_source = baseline_rtl(config, target)
-        rtl_target = campaign / "frozen/targets" / target / "baseline-rtl"
-        if not rtl_source.is_dir():
-            raise RuntimeError(f"qualified baseline RTL is missing: {rtl_source}")
-        shutil.copytree(rtl_source, rtl_target)
-    for name in TOOL_FILES:
-        _copy_file(tool_file(config, name), campaign / "frozen/tools" / name)
-    _copy_file(regression_binary(config), campaign / "frozen/tests/rsort.riscv")
-    required_patch = config.get("remote", {}).get("required_patch")
-    if required_patch:
-        frozen_patch = campaign / "frozen/base/required.patch"
-        _copy_file(Path(required_patch), frozen_patch)
-        config["remote"]["required_patch"] = str(frozen_patch.resolve())
-    replay_source = Path(config["remote"]["replay_root"])
-    frozen_replay = campaign / "frozen/q1-replay"
-    if replay_source.is_dir():
-        shutil.copytree(replay_source, frozen_replay)
-    else:
-        frozen_replay.mkdir(parents=True)
-    config["remote"]["replay_root"] = str(frozen_replay.resolve())
+    config = freeze_run_inputs(config, campaign / "frozen")
     episodes_source = frozen_source / "design-episodes.json"
     if episodes_source.exists():
         episodes = load_json(episodes_source)
         validate_process_memory_bundle(episodes)
-        _copy_file(episodes_source, campaign / "frozen/design-episodes.json")
+        (campaign / "frozen/design-episodes.json").write_bytes(
+            episodes_source.read_bytes()
+        )
     else:
         dump_json(
             campaign / "frozen/design-episodes.json", packaged_process_memory()
         )
-    config["frozen_run_root"] = str((campaign / "frozen").resolve())
     manifest = {
         "version": config["version"],
         "kind": "preflight" if preflight else "formal",
@@ -350,25 +318,35 @@ def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
             "response_format": {"type": "json_object"},
         }
         dump_json(model_dir / "request.json", request)
-        ref = llm.prompt.chia_remote(
-            llm, user_prompt,
-            _chia_display_name=f"deepseek:{run_id}:candidate-{index:02d}",
-        )
+        model_started = time.monotonic()
         proposal = None
         try:
+            ref = llm.prompt.chia_remote(
+                llm, user_prompt,
+                _chia_display_name=f"deepseek:{run_id}:candidate-{index:02d}",
+            )
             result = get(ref)
         except Exception as exc:
+            model_active_seconds = time.monotonic() - model_started
             failure = {
                 "index": index,
                 "model_dir": str(model_dir),
                 "error": f"{type(exc).__name__}: {exc}",
                 "epoch": time.time(),
+                "provider_tokens": None,
+                "model_active_seconds": model_active_seconds,
             }
             state.setdefault("model_infrastructure_failures", []).append(failure)
             state["status"] = "infra_blocked"
             _save_state(state_path, state)
             return state
         metadata = json.loads(result.stream_result) if result.stream_result else {}
+        provider_elapsed = metadata.get("elapsed_seconds")
+        model_active_seconds = float(
+            provider_elapsed
+            if isinstance(provider_elapsed, (int, float))
+            else time.monotonic() - model_started
+        )
         dump_json(model_dir / "provider-metadata.json", metadata)
         # HTTP/network exhaustion has no candidate response and does not consume
         # the fixed candidate/model-output budget.  Resume retries the same
@@ -380,6 +358,8 @@ def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
                 "error": result.stderr or "provider returned no response",
                 "attempts": metadata.get("attempts", []),
                 "epoch": time.time(),
+                "provider_tokens": _provider_token_count(metadata),
+                "model_active_seconds": model_active_seconds,
             }
             state.setdefault("model_infrastructure_failures", []).append(failure)
             state["status"] = "infra_blocked"
@@ -414,7 +394,7 @@ def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
                 request_sha256=canonical_hash(request),
                 response_sha256=sha256_text(result.result),
                 usage=metadata.get("usage"), attempts=metadata.get("attempts", []),
-                model_elapsed_seconds=float(metadata.get("elapsed_seconds", 0.0)),
+                model_elapsed_seconds=model_active_seconds,
                 provider_model=metadata.get("provider_model"),
                 visible_knowledge_sha256=knowledge_sha256,
                 visible_knowledge_episode_ids=knowledge_episode_ids,
@@ -456,6 +436,7 @@ def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
                 ),
                 "infrastructure_attempts": infra_attempts,
                 "provider_tokens": _provider_token_count(metadata),
+                "model_active_seconds": model_active_seconds,
             }
         except Exception as exc:
             row = {
@@ -472,6 +453,7 @@ def execute_run(campaign: Path, run_id: str) -> dict[str, Any]:
                     "raw_error": f"{type(exc).__name__}: {exc}",
                 },
                 "provider_tokens": _provider_token_count(metadata),
+                "model_active_seconds": model_active_seconds,
             }
         state["candidates"].append(row)
         _save_state(state_path, state)
@@ -536,17 +518,35 @@ def campaign_report(campaign: Path) -> dict[str, Any]:
             key=lambda evaluation: evaluation.post_route["critical_delay_ns"],
             default=None,
         )
+        model_failures = state.get("model_infrastructure_failures", [])
         tokens = [row.get("provider_tokens") for row in state["candidates"]]
+        tokens.extend(item.get("provider_tokens") for item in model_failures)
         known_tokens = [value for value in tokens if isinstance(value, int)]
         cumulative_tokens = 0
+        cumulative_tokens_known = True
         cumulative_active = 0.0
         first_improvement_tokens = None
         first_improvement_active_seconds = None
+        first_improvement_seen = False
         for row in state["candidates"]:
+            for failure in model_failures:
+                if failure.get("index") == row.get("index"):
+                    if isinstance(failure.get("provider_tokens"), int):
+                        cumulative_tokens += failure["provider_tokens"]
+                    else:
+                        cumulative_tokens_known = False
+                    cumulative_active += float(
+                        failure.get("model_active_seconds", 0.0)
+                    )
             if isinstance(row.get("provider_tokens"), int):
                 cumulative_tokens += row["provider_tokens"]
+            else:
+                cumulative_tokens_known = False
             candidate_data = row.get("candidate") or {}
-            cumulative_active += float(candidate_data.get("model_elapsed_seconds", 0.0))
+            cumulative_active += float(row.get(
+                "model_active_seconds",
+                candidate_data.get("model_elapsed_seconds", 0.0),
+            ))
             evaluation_data = search_evaluation_data(row)
             cumulative_active += float(
                 row.get(
@@ -554,8 +554,11 @@ def campaign_report(campaign: Path) -> dict[str, Any]:
                     evaluation_data.get("active_seconds", 0.0),
                 )
             )
-            if evaluation_data.get("promotable") and first_improvement_tokens is None:
-                first_improvement_tokens = cumulative_tokens
+            if evaluation_data.get("promotable") and not first_improvement_seen:
+                first_improvement_seen = True
+                first_improvement_tokens = (
+                    cumulative_tokens if cumulative_tokens_known else None
+                )
                 first_improvement_active_seconds = cumulative_active
         best_delay = best.post_route["critical_delay_ns"] if best else None
         improvement = max(0.0, baseline_route - best_delay) if best_delay is not None else 0.0
@@ -568,8 +571,15 @@ def campaign_report(campaign: Path) -> dict[str, Any]:
             for row in state["candidates"]
         )
         search_model_active_seconds = sum(
-            float((row.get("candidate") or {}).get("model_elapsed_seconds", 0.0))
+            float(row.get(
+                "model_active_seconds",
+                (row.get("candidate") or {}).get("model_elapsed_seconds", 0.0),
+            ))
             for row in state["candidates"]
+        )
+        search_model_active_seconds += sum(
+            float(item.get("model_active_seconds", 0.0))
+            for item in model_failures
         )
         search_active_seconds = (
             search_model_active_seconds + search_eda_active_seconds
@@ -591,8 +601,11 @@ def campaign_report(campaign: Path) -> dict[str, Any]:
             float(end_epoch) - float(state["started_epoch"])
             if end_epoch and state.get("started_epoch") else None
         )
+        acceptance_epoch = state.get("first_final_acceptance_epoch")
         final_acceptance_wall_seconds = (
-            wall_seconds if best is not None else None
+            float(acceptance_epoch) - float(state["started_epoch"])
+            if best is not None and acceptance_epoch is not None
+            and state.get("started_epoch") else None
         )
         final_acceptance_active_seconds = (
             active_seconds if best is not None else None
@@ -608,6 +621,7 @@ def campaign_report(campaign: Path) -> dict[str, Any]:
                 "best_post_route_delay_ns": best_delay,
                 "delay_improvement_ns": improvement,
                 "provider_tokens": provider_tokens,
+                "provider_usage_complete": len(known_tokens) == len(tokens),
                 "search_model_active_seconds": search_model_active_seconds,
                 "search_eda_active_seconds": search_eda_active_seconds,
                 "search_active_seconds": search_active_seconds,

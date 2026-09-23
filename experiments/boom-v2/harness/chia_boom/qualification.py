@@ -87,7 +87,8 @@ class BoomQualificationTargetNode:
         repeats = []
         peak = 0
         with _MemorySampler() as memory:
-            with acquire_workspace(config["remote"]) as workspace:
+            with acquire_workspace(config["remote"]) as lease:
+                workspace = lease.workspace
                 for repeat in range(1, 4):
                     repeat_dir = output / f"repeat-{repeat}"
                     elaboration = BoomElaborationNode().run(
@@ -107,6 +108,7 @@ class BoomQualificationTargetNode:
                         target=target, config=config,
                         rtl_dir=elaboration.payload["rtl_dir"],
                         output_dir=str(repeat_dir / "vivado"), route=True,
+                        workspace_slot=str(lease.slot_root),
                     )
                     if not route.success:
                         result = {

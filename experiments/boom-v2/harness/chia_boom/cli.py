@@ -145,10 +145,6 @@ def command_interactive(args: argparse.Namespace) -> int:
 def command_interactive_finalize(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     validate_config(config)
-    require_qualification(
-        config,
-        Path(config["remote"]["install_root"]) / "qualification/QUALIFICATION.json",
-    )
     connect(args.output.name + "-finalize", args.output / "profiler-finalize")
     try:
         result = finalize_interactive_issueq(config, args.output)
@@ -162,10 +158,6 @@ def command_interactive_finalize(args: argparse.Namespace) -> int:
 def command_interactive_reconcile(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     validate_config(config)
-    require_qualification(
-        config,
-        Path(config["remote"]["install_root"]) / "qualification/QUALIFICATION.json",
-    )
     result = reconcile_interactive_finalization(config, args.output)
     print(json.dumps(result, indent=2))
     return 0 if result.get("final_valid") else 3

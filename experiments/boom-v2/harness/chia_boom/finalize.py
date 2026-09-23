@@ -25,6 +25,7 @@ from .core import canonical_hash, search_evaluation_data, update_validity
 from .environment import chipyard_environment_command
 from .frozen import (
     immutable_contract,
+    load_frozen_run_config,
     qualification_request,
     qualified_artifact_hashes,
     regression_binary,
@@ -137,13 +138,17 @@ def _finalization_attempts(
         if stored.get("fingerprint") != identity["fingerprint"]:
             continue
         evaluation = EvaluationArtifact.from_dict(load_json(path))
+        metadata_path = path.parent / "METADATA.json"
+        metadata = load_json(metadata_path) if metadata_path.exists() else {}
         attempts.append({
             "attempt": int(path.parent.name.split("-")[-1]),
             "path": str(path),
             "status": evaluation.status,
             "retryable": evaluation.retryable,
             "failure_class": evaluation.failure_class,
+            "final_valid": evaluation.final_valid,
             "active_seconds": evaluation.active_seconds,
+            "completed_epoch": metadata.get("completed_epoch"),
         })
     return attempts
 
@@ -167,12 +172,22 @@ def finalize_candidate(
     if rejections:
         dump_json(root / "CACHE_REJECTIONS.json", rejections)
     if cached is not None:
+        attempts = _finalization_attempts(root, identity)
+        matching_epochs = [
+            item.get("completed_epoch")
+            for item in attempts
+            if item.get("completed_epoch") is not None
+            and item.get("status") == cached.status
+            and bool(item.get("final_valid")) == bool(cached.final_valid)
+            and item.get("failure_class") == cached.failure_class
+        ]
         return cached, {
             "reused": True,
             "attempt": None,
             "identity": identity,
             "cache_rejections": rejections,
-            "attempts": _finalization_attempts(root, identity),
+            "completed_epoch": min(matching_epochs) if matching_epochs else None,
+            "attempts": attempts,
         }
     attempt_dir = root / f"attempt-{attempt:02d}"
     dump_json(attempt_dir / "IDENTITY.json", identity)
@@ -191,12 +206,17 @@ def finalize_candidate(
     if final.candidate_id != candidate.id:
         raise RuntimeError("finalization returned a different candidate identity")
     dump_json(attempt_dir / "evaluation.json", final)
+    completed_epoch = time.time()
+    dump_json(attempt_dir / "METADATA.json", {
+        "completed_epoch": completed_epoch,
+        "active_seconds": final.active_seconds,
+    })
     metadata = {
         "reused": False,
         "attempt": attempt,
         "identity": identity,
         "cache_rejections": rejections,
-        "completed_epoch": time.time(),
+        "completed_epoch": completed_epoch,
         "active_seconds": final.active_seconds,
         "attempts": _finalization_attempts(root, identity),
     }
@@ -243,7 +263,8 @@ class BoomFinalizationNode:
         final.hashes = {}
         final.active_seconds = 0.0
         try:
-            with acquire_workspace(config["remote"]) as workspace:
+            with acquire_workspace(config["remote"]) as lease:
+                workspace = lease.workspace
                 elaboration = BoomElaborationNode().run(
                     candidate=candidate, target=target, config=config,
                     workspace=str(workspace), output_dir=str(output / "elaboration"),
@@ -267,6 +288,7 @@ class BoomFinalizationNode:
                         rtl_dir=elaboration.payload["rtl_dir"], seed=seed,
                         output_dir=str(output / f"differential-seed-{seed}"),
                         cycles=1_000_000,
+                        workspace_slot=str(lease.slot_root),
                     )
                     final.append_stage(differential)
                     differential_results.append(differential.payload.get("differential"))
@@ -284,6 +306,7 @@ class BoomFinalizationNode:
                     target=target, config=config,
                     rtl_dir=elaboration.payload["rtl_dir"],
                     output_dir=str(output / "vivado-route"), route=True,
+                    workspace_slot=str(lease.slot_root),
                 )
                 final.append_stage(route)
                 final.post_route = route.payload.get("post_route")
@@ -297,11 +320,17 @@ class BoomFinalizationNode:
                 )
                 final.append_stage(regression)
                 final.regression = regression.payload.get("regression")
-                passed = regression.success
+                if not regression.success:
+                    # append_stage already preserves the regression node's
+                    # authoritative status, failure class, and retryability.
+                    dump_json(output / "evaluation.json", final)
+                    return final
+                passed = True
                 final.stage = "regression"
-                final.status = "complete" if passed else "candidate_invalid"
-                final.failure_class = None if passed else "full_processor_regression_failure"
-                final.raw_error = "" if passed else regression.message
+                final.status = "complete"
+                final.failure_class = None
+                final.retryable = False
+                final.raw_error = ""
                 area_ok = (
                     final.post_route["slice_luts"]
                     <= baseline.get("post_route_slice_luts", baseline["slice_luts"])
@@ -412,6 +441,14 @@ def reconcile_interactive_finalization(
     original JSON, verifies the raw CHIA run outcome, and changes only the
     pass/fail interpretation that had required a marker absent from rsort.
     """
+    interactive_manifest = output / "INTERACTIVE_MANIFEST.json"
+    if interactive_manifest.exists():
+        config = load_frozen_run_config(
+            config,
+            root=output / "frozen",
+            run_manifest=interactive_manifest,
+            schema_version="interactive-frozen-run-v1",
+        )
     final_path = output / "FINAL_RESULT.json"
     evaluation_path = output / "finalization/evaluation.json"
     if not final_path.exists() or not evaluation_path.exists():
@@ -453,10 +490,9 @@ def reconcile_interactive_finalization(
     if len(config["targets"]) != 1:
         raise ValueError("interactive reconciliation requires exactly one target")
     target_id = next(iter(config["targets"]))
-    baseline = load_json(
-        Path(config["remote"]["frozen_inputs_root"])
-        / target_id / "baseline-ppa.json"
-    )
+    from .frozen import baseline_input
+
+    baseline = load_json(baseline_input(config, target_id, "baseline-ppa.json"))
     baseline["maximum_lut_ratio"] = config["physical"]["maximum_lut_ratio"]
     area_ok = (
         final.post_route["slice_luts"]
@@ -557,7 +593,12 @@ def finalize_campaign(campaign: Path) -> list[dict[str, Any]]:
             "metadata": finalization_meta,
         }
         state["status"] = "complete" if final.final_valid else "finalization_failed"
-        state["finalization_completed_epoch"] = time.time()
+        state["last_finalization_query_epoch"] = time.time()
+        completed_epoch = finalization_meta.get("completed_epoch")
+        if completed_epoch is not None:
+            state["finalization_completed_epoch"] = completed_epoch
+        if final.final_valid and completed_epoch is not None:
+            state.setdefault("first_final_acceptance_epoch", completed_epoch)
         dump_json(state_path, state)
         results.append(state["finalization"])
     return results

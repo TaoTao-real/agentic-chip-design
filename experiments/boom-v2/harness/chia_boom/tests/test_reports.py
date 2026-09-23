@@ -160,10 +160,28 @@ class ReportTests(unittest.TestCase):
             run_dir.mkdir(parents=True)
             state = {
                 "target": "T0", "arm": "C", "seed": 42,
-                "status": "search_complete", "model_calls": 1,
+                "status": "search_complete", "model_calls": 2,
                 "started_epoch": 100.0, "completed_epoch": 130.0,
+                "model_infrastructure_failures": [{
+                    "index": 2, "provider_tokens": 25,
+                    "model_active_seconds": 2.0,
+                }],
                 "candidates": [{
+                    "index": 1,
+                    "provider_tokens": 50,
+                    "model_active_seconds": 4.0,
+                    "candidate": None,
+                    "search_evaluation": {
+                        "candidate_id": "invalid-1",
+                        "status": "candidate_invalid",
+                        "stage": "model",
+                        "failure_class": "model_response_invalid",
+                        "retryable": False,
+                    },
+                }, {
+                    "index": 2,
                     "provider_tokens": 100,
+                    "model_active_seconds": 3.0,
                     "search_active_seconds_total": 7.0,
                     "candidate": {
                         "id": "c1", "model_elapsed_seconds": 3.0,
@@ -179,6 +197,8 @@ class ReportTests(unittest.TestCase):
             before = campaign_report(campaign)["rows"][0]
             state["status"] = "complete"
             state["finalization_completed_epoch"] = 150.0
+            state["first_final_acceptance_epoch"] = 140.0
+            state["last_finalization_query_epoch"] = 160.0
             state["finalization"] = {
                 "candidate_id": "c1",
                 "evaluation": {
@@ -197,7 +217,49 @@ class ReportTests(unittest.TestCase):
             ):
                 self.assertEqual(before[key], after[key])
             self.assertEqual(after["finalization_active_seconds"], 5.0)
-            self.assertEqual(after["total_active_seconds"], 15.0)
+            self.assertEqual(after["provider_tokens"], 175)
+            self.assertEqual(after["search_model_active_seconds"], 9.0)
+            self.assertEqual(after["total_active_seconds"], 21.0)
+            self.assertEqual(after["first_final_acceptance_wall_seconds"], 40.0)
+
+    def test_failed_model_request_cost_is_not_lost_or_reported_as_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            campaign = Path(raw)
+            (campaign / "manifest.json").write_text(json.dumps({
+                "kind": "formal", "schedule": [{"id": "T0-C-seed42"}],
+            }))
+            baseline_dir = campaign / "frozen/targets/T0"
+            baseline_dir.mkdir(parents=True)
+            (baseline_dir / "baseline-ppa.json").write_text(json.dumps({
+                "post_route_critical_delay_ns": 11.0,
+            }))
+            run_dir = campaign / "runs/T0-C-seed42"
+            run_dir.mkdir(parents=True)
+            (run_dir / "run.json").write_text(json.dumps({
+                "target": "T0", "arm": "C", "seed": 42,
+                "status": "search_complete", "model_calls": 1,
+                "started_epoch": 100.0, "completed_epoch": 130.0,
+                "model_infrastructure_failures": [{
+                    "index": 1, "provider_tokens": None,
+                    "model_active_seconds": 2.5,
+                }],
+                "candidates": [{
+                    "index": 1, "provider_tokens": 100,
+                    "model_active_seconds": 3.0,
+                    "candidate": {"id": "c1", "model_elapsed_seconds": 3.0},
+                    "search_evaluation": {
+                        "candidate_id": "c1", "candidate_valid": True,
+                        "promotable": True, "active_seconds": 0.0,
+                        "post_synth": {"critical_delay_ns": 9.0, "slice_luts": 10},
+                    },
+                }],
+            }))
+            row = campaign_report(campaign)["rows"][0]
+            self.assertIsNone(row["provider_tokens"])
+            self.assertFalse(row["provider_usage_complete"])
+            self.assertIsNone(row["first_improvement_tokens"])
+            self.assertEqual(row["first_improvement_active_seconds"], 5.5)
+            self.assertEqual(row["search_model_active_seconds"], 5.5)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import copy
 import importlib.metadata
 import json
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,11 @@ TOOL_FILES = (
     "vivado_ooc_route.tcl",
     "vivado_ooc_synth_only.tcl",
 )
+
+
+def _copy_file(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
 
 
 def _run_root(config: dict[str, Any]) -> Path | None:
@@ -49,6 +56,59 @@ def regression_binary(config: dict[str, Any]) -> Path:
     if root:
         return root / "tests" / "rsort.riscv"
     return Path(config["remote"]["rsort_binary"])
+
+
+def freeze_run_inputs(
+    config: dict[str, Any], root: Path
+) -> dict[str, Any]:
+    """Copy every executable reference into a private run snapshot.
+
+    The returned config resolves golden RTL, tools, tests, patches, and replay
+    inputs only through ``root``.  Callers may add treatment-specific files
+    before sealing the directory with :func:`seal_frozen_run`.
+    """
+    if root.exists() and any(root.iterdir()):
+        raise FileExistsError(f"frozen run root is not empty: {root}")
+    root.mkdir(parents=True, exist_ok=True)
+    frozen_config = copy.deepcopy(config)
+    for target_id in sorted(config["targets"]):
+        for name in (
+            "baseline-source.scala",
+            "baseline-timing.txt",
+            "baseline-ppa.json",
+        ):
+            _copy_file(
+                baseline_input(config, target_id, name),
+                root / "targets" / target_id / name,
+            )
+        source_rtl = baseline_rtl(config, target_id)
+        if not source_rtl.is_dir():
+            raise RuntimeError(f"qualified baseline RTL is missing: {source_rtl}")
+        shutil.copytree(
+            source_rtl, root / "targets" / target_id / "baseline-rtl"
+        )
+    for name in TOOL_FILES:
+        _copy_file(tool_file(config, name), root / "tools" / name)
+    _copy_file(regression_binary(config), root / "tests" / "rsort.riscv")
+
+    required_patch = config.get("remote", {}).get("required_patch")
+    if required_patch:
+        frozen_patch = root / "base" / "required.patch"
+        _copy_file(Path(required_patch), frozen_patch)
+        frozen_config["remote"]["required_patch"] = str(frozen_patch.resolve())
+
+    replay_root_value = config.get("remote", {}).get("replay_root")
+    if replay_root_value:
+        replay_source = Path(replay_root_value)
+        frozen_replay = root / "q1-replay"
+        if replay_source.is_dir():
+            shutil.copytree(replay_source, frozen_replay)
+        else:
+            frozen_replay.mkdir(parents=True)
+        frozen_config["remote"]["replay_root"] = str(frozen_replay.resolve())
+
+    frozen_config["frozen_run_root"] = str(root.resolve())
+    return frozen_config
 
 
 def immutable_contract(config: dict[str, Any]) -> dict[str, Any]:
@@ -211,3 +271,23 @@ def verify_frozen_run(root: Path, expected_fingerprint: str | None = None) -> di
     if expected_fingerprint and fingerprint != expected_fingerprint:
         raise RuntimeError("campaign frozen run fingerprint changed")
     return manifest
+
+
+def load_frozen_run_config(
+    requested_config: dict[str, Any],
+    *,
+    root: Path,
+    run_manifest: Path,
+    schema_version: str,
+) -> dict[str, Any]:
+    """Load a saved run config after binding it to the requested contract."""
+    manifest = json.loads(run_manifest.read_text())
+    if manifest.get("schema_version") != schema_version:
+        raise RuntimeError("frozen run metadata schema changed")
+    if manifest.get("source_contract") != immutable_contract(requested_config):
+        raise RuntimeError("interactive immutable contract changed")
+    config = manifest["config"]
+    if Path(config.get("frozen_run_root", "")).resolve() != root.resolve():
+        raise RuntimeError("interactive frozen root identity changed")
+    verify_frozen_run(root, manifest.get("frozen_run_fingerprint"))
+    return config

@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -59,6 +60,7 @@ def _run(
     stderr_path: Path,
     timeout: int,
     env: dict[str, str] | None = None,
+    workspace_slot: Path | None = None,
 ) -> tuple[int, str, str, float]:
     started = time.monotonic()
     proc = subprocess.Popen(
@@ -75,32 +77,28 @@ def _run(
         returncode = proc.returncode
     except subprocess.TimeoutExpired:
         try:
-            os.killpg(proc.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        try:
-            stdout, stderr = proc.communicate(timeout=10)
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            stdout, stderr = proc.communicate(timeout=10)
+            stdout, stderr = _terminate_process_group(
+                proc, workspace_slot=workspace_slot, graceful=True
+            )
+        except BaseException:
+            if workspace_slot is not None:
+                _quarantine_workspace(
+                    workspace_slot, "process group cleanup failed after timeout"
+                )
+            raise
         stderr += f"\ncommand timeout after {timeout}s"
         returncode = -9
-        try:
-            os.killpg(proc.pid, 0)
-        except ProcessLookupError:
-            pass
-        else:
-            _quarantine_workspace(cwd, "process group survived timeout cleanup")
-            raise RuntimeError("process_group_cleanup_failed")
     except BaseException:
         try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        proc.communicate()
+            _terminate_process_group(
+                proc, workspace_slot=workspace_slot, graceful=False
+            )
+        except BaseException as cleanup_error:
+            if workspace_slot is not None:
+                _quarantine_workspace(
+                    workspace_slot, "process group cleanup failed after exception"
+                )
+            raise RuntimeError("process_group_cleanup_failed") from cleanup_error
         raise
     stdout_path.parent.mkdir(parents=True, exist_ok=True)
     stdout_path.write_text(stdout)
@@ -108,11 +106,64 @@ def _run(
     return returncode, stdout, stderr, time.monotonic() - started
 
 
-def _quarantine_workspace(cwd: Path, reason: str) -> None:
-    for path in (cwd, *cwd.parents):
-        if (path / "candidate.lock").exists():
-            (path / "QUARANTINED").write_text(reason + "\n")
-            return
+def _terminate_process_group(
+    proc: subprocess.Popen[str],
+    *,
+    workspace_slot: Path | None,
+    graceful: bool,
+) -> tuple[str, str]:
+    if graceful:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            stdout, stderr = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+        else:
+            _require_process_group_gone(proc.pid, workspace_slot)
+            return stdout, stderr
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    try:
+        stdout, stderr = proc.communicate(timeout=10)
+    except BaseException as exc:
+        if workspace_slot is not None:
+            _quarantine_workspace(
+                workspace_slot, f"cannot reap process group: {type(exc).__name__}"
+            )
+        raise RuntimeError("process_group_cleanup_failed") from exc
+    _require_process_group_gone(proc.pid, workspace_slot)
+    return stdout, stderr
+
+
+def _require_process_group_gone(
+    process_group: int, workspace_slot: Path | None
+) -> None:
+    try:
+        os.killpg(process_group, 0)
+    except ProcessLookupError:
+        return
+    if workspace_slot is not None:
+        _quarantine_workspace(workspace_slot, "process group survived cleanup")
+    raise RuntimeError("process_group_cleanup_failed")
+
+
+def _quarantine_workspace(slot_root: Path, reason: str) -> None:
+    slot_root.mkdir(parents=True, exist_ok=True)
+    (slot_root / "QUARANTINED").write_text(reason + "\n")
+
+
+@dataclass(frozen=True)
+class WorkspaceLease:
+    workspace: Path
+    slot_root: Path
+
+    def quarantine(self, reason: str) -> None:
+        _quarantine_workspace(self.slot_root, reason)
 
 
 def parse_vivado_ppa(timing: Path, utilization: Path, period_ns: float) -> dict[str, Any]:
@@ -144,7 +195,7 @@ def parse_vivado_ppa(timing: Path, utilization: Path, period_ns: float) -> dict[
 
 
 @contextmanager
-def acquire_workspace(remote: dict[str, Any]) -> Iterator[Path]:
+def acquire_workspace(remote: dict[str, Any]) -> Iterator[WorkspaceLease]:
     slots = Path(remote["workspace_slots"])
     deadline = time.monotonic() + int(remote.get("workspace_wait_seconds", 7200))
     while time.monotonic() < deadline:
@@ -158,8 +209,15 @@ def acquire_workspace(remote: dict[str, Any]) -> Iterator[Path]:
             except BlockingIOError:
                 handle.close()
                 continue
+            if (workspace.parent / "QUARANTINED").exists():
+                fcntl.flock(handle, fcntl.LOCK_UN)
+                handle.close()
+                continue
+            lease = WorkspaceLease(
+                workspace=workspace, slot_root=workspace.parent
+            )
             try:
-                yield workspace
+                yield lease
             finally:
                 fcntl.flock(handle, fcntl.LOCK_UN)
                 handle.close()
@@ -277,6 +335,7 @@ class BoomElaborationNode:
                 command, cwd=chipyard, stdout_path=stdout_path,
                 stderr_path=stderr_path,
                 timeout=int(config["physical"]["candidate_timeout_seconds"]),
+                workspace_slot=chipyard.parent,
             )
             if rc:
                 failure, retryable = classify_failure(_tail(stdout, stderr), returncode=rc)
@@ -339,6 +398,7 @@ class BoomDifferentialNode:
         seed: int,
         output_dir: str,
         cycles: int,
+        workspace_slot: str,
     ) -> StageResult:
         output = Path(output_dir)
         output.mkdir(parents=True, exist_ok=True)
@@ -354,6 +414,7 @@ class BoomDifferentialNode:
         rc, stdout, stderr, elapsed = _run(
             command, cwd=output, stdout_path=stdout_path, stderr_path=stderr_path,
             timeout=int(config["physical"]["candidate_timeout_seconds"]),
+            workspace_slot=Path(workspace_slot),
         )
         result_path = output / "run/result.json"
         result = json.loads(result_path.read_text()) if result_path.exists() else None
@@ -391,6 +452,7 @@ class BoomVivadoNode:
         rtl_dir: str,
         output_dir: str,
         route: bool,
+        workspace_slot: str,
     ) -> StageResult:
         output = Path(output_dir)
         output.mkdir(parents=True, exist_ok=True)
@@ -413,7 +475,7 @@ class BoomVivadoNode:
         )
         rc, stdout, stderr, elapsed = _run(
             command, cwd=output, stdout_path=stdout_path, stderr_path=stderr_path,
-            timeout=timeout, env=env,
+            timeout=timeout, env=env, workspace_slot=Path(workspace_slot),
         )
         stage = "route" if route else "synthesis"
         prefix = "post_route" if route else "post_synth"
@@ -475,7 +537,8 @@ class BoomCandidateEvaluationNode:
             dump_json(output / "evaluation.json", evaluation)
             return evaluation
         try:
-            with acquire_workspace(config["remote"]) as workspace:
+            with acquire_workspace(config["remote"]) as lease:
+                workspace = lease.workspace
                 elaboration = BoomElaborationNode().run(
                     candidate=candidate, target=target, config=config,
                     workspace=str(workspace), output_dir=str(output / "elaboration"),
@@ -492,6 +555,7 @@ class BoomCandidateEvaluationNode:
                     target=target, config=config,
                     rtl_dir=elaboration.payload["rtl_dir"], seed=candidate.seed,
                     output_dir=str(output / "differential"), cycles=1_000_000,
+                    workspace_slot=str(lease.slot_root),
                 )
                 evaluation.append_stage(differential)
                 evaluation.differential = differential.payload.get("differential")
@@ -507,6 +571,7 @@ class BoomCandidateEvaluationNode:
                     target=target, config=config,
                     rtl_dir=elaboration.payload["rtl_dir"],
                     output_dir=str(output / "vivado"), route=False,
+                    workspace_slot=str(lease.slot_root),
                 )
                 evaluation.append_stage(vivado)
                 evaluation.post_synth = vivado.payload.get("post_synth")

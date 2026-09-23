@@ -129,6 +129,11 @@ PPA；关键延迟重复差异必须不超过 1%。它还依据两项代表作�
 如果没有外部通用经验包，D 组会冻结仓库内非空的跨目标过程知识，不能
 静默退化成 C 组。
 
+交互模式也在第一次模型调用前建立相同结构的私有 `frozen/` 快照，并将
+golden RTL、验证脚本、回归程序和不可变合同绑定到
+`INTERACTIVE_MANIFEST.json`。候选评估和独立 finalization 只读取该副本；
+共享 qualification 目录随后被改写不会改变已经开始的交互实验。
+
 公开配置将 `qualification.q1_replay_required` 设为 `false`，因为仓库不能
 分发历史候选源码。要严格重放内部 v13 Q1，需在私有目录挂载三类固定
 fixture（基础设施恢复、递归 elaboration、no-op），提供 `manifest.json`，
@@ -168,7 +173,13 @@ chia-boom report --campaign "$CAMPAIGN" > "$CAMPAIGN/report.json"
 候选 ID、完整源码哈希、目标、约束、黄金输入和回归二进制；不匹配或可
 重试的基础设施失败不会作为成功缓存复用。报告分别列出搜索模型时间、
 搜索 EDA 时间、finalization 时间和端到端墙钟时间，finalization 不会改写
-原始搜索成本或候选历史。
+原始搜索成本或候选历史。首次最终验收时间来自不可变的成功 attempt 事件，
+重复读取缓存只记录查询时间；无候选或非法响应的模型调用也单独计入耗时和
+provider usage 完整性。
+
+每个物理作业持有显式 workspace lease。超时或异常退出时会终止并回收
+整个进程组；无法确认清理完成时，slot 写入 `QUARANTINED`，后续调度不会
+再次使用该 slot，必须由操作者核查和清理。
 
 ## 8. 交互式盲盒与知识消融
 

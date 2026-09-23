@@ -5,16 +5,24 @@ import os
 import subprocess
 import tempfile
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from chia_boom.artifacts import CandidateArtifact, EvaluationArtifact, dump_json
+from chia_boom.artifacts import (
+    CandidateArtifact,
+    EvaluationArtifact,
+    StageResult,
+    dump_json,
+)
 from chia_boom.campaign import packaged_process_memory, validate_process_memory_bundle
 from chia_boom.finalize import (
     _cached_finalization,
+    BoomFinalizationNode,
     build_finalization_identity,
     finalize_candidate,
+    finalize_campaign,
 )
 from chia_boom.frozen import (
     baseline_rtl,
@@ -24,7 +32,11 @@ from chia_boom.frozen import (
     verify_frozen_run,
     verify_qualification,
 )
-from chia_boom.nodes import _run
+from chia_boom.interactive import (
+    _load_interactive_snapshot,
+    _prepare_interactive_snapshot,
+)
+from chia_boom.nodes import BoomCandidateEvaluationNode, _run, acquire_workspace
 from chia_boom.scripts.prepare_inputs import git_blob
 from chia_boom.tools.differential_test import compare_port_signatures
 
@@ -133,6 +145,87 @@ class IntegrityTests(unittest.TestCase):
             self.assertEqual((private_rtl / "Top.sv").read_text(), "private golden\n")
             verify_frozen_run(frozen, manifest["fingerprint"])
 
+    def test_interactive_snapshot_ignores_later_shared_golden_change(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            config = self._reference(root)
+            output = root / "interactive"
+            output.mkdir()
+            frozen_config = _prepare_interactive_snapshot(config, output)
+            shared = root / "rtl/T0/Top.sv"
+            shared.write_text("later shared golden\n")
+            restored = _load_interactive_snapshot(config, output)
+            self.assertEqual(restored, frozen_config)
+            self.assertEqual(
+                (baseline_rtl(restored, "T0") / "Top.sv").read_text(),
+                "module Top(input clock); endmodule\n",
+            )
+            verify_frozen_run(
+                output / "frozen",
+                json.loads((output / "INTERACTIVE_MANIFEST.json").read_text())[
+                    "frozen_run_fingerprint"
+                ],
+            )
+
+            candidate = CandidateArtifact(
+                campaign_id="interactive", target="T0", arm="I", seed=41,
+                index=1, parent_id=None, source="changed source", diff="diff",
+                diagnosis=[], selected_hypothesis=0, visible_feedback="",
+                request_sha256="request", response_sha256="response", usage=None,
+            )
+            slot = root / "slots/slot-0"
+            workspace = slot / "chipyard"
+            workspace.mkdir(parents=True)
+            elaboration = StageResult(
+                stage="elaboration", success=True, status="complete",
+                payload={"rtl_dir": str(root / "candidate-rtl")},
+            )
+            differential = StageResult(
+                stage="correctness", success=True, status="complete",
+                payload={"differential": {"interface_ok": True}},
+            )
+            vivado = StageResult(
+                stage="synthesis", success=True, status="complete",
+                payload={"post_synth": {
+                    "critical_delay_ns": 9.0, "slice_luts": 100,
+                }},
+            )
+            baseline = {
+                "critical_delay_ns": 10.0, "slice_luts": 100,
+                "maximum_lut_ratio": 1.05,
+            }
+            with (
+                mock.patch(
+                    "chia_boom.nodes.acquire_workspace",
+                    return_value=nullcontext(SimpleNamespace(
+                        workspace=workspace, slot_root=slot
+                    )),
+                ),
+                mock.patch(
+                    "chia_boom.nodes.BoomElaborationNode.run",
+                    return_value=elaboration,
+                ),
+                mock.patch(
+                    "chia_boom.nodes.BoomDifferentialNode.run",
+                    return_value=differential,
+                ) as differential_run,
+                mock.patch(
+                    "chia_boom.nodes.BoomVivadoNode.run",
+                    return_value=vivado,
+                ),
+            ):
+                result = BoomCandidateEvaluationNode.evaluate.__wrapped__(
+                    BoomCandidateEvaluationNode(), candidate=candidate,
+                    target=restored["targets"]["T0"], config=restored,
+                    baseline=baseline, output_dir=str(root / "evaluation"),
+                )
+            self.assertTrue(result.candidate_valid)
+            evaluation_config = differential_run.call_args.kwargs["config"]
+            self.assertEqual(
+                baseline_rtl(evaluation_config, "T0"),
+                (output / "frozen/targets/T0/baseline-rtl").resolve(),
+            )
+
     def test_prepare_inputs_reads_commit_blob_not_dirty_worktree(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             repo = Path(raw)
@@ -210,6 +303,208 @@ endmodule
             pid = int((root / "child.pid").read_text())
             with self.assertRaises(ProcessLookupError):
                 os.kill(pid, 0)
+
+    def test_cleanup_failure_quarantines_explicit_slot_and_skips_reuse(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            slot0 = root / "slots/slot-0"
+            slot1 = root / "slots/slot-1"
+            (slot0 / "chipyard").mkdir(parents=True)
+            (slot1 / "chipyard").mkdir(parents=True)
+            evidence = root / "campaign/evidence"
+            evidence.mkdir(parents=True)
+            fake = mock.Mock(pid=12345, returncode=None)
+            fake.communicate.side_effect = subprocess.TimeoutExpired(
+                cmd="fake", timeout=1
+            )
+            with (
+                mock.patch("chia_boom.nodes.subprocess.Popen", return_value=fake),
+                mock.patch(
+                    "chia_boom.nodes._terminate_process_group",
+                    side_effect=RuntimeError("cleanup failed"),
+                ),
+                self.assertRaises(RuntimeError),
+            ):
+                _run(
+                    "fake", cwd=evidence,
+                    stdout_path=evidence / "stdout",
+                    stderr_path=evidence / "stderr", timeout=1,
+                    workspace_slot=slot0,
+                )
+            self.assertTrue((slot0 / "QUARANTINED").exists())
+            with acquire_workspace({
+                "workspace_slots": str(root / "slots"),
+                "workspace_wait_seconds": 1,
+            }) as lease:
+                self.assertEqual(lease.slot_root, slot1)
+
+    def test_regression_infrastructure_failure_survives_full_finalization(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            config = self._reference(root)
+            target = config["targets"]["T0"]
+            baseline = {
+                "critical_delay_ns": 10.0,
+                "post_route_critical_delay_ns": 11.0,
+                "slice_luts": 100,
+                "maximum_lut_ratio": 1.05,
+            }
+            candidate = CandidateArtifact(
+                campaign_id="test", target="T0", arm="C", seed=42, index=1,
+                parent_id=None, source="candidate source", diff="diff",
+                diagnosis=[], selected_hypothesis=0, visible_feedback="",
+                request_sha256="request", response_sha256="response", usage=None,
+            )
+            early = EvaluationArtifact(
+                candidate_id=candidate.id, candidate_valid=True,
+                post_synth={"critical_delay_ns": 9.0, "slice_luts": 100},
+            )
+            slot = root / "slots/slot-0"
+            workspace = slot / "chipyard"
+            workspace.mkdir(parents=True)
+            elaboration = StageResult(
+                stage="elaboration", success=True, status="complete",
+                payload={"rtl_dir": str(root / "rtl-candidate")},
+            )
+            differential = StageResult(
+                stage="correctness", success=True, status="complete",
+                payload={"differential": {"interface_ok": True}},
+            )
+            route = StageResult(
+                stage="route", success=True, status="complete",
+                payload={"post_route": {
+                    "critical_delay_ns": 10.0, "slice_luts": 100,
+                }},
+            )
+            regression = StageResult(
+                stage="regression", success=False, status="infra_blocked",
+                failure_class="regression_infrastructure_failure",
+                retryable=True, message="worker disappeared",
+            )
+            actual_node = BoomFinalizationNode()
+
+            class Remote:
+                def __init__(self) -> None:
+                    self.calls = 0
+
+                def chia_remote(self, _node: object, **kwargs: object) -> EvaluationArtifact:
+                    self.calls += 1
+                    kwargs.pop("_chia_display_name", None)
+                    return BoomFinalizationNode.run.__wrapped__(
+                        actual_node, **kwargs
+                    )
+
+            remote = Remote()
+            node = SimpleNamespace(run=remote)
+            patches = (
+                mock.patch(
+                    "chia_boom.finalize.acquire_workspace",
+                    return_value=nullcontext(SimpleNamespace(
+                        workspace=workspace, slot_root=slot
+                    )),
+                ),
+                mock.patch(
+                    "chia_boom.finalize.BoomElaborationNode.run",
+                    return_value=elaboration,
+                ),
+                mock.patch(
+                    "chia_boom.finalize.BoomDifferentialNode.run",
+                    return_value=differential,
+                ),
+                mock.patch(
+                    "chia_boom.finalize.BoomVivadoNode.run",
+                    return_value=route,
+                ),
+                mock.patch(
+                    "chia_boom.finalize.BoomRegressionNode.run",
+                    return_value=regression,
+                ),
+                mock.patch(
+                    "chia.base.ChiaFunction.get", side_effect=lambda value: value
+                ),
+            )
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+                first, first_meta = finalize_candidate(
+                    node=node, candidate=candidate, early=early, target=target,
+                    config=config, baseline=baseline,
+                    root=root / "finalization", display_name="test",
+                )
+                second, second_meta = finalize_candidate(
+                    node=node, candidate=candidate, early=early, target=target,
+                    config=config, baseline=baseline,
+                    root=root / "finalization", display_name="test",
+                )
+            self.assertEqual(first.status, "infra_blocked")
+            self.assertTrue(first.retryable)
+            self.assertEqual(first.failure_class, "regression_infrastructure_failure")
+            self.assertEqual(second.status, "infra_blocked")
+            self.assertEqual(remote.calls, 2)
+            self.assertEqual(first_meta["attempt"], 1)
+            self.assertEqual(second_meta["attempt"], 2)
+
+    def test_repeated_campaign_finalization_preserves_first_acceptance_event(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            campaign = Path(raw)
+            candidate = CandidateArtifact(
+                campaign_id="test", target="T0", arm="C", seed=42, index=1,
+                parent_id=None, source="candidate source", diff="diff",
+                diagnosis=[], selected_hypothesis=0, visible_feedback="",
+                request_sha256="request", response_sha256="response", usage=None,
+            )
+            config = {
+                "physical": {"maximum_lut_ratio": 1.05},
+                "targets": {"T0": {"id": "T0"}},
+            }
+            dump_json(campaign / "manifest.json", {
+                "config": config, "frozen_run_fingerprint": "frozen",
+                "schedule": [{"id": "T0-C-seed42"}],
+            })
+            dump_json(campaign / "frozen/targets/T0/baseline-ppa.json", {
+                "critical_delay_ns": 10.0,
+                "post_route_critical_delay_ns": 11.0,
+                "slice_luts": 100,
+            })
+            early = EvaluationArtifact(
+                candidate_id=candidate.id, candidate_valid=True,
+                post_synth={"critical_delay_ns": 9.0, "slice_luts": 100},
+            )
+            dump_json(campaign / "runs/T0-C-seed42/run.json", {
+                "target": "T0", "status": "search_complete",
+                "started_epoch": 100.0,
+                "candidates": [{
+                    "candidate": candidate.to_dict(),
+                    "search_evaluation": early.to_dict(),
+                }],
+            })
+            final = EvaluationArtifact(
+                candidate_id=candidate.id, status="complete",
+                final_valid=True, valid_improvement=True,
+                post_route={"critical_delay_ns": 8.0, "slice_luts": 100},
+            )
+            metadata = {
+                "reused": False, "completed_epoch": 140.0,
+                "attempts": [{"attempt": 1, "active_seconds": 5.0}],
+            }
+            with (
+                mock.patch("chia_boom.finalize.verify_frozen_run"),
+                mock.patch(
+                    "chia_boom.finalize.finalize_candidate",
+                    return_value=(final, metadata),
+                ),
+                mock.patch("chia_boom.finalize.time.time", side_effect=(150.0, 200.0)),
+            ):
+                finalize_campaign(campaign)
+                first = json.loads(
+                    (campaign / "runs/T0-C-seed42/run.json").read_text()
+                )
+                finalize_campaign(campaign)
+                second = json.loads(
+                    (campaign / "runs/T0-C-seed42/run.json").read_text()
+                )
+            self.assertEqual(first["first_final_acceptance_epoch"], 140.0)
+            self.assertEqual(second["first_final_acceptance_epoch"], 140.0)
+            self.assertEqual(second["finalization_completed_epoch"], 140.0)
+            self.assertEqual(second["last_finalization_query_epoch"], 200.0)
 
     def test_finalization_cache_binds_candidate_source_and_retries_infra(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -332,6 +627,10 @@ endmodule
             self.assertEqual(result.candidate_id, candidate.id)
             self.assertTrue(reused["reused"])
             self.assertEqual(again.candidate_id, candidate.id)
+            self.assertIsNotNone(metadata["completed_epoch"])
+            self.assertEqual(
+                reused["completed_epoch"], metadata["completed_epoch"]
+            )
 
 
 if __name__ == "__main__":
