@@ -1,0 +1,217 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="1024" viewBox="0 0 1536 1024" role="img" aria-labelledby="title desc">
+<title id="title">Agentic Chip Design — project ecosystem</title><desc id="desc">Vector reconstruction of the selected layered project and ecosystem concept illustration. User applications connect to ChipContext, AgentLoop, PyCircuit and knowledge, supported by runtimes, tools and design evaluation. Multi-agent and roadmap labels are concept content, not current implementation status.</desc>
+<!-- Editable vector reconstruction of the selected concept image; not the original PNG. -->
+<defs>
+<linearGradient id="bg" x2="1" y2="1"><stop stop-color="#fbfdff"/><stop offset="1" stop-color="#edf4ff"/></linearGradient>
+<linearGradient id="green" x2="1" y2="1"><stop stop-color="#edf9ee"/><stop offset="1" stop-color="#e3f4eb"/></linearGradient>
+<linearGradient id="blue" x2="1" y2="1"><stop stop-color="#eff7ff"/><stop offset="1" stop-color="#e1edff"/></linearGradient>
+<linearGradient id="purple" x2="1" y2="1"><stop stop-color="#f3f0ff"/><stop offset="1" stop-color="#e9e7fe"/></linearGradient>
+<linearGradient id="orange" x2="1" y2="1"><stop stop-color="#fff9ed"/><stop offset="1" stop-color="#fff1e4"/></linearGradient>
+<linearGradient id="slate" x2="1" y2="1"><stop stop-color="#edf4fb"/><stop offset="1" stop-color="#e3eafa"/></linearGradient>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10" fill="none" stroke="#527eae" stroke-width="1.8"/></marker>
+<symbol id="chip" viewBox="0 0 40 40"><rect x="9" y="9" width="22" height="22" rx="3"/><rect x="15" y="15" width="10" height="10" rx="1"/><path d="M14 3v6m6-6v6m6-6v6M14 31v6m6-6v6m6-6v6M3 14h6m-6 6h6m-6 6h6M31 14h6m-6 6h6m-6 6h6"/></symbol>
+<symbol id="db" viewBox="0 0 40 40"><ellipse cx="20" cy="9" rx="13" ry="5"/><path d="M7 9v22c0 7 26 7 26 0V9M7 17c0 7 26 7 26 0M7 25c0 7 26 7 26 0"/></symbol>
+<symbol id="user" viewBox="0 0 40 40"><circle cx="20" cy="11" r="7"/><path d="M6 35c0-18 28-18 28 0z"/></symbol>
+<symbol id="brain" viewBox="0 0 40 40"><path d="M19 5c-7-3-10 3-9 7-7 1-7 10-3 12-3 6 2 12 7 10 2 4 7 3 7-1V9c0-3-1-4-2-4zm4 0c7-3 10 3 9 7 7 1 7 10 3 12 3 6-2 12-7 10-2 4-7 3-7-1"/><path d="M10 14h5v7h5m12-7h-5v7h-5M9 28h6v-5m18 5h-6v-5"/></symbol>
+<symbol id="code" viewBox="0 0 40 40"><path d="m13 9-10 11 10 11m14-22 10 11-10 11M24 5l-8 30"/></symbol>
+<symbol id="chart" viewBox="0 0 40 40"><path d="M7 36V23h6v13zm11 0V12h6v24zm11 0V3h6v33z"/></symbol>
+<symbol id="nodes" viewBox="0 0 40 40"><path d="m10 11 20 5-15 16-5-21m5 21 20-1M10 11l-5 14"/><circle cx="10" cy="11" r="4"/><circle cx="30" cy="16" r="4"/><circle cx="15" cy="32" r="4"/><circle cx="5" cy="25" r="3"/><circle cx="35" cy="31" r="3"/></symbol>
+<symbol id="tool" viewBox="0 0 40 40"><path d="M6 4a10 10 0 0 0 11 14l14 17 5-5-17-14A10 10 0 0 0 8 3l6 7-5 4-6-6m20 13L5 34l-2-3 12-14"/></symbol>
+<symbol id="doc" viewBox="0 0 40 40"><path d="M10 4h16l7 8v24H10zM26 4v9h7M15 19h12m-12 6h12m-12 6h8"/></symbol>
+<symbol id="bulb" viewBox="0 0 40 40"><path d="M13 28c0-8-6-8-6-16 0-15 26-15 26 0 0 8-6 8-6 16zm0 4h14m-11 4h8M20 0v-4M3 1l-4-4m38 4 4-4"/></symbol>
+<symbol id="bolt" viewBox="0 0 40 40"><path d="M24 2 6 23h13l-4 15 20-23H22z"/></symbol>
+</defs>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#14294b} .title{font-size:46px;font-weight:700;fill:#081a39}.heading{font-size:20px;font-weight:700}.body{font-size:15px}.small{font-size:13px}.tiny{font-size:12px}.card-title{font-size:15px;font-weight:600}.muted{fill:#486b96}.white{fill:#fff}.line{fill:none;stroke:#527eae;stroke-width:2;stroke-linejoin:round;marker-end:url(#arrow)}</style>
+<rect width="1536" height="1024" fill="url(#bg)"/>
+<text x="54" y="55" class="title">Agentic Chip Design</text>
+<text x="54" y="88" class="heading" style="fill:#3c578a">Bridge AI and Chip Design — Let Agents Design, Reason and Optimize with Real Engineering Context.</text>
+<path d="M1205 20V80" fill="none" stroke="#809ab9" stroke-width="1" stroke-linejoin="round"/>
+<text x="1224" y="41" class="heading" style="fill:#385581">From Ideas to Better Chips,</text>
+<text x="1224" y="68" class="heading" style="fill:#385581">with AI and Real Tools.</text>
+<use href="#chip" x="67" y="127" width="45" height="45" fill="none" stroke="#216bd0" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="141" y="140" class="heading">Real Engineering Context</text>
+<text x="141" y="165" class="body">Connect design, compiler, simulation</text>
+<text x="141" y="186" class="body">and EDA tools</text>
+<use href="#bulb" x="456" y="127" width="45" height="45" fill="none" stroke="#216bd0" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="530" y="140" class="heading">Agentic Optimization</text>
+<text x="530" y="165" class="body">Reason, explore and improve</text>
+<text x="530" y="186" class="body">designs iteratively</text>
+<use href="#db" x="813" y="127" width="45" height="45" fill="none" stroke="#216bd0" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="887" y="140" class="heading">Reusable Knowledge</text>
+<text x="887" y="165" class="body">Learn from every run,</text>
+<text x="887" y="186" class="body">accelerate future designs</text>
+<use href="#user" x="1177" y="127" width="45" height="45" fill="none" stroke="#216bd0" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1251" y="140" class="heading">Open and Collaborative</text>
+<text x="1251" y="165" class="body">A platform for research and</text>
+<text x="1251" y="186" class="body">real-world impact</text>
+<rect x="47" y="208" width="1445" height="120" rx="8" fill="url(#green)" stroke="#b6e0c4"/>
+<text x="72" y="243" class="heading" style="fill:#13583f">User &amp;</text>
+<text x="72" y="268" class="heading" style="fill:#13583f">Application Layer</text>
+<text x="72" y="293" class="body">Various chip design</text>
+<text x="72" y="313" class="body">goals and scenarios</text>
+<rect x="288" y="226" width="236" height="76" rx="8" fill="#fff" stroke="#edf8ee" fill-opacity="0.65"/>
+<use href="#user" x="310" y="247" width="35" height="35" fill="none" stroke="#267d88" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="366" y="258" class="card-title">Researcher</text>
+<text x="366" y="280" class="small">Explore new ideas</text>
+<rect x="534" y="226" width="236" height="76" rx="8" fill="#fff" stroke="#edf8ee" fill-opacity="0.65"/>
+<use href="#tool" x="556" y="247" width="35" height="35" fill="none" stroke="#267d88" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="612" y="258" class="card-title">Hardware Engineer</text>
+<text x="612" y="280" class="small">Optimize existing designs</text>
+<rect x="775" y="226" width="236" height="76" rx="8" fill="#fff" stroke="#edf8ee" fill-opacity="0.65"/>
+<use href="#doc" x="797" y="247" width="35" height="35" fill="none" stroke="#267d88" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="853" y="258" class="card-title">Compiler Engineer</text>
+<text x="853" y="280" class="small">Co-design HW/SW</text>
+<rect x="1017" y="226" width="236" height="76" rx="8" fill="#fff" stroke="#edf8ee" fill-opacity="0.65"/>
+<use href="#code" x="1039" y="247" width="35" height="35" fill="none" stroke="#267d88" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1095" y="258" class="card-title">Student &amp; Learner</text>
+<text x="1095" y="280" class="small">Learn and experiment</text>
+<rect x="1251" y="226" width="236" height="76" rx="8" fill="#fff" stroke="#edf8ee" fill-opacity="0.65"/>
+<use href="#chip" x="1273" y="247" width="35" height="35" fill="none" stroke="#267d88" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1329" y="258" class="card-title">Enterprise User</text>
+<text x="1329" y="280" class="small">Domain-specific chips</text>
+<path d="M451 327V362" fill="none" stroke="#245b9f" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="479" y="352" class="body" style="fill:#234d90">Natural Language / Structured Goals</text>
+<path d="M1079 362V327" fill="none" stroke="#245b9f" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="1106" y="352" class="body" style="fill:#234d90">Results / Reports / Insights</text>
+<rect x="48" y="364" width="1444" height="273" rx="8" fill="url(#blue)" stroke="#a9cbf8"/>
+<text x="72" y="437" class="heading" style="fill:#0e285f">Agentic</text>
+<text x="72" y="462" class="heading" style="fill:#0e285f">Chip Design Core</text>
+<text x="72" y="497" class="body" style="fill:#244378">Multi-agent system</text>
+<text x="72" y="518" class="body" style="fill:#244378">designed for chip</text>
+<text x="72" y="539" class="body" style="fill:#244378">design optimization</text>
+<rect x="285" y="384" width="262" height="239" rx="7" fill="url(#blue)" stroke="#7fbbfa"/>
+<use href="#db" x="305" y="402" width="44" height="44" fill="none" stroke="#406bdd" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="379" y="413" class="heading">ChipContext</text>
+<text x="379" y="438" class="body">Evidence Preparation</text>
+<text x="379" y="457" class="body">&amp; Data Processing</text>
+<rect x="298" y="474" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="311" y="494" class="body">Collect design context</text>
+<rect x="298" y="509" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="311" y="529" class="body">Run tools &amp; gather results</text>
+<rect x="298" y="544" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="311" y="564" class="body">Clean and structure data</text>
+<rect x="298" y="579" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="311" y="599" class="body">Provide structured inputs</text>
+<rect x="593" y="384" width="262" height="239" rx="7" fill="url(#purple)" stroke="#c5b4ff"/>
+<use href="#brain" x="613" y="402" width="44" height="44" fill="none" stroke="#406bdd" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="687" y="413" class="heading">AgentLoop</text>
+<text x="687" y="438" class="body">Analysis, Exploration</text>
+<text x="687" y="457" class="body">and Optimization</text>
+<rect x="606" y="474" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="619" y="494" class="body">Analyze results and bottlenecks</text>
+<rect x="606" y="509" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="619" y="529" class="body">Propose and modify design</text>
+<rect x="606" y="544" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="619" y="564" class="body">Plan and execute experiments</text>
+<rect x="606" y="579" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="619" y="599" class="body">Iterate until convergence</text>
+<rect x="902" y="384" width="262" height="239" rx="7" fill="url(#orange)" stroke="#edc975"/>
+<use href="#code" x="922" y="402" width="44" height="44" fill="none" stroke="#406bdd" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="996" y="413" class="heading">Design Core</text>
+<text x="996" y="436" class="heading">(PyCircuit)</text>
+<text x="996" y="454" class="small">Design Representation</text>
+<text x="996" y="470" class="small">and Manipulation</text>
+<rect x="915" y="474" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="928" y="494" class="body">Python-native circuit IR</text>
+<rect x="915" y="509" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="928" y="529" class="body">Design transformation APIs</text>
+<rect x="915" y="544" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="928" y="564" class="body">Interface with EDA tools</text>
+<rect x="915" y="579" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="928" y="599" class="body">Maintain design consistency</text>
+<rect x="1212" y="384" width="262" height="239" rx="7" fill="url(#blue)" stroke="#95bfff"/>
+<use href="#nodes" x="1232" y="402" width="44" height="44" fill="none" stroke="#406bdd" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1306" y="413" class="heading">Knowledge Store</text>
+<text x="1306" y="438" class="body">Memory, Experience</text>
+<text x="1306" y="457" class="body">and Reuse</text>
+<rect x="1225" y="474" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="1238" y="494" class="body">Store design patterns</text>
+<rect x="1225" y="509" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="1238" y="529" class="body">Retrieve similar cases</text>
+<rect x="1225" y="544" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="1238" y="564" class="body">Learn from past iterations</text>
+<rect x="1225" y="579" width="234" height="30" rx="5" fill="#fff" stroke="#ecf2fc" fill-opacity="0.6"/>
+<text x="1238" y="599" class="body">Build domain knowledge</text>
+<path d="M553 474H580" fill="none" stroke="#2a558e" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M580 523H553" fill="none" stroke="#2a558e" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M865 474H891" fill="none" stroke="#2a558e" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M891 523H865" fill="none" stroke="#2a558e" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M1171 474H1200" fill="none" stroke="#2a558e" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M1200 523H1171" fill="none" stroke="#2a558e" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="48" y="654" width="1444" height="102" rx="8" fill="url(#slate)" stroke="#bacce7"/>
+<text x="72" y="692" class="heading">Tool &amp; Runtime Layer</text>
+<text x="72" y="719" class="body" style="fill:#355b88">Flexible integration</text>
+<text x="72" y="739" class="body" style="fill:#355b88">with existing tools</text>
+<rect x="282" y="671" width="283" height="69" rx="7" fill="#fff" stroke="#edf2f9" fill-opacity="0.65"/>
+<use href="#code" x="301" y="686" width="38" height="38" fill="none" stroke="#526d91" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="378" y="699" class="card-title">DSH Plugin</text>
+<text x="378" y="719" class="small" style="fill:#3c577e">Tool execution and</text>
+<text x="378" y="734" class="small" style="fill:#3c577e">environment management</text>
+<rect x="578" y="671" width="283" height="69" rx="7" fill="#fff" stroke="#edf2f9" fill-opacity="0.65"/>
+<use href="#tool" x="597" y="686" width="38" height="38" fill="none" stroke="#526d91" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="674" y="699" class="card-title">EDA Tools</text>
+<text x="674" y="719" class="small" style="fill:#3c577e">Synthesis, P&amp;R, STA, etc.</text>
+<rect x="870" y="671" width="283" height="69" rx="7" fill="#fff" stroke="#edf2f9" fill-opacity="0.65"/>
+<use href="#chip" x="889" y="686" width="38" height="38" fill="none" stroke="#526d91" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="966" y="699" class="card-title">Simulators</text>
+<text x="966" y="719" class="small" style="fill:#3c577e">RTL / Cycle / Functional</text>
+<text x="966" y="734" class="small" style="fill:#3c577e">Simulation</text>
+<rect x="1170" y="671" width="307" height="69" rx="7" fill="#fff" stroke="#edf2f9" fill-opacity="0.65"/>
+<use href="#db" x="1189" y="686" width="38" height="38" fill="none" stroke="#526d91" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1266" y="699" class="card-title">Compilers &amp; Benchmarks</text>
+<text x="1266" y="719" class="small" style="fill:#3c577e">e.g., LLVM, MLIR, SPEC,</text>
+<text x="1266" y="734" class="small" style="fill:#3c577e">ML workloads</text>
+<path d="M450 654V638" fill="none" stroke="#527eae" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M1080 654V638" fill="none" stroke="#527eae" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M1300 654V638" fill="none" stroke="#527eae" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="48" y="768" width="1444" height="123" rx="8" fill="url(#purple)" stroke="#c8bfff"/>
+<text x="72" y="809" class="heading" style="fill:#24205a">Design Targets</text>
+<text x="72" y="834" class="heading" style="fill:#24205a">and Evaluation</text>
+<text x="72" y="858" class="body" style="fill:#3b4386">Quantitative results</text>
+<text x="72" y="877" class="body" style="fill:#3b4386">to measure progress</text>
+<rect x="286" y="790" width="234" height="77" rx="7" fill="#fff" stroke="#f6f4ff" fill-opacity="0.65"/>
+<use href="#chip" x="305" y="808" width="39" height="39" fill="none" stroke="#5544d7" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="371" y="822" class="card-title">Performance</text>
+<text x="371" y="846" class="small">IPC, latency, throughput</text>
+<rect x="526" y="790" width="234" height="77" rx="7" fill="#fff" stroke="#f6f4ff" fill-opacity="0.65"/>
+<use href="#chart" x="545" y="808" width="39" height="39" fill="none" stroke="#5544d7" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="611" y="822" class="card-title">Area</text>
+<text x="611" y="846" class="small">Gate count, die area</text>
+<rect x="766" y="790" width="234" height="77" rx="7" fill="#fff" stroke="#f6f4ff" fill-opacity="0.65"/>
+<use href="#bolt" x="785" y="808" width="39" height="39" fill="none" stroke="#5544d7" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="851" y="822" class="card-title">Power</text>
+<text x="851" y="846" class="small">Dynamic &amp; static power</text>
+<rect x="1007" y="790" width="234" height="77" rx="7" fill="#fff" stroke="#f6f4ff" fill-opacity="0.65"/>
+<use href="#nodes" x="1026" y="808" width="39" height="39" fill="none" stroke="#5544d7" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1092" y="822" class="card-title">Design Constraints</text>
+<text x="1092" y="846" class="small">Timing, area, power, etc.</text>
+<rect x="1248" y="790" width="234" height="77" rx="7" fill="#fff" stroke="#f6f4ff" fill-opacity="0.65"/>
+<use href="#doc" x="1267" y="808" width="39" height="39" fill="none" stroke="#5544d7" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1333" y="822" class="card-title">Reports &amp; Insights</text>
+<text x="1333" y="846" class="small">Detailed logs and analysis</text>
+<text x="54" y="931" class="heading">Project Roadmap</text>
+<path d="M242 916H1490" fill="none" stroke="#4996ee" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<circle cx="242" cy="916" r="8" fill="#1974e4"/>
+<text x="256" y="939" class="card-title" style="fill:#1974e4">M0</text>
+<text x="286" y="939" class="card-title">Foundation</text>
+<text x="286" y="959" class="small" style="fill:#3f5884">Environment &amp; baseline</text>
+<circle cx="510" cy="916" r="8" fill="#32a893"/>
+<text x="524" y="939" class="card-title" style="fill:#32a893">M1</text>
+<text x="554" y="939" class="card-title">Agent Loop (BOOM)</text>
+<text x="554" y="959" class="small" style="fill:#3f5884">End-to-end flow</text>
+<circle cx="762" cy="916" r="8" fill="#eeb52f"/>
+<text x="776" y="939" class="card-title" style="fill:#eeb52f">M2</text>
+<text x="806" y="939" class="card-title">PyCircuit Integration</text>
+<text x="806" y="959" class="small" style="fill:#3f5884">Python-native design core</text>
+<circle cx="1014" cy="916" r="8" fill="#ab7bef"/>
+<text x="1028" y="939" class="card-title" style="fill:#ab7bef">M3</text>
+<text x="1058" y="939" class="card-title">Generalization</text>
+<text x="1058" y="959" class="small" style="fill:#3f5884">More designs &amp; benchmarks</text>
+<circle cx="1295" cy="916" r="8" fill="#3d8bf0"/>
+<text x="1309" y="939" class="card-title" style="fill:#3d8bf0">M4</text>
+<text x="1339" y="939" class="card-title">Open Ecosystem</text>
+<text x="1339" y="959" class="small" style="fill:#3f5884">Community &amp; real-world impact</text>
+<text x="54" y="998" class="heading" style="fill:#3d5985">Open Design. Smarter Chips. A More Capable Future.</text>
+<text x="948" y="999" class="body" style="fill:#345388">github.com/TaoTao-real/agentic-chip-design</text>
+<text x="1304" y="999" class="body" style="fill:#345388">Build with the community</text>
+</svg>
