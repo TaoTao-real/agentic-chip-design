@@ -1,0 +1,21 @@
+{
+  "schema": "chip-context/policy-draft-v0.1",
+  "status": "proposed-not-executable-plugin-config",
+  "task": "rtl_timing_optimization",
+  "prepare": {
+    "trigger": "evaluation_terminal",
+    "sealed_manifest_required": true,
+    "cache_by_artifact_hash_and_extractor_revision": true
+  },
+  "always": ["objective_and_constraints", "candidate_identity", "validation_status", "missing_evidence", "source_refs"],
+  "on_failure": ["first_failure", "changed_design_slice", "counterexample_ref"],
+  "on_success": ["timing_by_stage", "area_delta", "top_paths", "comparable_history", "entity_mapping"],
+  "delivery": {
+    "suggested_max_tokens": 1800,
+    "update": "on_evidence_change",
+    "after_compaction": "rebuild_snapshot",
+    "raw_drilldown": true
+  },
+  "visibility": {"target_specific_knowledge": false},
+  "notes": ["Budget is a starting value, not a validated optimum.", "This is a domain proposal, not an upstream DSH configuration."]
+}

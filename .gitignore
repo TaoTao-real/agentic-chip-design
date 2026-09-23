@@ -1,0 +1,17 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.env.*
+!.env.example
+private/
+raw_artifacts/
+local_runs/
+*.vcd
+*.fst
+*.wdb
+*.dcp
+*.pem
+*.key
+.publish_state*.json
