@@ -23,19 +23,19 @@
 
 > **项目阶段：架构规划与早期 POC。** 当前仓库公开架构文档、实验摘要、示例配置和实施任务，尚未发布可直接运行的一体化平台。下文将目标能力、已有实验记录和待验证工作分别说明。
 
-<!-- original-concept-diagrams:v1 -->
+<!-- selected-concept-diagrams:svg-v1 -->
 ## 项目全景与生态
 
 从使用者与应用场景，到设计核心、工具运行时和评价目标，下图展示项目的整体愿景。
 
 <p align="center">
-  <a href="docs/assets/project-ecosystem.png">
-    <img src="docs/assets/project-ecosystem.png" width="1280" alt="Agentic Chip Design 项目全景原图：用户与应用、ChipContext、AgentLoop、PyCircuit、知识库、工具运行时、评价目标和概念路线图。" />
+  <a href="docs/assets/project-ecosystem.svg">
+    <img src="docs/assets/project-ecosystem.svg" width="1280" alt="Agentic Chip Design 项目全景矢量展示版：用户与应用、ChipContext、AgentLoop、PyCircuit、知识库、工具运行时、评价目标和概念路线图。" />
   </a>
 </p>
-<p align="center"><sub>项目全景与生态 · 点击查看原图</sub></p>
+<p align="center"><sub>项目全景与生态 · SVG 矢量展示版 · 点击放大</sub></p>
 
-> 两张概念原图展示目标方案，并非已实现功能清单；图中的多 Agent 与生态方向是规划视图，当前职责和 M0–M4 阶段以正文及 [ROADMAP](ROADMAP.md) 为准。
+> 下方两张英文图根据维护者选定的概念图重新排版为 SVG，保留主要文字、布局和层次；并非原始 PNG，图标和排版细节有所不同。概念图不代表已实现功能，多 Agent 与生态方向、M0–M4 阶段的正式定义以正文及 [ROADMAP](ROADMAP.md) 为准。
 
 ## 项目目标
 
@@ -75,11 +75,11 @@ AI 工作负载与工程目标
 目标架构由 **Design Core、ChipContext、Loop Engine、KnowledgeStore** 四个领域模块构成，复用外部 Agent runtime 和现有工程工具。模块表示责任边界，第一版不要求微服务或复杂图数据库。
 
 <p align="center">
-  <a href="docs/assets/architecture-concept.png">
-    <img src="docs/assets/architecture-concept.png" width="1280" alt="Agentic Chip Design 整体架构原图：用户目标、证据准备、分析优化角色、PyCircuit 设计核心、独立评估反馈、知识库与工具生态。" />
+  <a href="docs/assets/architecture-concept.svg">
+    <img src="docs/assets/architecture-concept.svg" width="1280" alt="Agentic Chip Design 四列架构矢量展示版：用户目标、证据准备、分析优化角色、PyCircuit 设计核心、独立评估反馈、知识库与工具生态。" />
   </a>
 </p>
-<p align="center"><sub>整体架构概念图 · ChipContext → Agent 分析优化 → Design Core → Evaluation &amp; Feedback · 点击查看原图</sub></p>
+<p align="center"><sub>整体架构概念图 · ChipContext → Agent 分析优化 → Design Core → Evaluation &amp; Feedback · 点击查看 SVG</sub></p>
 
 <details>
 <summary>查看受控优化闭环的详细职责图</summary>
