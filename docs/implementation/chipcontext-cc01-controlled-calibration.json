@@ -1,0 +1,88 @@
+{
+  "cases": {
+    "failure": {
+      "conflict_count": 0,
+      "field_checked_count": 8,
+      "field_consistent_count": 8,
+      "input_hashes": {
+        "baseline": "773f4a8e996b076da083eefa2d1ceaa4078e223168d868a6ba7ad8ad861a1682",
+        "candidate": "3e4a61e7ec3c0cd09ceff6a93cdab9e5dad06e22af1c27786b7822f1b4c2d46e",
+        "differential_stdout": "af47369aa7755f14a4e4b32a2d424074568a4ef463f8352b8200a7352bdea510",
+        "evaluation": "75df07f52f5575b72086606624ecf784d127865ca3410005585a6a0e9635daac",
+        "qualification": "fc90e0ee9e6db30505a98ae869f0c762ab3d75c3e8957ffa974aa75bb13a6051",
+        "sealed_manifest": "320ddf52d4d7435df4bfdbec0b5b1029a348b3ed5c7ed23500cda8c24d89574f",
+        "working_source": "bfebf7980a88036c59fbe2d191a5e15a481b80548c87e83297053d8384396906"
+      },
+      "missing_count": 9,
+      "output_hashes": {
+        "bundle": "1559feb2db7e9f96609f11e52389e2dbc81bea184ac66349f0fc412648f9dcf7",
+        "evaluation_manifest": "ad39c4b6d50b72d559507b2825200337aa6743793f10e289f9e0e127b4292d54",
+        "packet": "5b3c913b8f63d8ed55cc7649de3328001de31eab447b87280f1c26c10a07dfa6",
+        "packet_bytes": 2167,
+        "schema_version": "chipcontext.preparation-result.v1",
+        "snapshot": "83a870cc7c9fc1c6f84b291cf1db04f4924595f7d7083e33fa6bc2c5306d052b"
+      },
+      "prepare_milliseconds": 22.4,
+      "query_artifact_sha256": "af47369aa7755f14a4e4b32a2d424074568a4ef463f8352b8200a7352bdea510",
+      "query_bytes": 316,
+      "query_milliseconds": 0.422,
+      "query_span": {
+        "end_byte": 316,
+        "end_line": 3,
+        "start_byte": 0,
+        "start_line": 1
+      },
+      "query_truncated": false
+    },
+    "success": {
+      "conflict_count": 0,
+      "field_checked_count": 15,
+      "field_consistent_count": 15,
+      "input_hashes": {
+        "baseline": "773f4a8e996b076da083eefa2d1ceaa4078e223168d868a6ba7ad8ad861a1682",
+        "candidate": "8791df1cb2d32102cf250ae4bb3c630d8b2513a4b14c471243f469f1c399dbf6",
+        "evaluation": "5998f502322058ed2ac35cf97128d292c244cd4dd05fea27ecd5c7579947e87d",
+        "qualification": "fc90e0ee9e6db30505a98ae869f0c762ab3d75c3e8957ffa974aa75bb13a6051",
+        "sealed_manifest": "320ddf52d4d7435df4bfdbec0b5b1029a348b3ed5c7ed23500cda8c24d89574f",
+        "timing_report": "dbf713ce115cb94377374a332a91ee3fd4a601b05b0659aa3020ea8391d50f3d",
+        "working_source": "9310379c5bf3e12c88acbc31e86ce204acdc1642688d3d24545ea1265179915c"
+      },
+      "missing_count": 5,
+      "output_hashes": {
+        "bundle": "716192d37e0a94beabe911d80989b71059354400ae1228d87f839e02b9cf8d98",
+        "evaluation_manifest": "d7f2ee4dd732de9c3e3d2871ed75a2610a1d6208f0becd15bd83c945c9b4a474",
+        "packet": "eb9cba333c57a89cedad9db33605b4ad49c14233824b2f38c2a7497835931068",
+        "packet_bytes": 1825,
+        "schema_version": "chipcontext.preparation-result.v1",
+        "snapshot": "8fc9a80795051c95ac21adda577f55acded9099e4a34264680e4a9affeda30b0"
+      },
+      "prepare_milliseconds": 20.719,
+      "query_artifact_sha256": "dbf713ce115cb94377374a332a91ee3fd4a601b05b0659aa3020ea8391d50f3d",
+      "query_bytes": 475,
+      "query_milliseconds": 0.453,
+      "query_span": {
+        "end_byte": 475,
+        "end_line": 3,
+        "start_byte": 0,
+        "start_line": 1
+      },
+      "query_truncated": false
+    }
+  },
+  "environment_review": {
+    "doctor_failed_required_checks": [
+      "disk",
+      "memory"
+    ],
+    "doctor_passed": false,
+    "doctor_sha256": "7b0af1c7b60de60b99e2601a885b8eb7a9fe3b605a5eb9a4bcfcc52465e80ccb",
+    "existing_qualification_current": true,
+    "new_baseline_smoke": "not_run",
+    "new_baseline_smoke_reason": "doctor_required_resource_gate_failed",
+    "verify_environment_passed": true,
+    "verify_environment_sha256": "36c45681cc349cb03e66834760cae2f6ca245fe95f65a0304bdb0dc09efd6fe5"
+  },
+  "public_safe": true,
+  "schema_version": "chipcontext.controlled-calibration-summary.v1",
+  "source_type": "controlled_real"
+}

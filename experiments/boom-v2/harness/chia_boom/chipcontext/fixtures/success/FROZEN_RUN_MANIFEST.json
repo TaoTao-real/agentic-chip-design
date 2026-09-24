@@ -1,0 +1,23 @@
+{
+  "schema_version": "frozen-run-v1",
+  "contract": {
+    "base": {
+      "config": "SyntheticConfig"
+    },
+    "physical": {
+      "tool": "Vivado",
+      "part": "synthetic-part",
+      "clock_period_ns": 5.0,
+      "maximum_lut_ratio": 1.05
+    },
+    "targets": {
+      "NeutralArithmetic": {
+        "id": "NeutralArithmetic"
+      }
+    }
+  },
+  "files": {
+    "targets/NeutralArithmetic/baseline-source.scala": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "fingerprint": "fe9e2e94f92a7623c767c58a22f583bb5201b25daa69d0c512158556a42e183c"
+}

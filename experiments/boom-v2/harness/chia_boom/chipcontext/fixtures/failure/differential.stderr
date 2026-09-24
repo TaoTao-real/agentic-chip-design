@@ -1,0 +1,7 @@
+Synthetic differential failure transcript
+seed=43 cycle=17
+input.valid=1 input.bits=0x15
+expected=0x2a
+actual=0x2b
+first_mismatch=true
+No production design state or path is included.

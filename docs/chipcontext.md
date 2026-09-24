@@ -1,39 +1,110 @@
-# ChipContext：两段式中的数据准备
+# ChipContext：确定性证据准备
 
-状态：待实现和消融，对应 ACD-005–009。
+状态：**CC-00／CC-01 已实现离线切片；Agent/runtime 接入和效果消融尚未实现。**
 
-## 三项逻辑职责
+首批实现位于
+[`experiments/boom-v2/harness/chia_boom/chipcontext/`](../experiments/boom-v2/harness/chia_boom/chipcontext/)，
+基于 `main@257b26079f11f6a03c23d5136d6910e78c6a5bab`。它不调用模型、
+不初始化 Ray、不运行 EDA，也不改变现有 `campaign.py` 或 `interactive.py`。
 
-Extractor 回答事实是什么；Selector 回答当前哪些信息重要；runtime bridge 回答何时交付。可以部署在同一个插件包，但测试与领域逻辑分开。
+## CC-00：继承的强基线
 
-## 数据路径
+现有 BOOM harness 已经提供候选谱系、冻结合同、阶段结果、哈希、原始工具
+产物和最终验证状态。当前 raw Agent 能读取 baseline source、baseline timing、
+允许范围内的 baseline RTL 和紧凑评估结果，并能请求既有构建/验证工具。
 
-EvaluationManifest + 原始产物 → 字段解析/校验 → DesignIndex 关联 → 同条件比较 → EvidenceSnapshot → 按状态清单选择 → ContextPacket。
+它还不能查询当前候选的完整生成 RTL、完整 Vivado 报告或运行任意分析脚本。
+因此后续消融的对照名称必须是“相对当前 raw-tool harness”，不能把它描述为
+没有工具的裸模型基线。
 
-重解析在评估完成、产物封存后做一次。模型 pre-step 只查询、选择和交付，不重复扫描大日志，不自行发起昂贵 EDA。
+## CC-01：已实现的数据路径
 
-## 清单
+```text
+CandidateArtifact + result.json + EvaluationArtifact + frozen manifest
+                              ↓ legacy adapter
+                    EvaluationManifest
+                              ↓
+                     EvidenceSnapshot
+                              ↓ recipe
+                      EvidenceBundle
+                              ↓ policy
+                       ContextPacket
+                              ↓
+                 Markdown + bounded drilldown
+```
 
-始终保留目标、约束、候选归属、验证状态、缺失和出处。验证失败优先提供原始错误、阶段、修改关联与反例引用；成功时提供按阶段区分的性能、面积、路径采集范围和可比历史。
+领域层只使用 Python 标准库。内容身份来自规范 JSON 的 SHA-256；时间戳只进入
+独立事件记录，不参与 manifest、snapshot、bundle 或 packet 的内容哈希。
+文件存储采用临时文件加原子发布，已有同哈希记录只读复用。
 
-清单是版本化字段/来源/条件/优先级/预算规则，不是硬编码目标解法。1800 token 等示例预算只用于启动，不是已验证最优值。
+### v1 对象与不变量
 
-## 禁止
+| 对象 | v1 内容 | 关键不变量 |
+|---|---|---|
+| `CandidateRef` | 实验命名空间、候选 ID、源码/合同哈希、真实父版本 | 相同候选 ID 在不同实验中不是同一对象 |
+| `WorkingState` | 当前源码、最后评估对象及版本关系 | 当前源码变化时 packet 显示 `not_evaluated`，不继承历史 delta |
+| `ArtifactRef` | 内容哈希、attempt、受控根内位置、大小和访问级别 | 只能用已登记引用读取，读取前重新校验哈希 |
+| `EvaluationManifest` | 原始/规范 stage、合同/工具/参考身份、状态和产物 | `synthesis` 映射为 `post_synth`，原值仍保留 |
+| `Measurement` | 定义版本、有限数值或 null、单位、阶段、范围和来源 | 拒绝 NaN、Inf 和未知单位 |
+| `CheckRecord` | `executed` 与 `pass/fail/inconclusive` | 未执行不能表示为成功或失败 |
+| `EvidenceSnapshot` | 某 attempt 的检查、测量、观察、缺失和来源 | 缺失不填零，解析失败不静默吞掉 |
+| `EvidenceBundle` | 针对问题的失败摘要或严格可比差值 | 跨阶段、器件、时钟、工具、定义或单位不做 delta |
+| `ContextPacket` | 选择结果、遗漏、缺失、下钻引用和字节预算 | 是可重建视图，不是新的测量权威 |
 
-- 缺失填零、静默吞掉解析失败、旧候选结果冒充当前结果。
-- 把 top-k 中未出现说成瓶颈彻底消除。
-- 逻辑深度冒充物理时序，构建成功冒充等价证明。
-- 把历史根因和推荐变换藏入数据清洗。
-- 默认用第二个 LLM 扫描全部日志；必要的辅助解释须标注假设并计费。
+缺失原因固定为 `not_run`、`not_collected`、`parse_failed`、
+`not_comparable`、`not_supported` 和 `inconclusive`。
 
-## 下钻与遗漏
+## 配方
 
-拟提供 inspect_evidence、inspect_design、inspect_artifact、replay_counterexample。有界且带版本，保留原始片段。清单不是观察上限；遗漏和证据选择需要可审计。
+`failure_summary_v1` 保存失败阶段、类别、检查范围、候选记录引用、原始错误
+引用、seed、expected/actual 及明确缺失项。摘要不会复制完整日志。
 
-## 必测故障
+`comparable_delta_v1` 只比较同阶段、同器件、同时钟、同工具指纹、同参考输入、
+同指标定义和同单位的结构化数值。任一条件不成立时返回 `not_comparable`，
+不产生差值；当前工作源码尚未评估时同样禁止继承旧性能。
 
-部分写入日志、阶段中断、未知单位、候选错配、分支并行、策略更新、恢复和取消、压缩重建、缓存失效、目标知识泄漏、映射失败、日志包含伪指令。
+## 离线使用
 
-## 有效性
+在 harness 目录安装后运行：
 
-测端到端交付、定位成本、原始读取、漏证据率、错误候选及准备成本。记录 Agent 引用某证据是使用遥测，不等于该证据导致成功；因果价值由删减字段/机制的消融验证。
+```bash
+chia-chipcontext prepare \
+  --request chia_boom/chipcontext/fixtures/success/request.json \
+  --output /tmp/chipcontext-success
+
+chia-chipcontext read-artifact \
+  --store /tmp/chipcontext-success \
+  --artifact <registered-ref-id> \
+  --start-line 1 --line-count 20 --limit-bytes 8192
+```
+
+查询默认上限 8 KiB，硬上限 64 KiB，返回原始内容哈希、实际 byte/line span、
+截断标志和下一页 cursor。`controlled` 产物必须显式授权。路径穿越、符号链接
+逃逸、未知引用、内容变化和引用元数据篡改均会拒绝读取。
+
+## 公开安全样例与校准边界
+
+仓库提交两个明确标为 synthetic 的中性样例：
+
+- success：build、interface、differential 和 post-synth 通过，产生可比差值；
+- failure：build 通过而 differential 失败，可从摘要读回原始反例行。
+
+固定输入从空目录连续准备三次时，四级证据哈希和 Markdown 必须完全一致。
+这些样例验证 schema、存储和查询，不代表真实 BOOM parser 校准。私有真实证据
+校准只公开输入/输出哈希、字段计数、缺失/冲突、耗时和读取字节数，不发布
+候选源码、补丁、RTL、完整日志、服务器身份或凭据。
+
+本批的实际测试、受控校准和环境门禁结果见
+[`implementation/chipcontext-cc01.md`](implementation/chipcontext-cc01.md)。
+
+## 当前没有实现
+
+- 没有把 packet 交给 Agent，也没有新增 `feedback_mode`；
+- 没有 DesignIndex、源码到 RTL 的实体映射或 CC-02 选择策略；
+- 没有 CC-03 runtime bridge、CC-04 Agent 消融、CC-05 留出模块；
+- 没有 CC-06 AI workload 或软硬件协同设计；
+- 当前字节预算只防止序列化溢出，不表示已经找到最优 token 预算；
+- 尚未声称 ChipContext 提高了优化成功率、速度、token 效率或 QoR。
+
+下一批 CC-02 应在不改变现有搜索算法的前提下，加入确定性字段选择与遗漏
+审计，并先用固定 replay 比较完整 raw evidence、ContextPacket 和按需下钻。

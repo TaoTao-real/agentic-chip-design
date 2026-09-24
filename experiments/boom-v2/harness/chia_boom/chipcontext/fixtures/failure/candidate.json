@@ -1,0 +1,12 @@
+{
+  "campaign_id": "synthetic-failure-campaign",
+  "id": "neutral-failure-candidate-01",
+  "target": "NeutralQueue",
+  "arm": "fixture",
+  "seed": 43,
+  "index": 1,
+  "parent_id": null,
+  "parent_source_sha256": null,
+  "source": "class NeutralQueue extends Module {\n  val io = IO(new Bundle {})\n}\n",
+  "diff": "synthetic fixture diff; no production design content"
+}

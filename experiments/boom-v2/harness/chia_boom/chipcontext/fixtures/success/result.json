@@ -1,0 +1,44 @@
+{
+  "candidate": {
+    "id": "neutral-success-candidate-01"
+  },
+  "search_evaluation": {
+    "candidate_id": "neutral-success-candidate-01",
+    "status": "complete",
+    "stage": "synthesis",
+    "failure_class": null,
+    "retryable": false,
+    "raw_error": "",
+    "build_ok": true,
+    "lint_ok": false,
+    "interface_ok": true,
+    "correctness_ok": true,
+    "candidate_valid": true,
+    "promotable": true,
+    "final_valid": false,
+    "valid_improvement": false,
+    "post_synth": {
+      "clock_period_ns": 5.0,
+      "wns_ns": -4.0,
+      "critical_delay_ns": 9.0,
+      "tns_ns": -12.0,
+      "failing_endpoints": 2,
+      "total_endpoints": 128,
+      "slice_luts": 102,
+      "slice_registers": 80
+    },
+    "post_route": null,
+    "differential": {
+      "passed": true,
+      "interface_ok": true,
+      "cycles": 1000000,
+      "seed": 41
+    },
+    "regression": null,
+    "stages": [
+      {"stage": "elaboration", "success": true, "status": "complete"},
+      {"stage": "correctness", "success": true, "status": "complete"},
+      {"stage": "synthesis", "success": true, "status": "complete"}
+    ]
+  }
+}

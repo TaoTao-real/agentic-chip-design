@@ -1,0 +1,41 @@
+{
+  "candidate": {
+    "id": "neutral-failure-candidate-01"
+  },
+  "search_evaluation": {
+    "candidate_id": "neutral-failure-candidate-01",
+    "status": "candidate_invalid",
+    "stage": "correctness",
+    "failure_class": "candidate_correctness_failure",
+    "retryable": false,
+    "raw_error": "cycle 17: output mismatch expected=0x2a actual=0x2b",
+    "build_ok": true,
+    "lint_ok": false,
+    "interface_ok": true,
+    "correctness_ok": false,
+    "candidate_valid": false,
+    "promotable": false,
+    "final_valid": false,
+    "valid_improvement": false,
+    "post_synth": null,
+    "post_route": null,
+    "differential": {
+      "passed": false,
+      "interface_ok": true,
+      "cycles": 18,
+      "seed": 43,
+      "expected": "0x2a",
+      "actual": "0x2b"
+    },
+    "regression": null,
+    "stages": [
+      {"stage": "elaboration", "success": true, "status": "complete"},
+      {
+        "stage": "correctness",
+        "success": false,
+        "status": "candidate_invalid",
+        "failure_class": "candidate_correctness_failure"
+      }
+    ]
+  }
+}

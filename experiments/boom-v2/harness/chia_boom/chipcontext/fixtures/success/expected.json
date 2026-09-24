@@ -1,0 +1,8 @@
+{
+  "bundle": "d816ddcb1d71acb3c4ac2209bef343bfbaf72cc3fa967a6e92ac7e376b37596f",
+  "evaluation_manifest": "59920f9599e5f4b7fd92fba25d39d6930418b5f2ef24ac86c30b5f4b5feb0204",
+  "packet": "18d82fec14774b388e8019a3b9a4b57f287cf4d8e2805bc45853fc9b57df058b",
+  "packet_bytes": 1705,
+  "schema_version": "chipcontext.preparation-result.v1",
+  "snapshot": "a95f6b179532924e365c85ba16da79d6d06fc3e96e2a36379933291393a9daa2"
+}

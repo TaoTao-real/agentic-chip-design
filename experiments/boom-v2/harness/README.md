@@ -14,7 +14,7 @@ store and must not be copied into a blind Agent workspace.
 | Target component | Implementation in this harness | Status |
 |---|---|---|
 | Design Core | frozen BOOM Chisel source plus generated RTL | implemented legacy adapter |
-| ChipContext | raw source/timing/RTL inspection tools and compact feedback | partial; no DesignIndex/EvidenceSnapshot/ContextPacket yet |
+| ChipContext | raw inspection tools plus deterministic legacy evidence adapter | CC-01 offline slice implemented; no DesignIndex/runtime delivery yet |
 | Loop Engine | `campaign.py`, `interactive.py`, `qualification.py`, `finalize.py` | implemented through CHIA 1.0.1 and Ray |
 | EvidenceStore | immutable campaign directories, hashes and JSON artifacts | implemented as files |
 | KnowledgeStore | `knowledge.py` and generic Design Episodes | implemented with access modes |
@@ -68,6 +68,8 @@ chia-boom finalize
 chia-boom report
 chia-boom interactive
 chia-boom interactive-finalize
+chia-chipcontext prepare
+chia-chipcontext read-artifact
 ```
 
 `doctor` checks the host, pinned checkouts and optional model access without
@@ -81,11 +83,20 @@ procedure. The portable config is
 The reusable Codex workflow is published at
 [`skills/chia-boom-agent-reproduction/`](skills/chia-boom-agent-reproduction/SKILL.md).
 
+`chia-chipcontext` is an offline command. It transforms sealed legacy candidate
+and evaluation inputs into content-addressed manifests, snapshots, question
+bundles and context packets, then provides bounded reads of registered raw
+artifacts. It does not require a model credential, start Ray, run EDA, or change
+the existing campaign behavior. See [`docs/chipcontext.md`](../../../docs/chipcontext.md).
+
 ## What the published tests establish
 
 The unit suite checks information isolation, exact edits, candidate lineage,
 failure classification, validity transitions, CHIA decoration, knowledge
-access and the B/C report gates. It does not run Chipyard, Verilator or Vivado.
+access and the B/C report gates. The ChipContext slice additionally tests stable
+hashes, missing/evaluated state semantics, strict comparability, bounded reads,
+path escape resistance and fail-closed budgets. It does not run Chipyard,
+Verilator or Vivado.
 Physical results in the parent experiment README remain reported evidence from
 the controlled environment, not a CI reproduction.
 

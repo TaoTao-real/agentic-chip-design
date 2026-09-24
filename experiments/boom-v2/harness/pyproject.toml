@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 chia-boom = "chia_boom.cli:main"
+chia-chipcontext = "chia_boom.chipcontext.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["chia_boom*"]
@@ -23,6 +24,7 @@ include = ["chia_boom*"]
 chia_boom = [
   "config/*.json",
   "design_episodes/*.json",
+  "chipcontext/fixtures/*/*",
   "scripts/*.py",
   "scripts/*.sh",
   "tools/*.py",

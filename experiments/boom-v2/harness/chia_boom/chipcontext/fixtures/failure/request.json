@@ -1,0 +1,27 @@
+{
+  "schema_version": "chipcontext.prepare-request.v1",
+  "experiment_id": "synthetic-failure-campaign",
+  "input_root": ".",
+  "candidate": "candidate.json",
+  "evaluation": "result.json",
+  "sealed_manifest": "FROZEN_RUN_MANIFEST.json",
+  "baseline": "baseline-ppa.json",
+  "working_source": "working-source.scala",
+  "qualification": "QUALIFICATION.json",
+  "attempt_id": "evaluation-attempt-01",
+  "access": "public",
+  "artifacts": [
+    {
+      "name": "differential_stderr",
+      "path": "differential.stderr",
+      "kind": "differential_stderr"
+    }
+  ],
+  "policy": {
+    "revision": "cc01-static-required-v1",
+    "max_payload_bytes": 16384
+  },
+  "knowledge_acl": {
+    "target_specific": false
+  }
+}

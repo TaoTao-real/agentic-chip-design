@@ -1,15 +1,19 @@
-# 领域数据契约草案
+# 领域数据契约
 
-状态：拟定义，schema 待 M0/M1 评审。本仓库配置不是可直接运行的上游 DSH/PyCircuit API。
+状态：CC-01 的 `CandidateRef`、`WorkingState`、`ArtifactRef`、
+`EvaluationManifest`、`Measurement`、`CheckRecord`、`EvidenceSnapshot`、
+`EvidenceBundle` 和 `ContextPacket` 已作为独立离线层实现；其余对象仍是草案。
+这些 schema 不是上游 DSH/PyCircuit API。
 
 | 对象 | 内容 | 不变量 |
 |---|---|---|
 | OptimizationContract | objective、allowed_changes、frozen_paths、budget、final_gates、stop_policy、revision | 实验前冻结，修改产生新实验版本 |
 | DesignSnapshot | source_hash、compiler_revision、parameters、artifact_refs | 指向唯一源版本，不混入历史测量 |
 | DesignIndex | revision、entities、origins、edges、interfaces、cycle_boundaries | 编译派生只读，不是第二份设计真相 |
-| EvaluationManifest | run_id、candidate_id、parent_id、design_revision、tools、constraints、stage、artifacts、status | 先封存再发布，不依赖全局 latest |
-| EvidenceSnapshot | manifest_id、metrics、failures、entity_mappings、source_refs、uncertainty | 数值、单位、阶段、环境和候选不可分离 |
-| ContextPacket | snapshot_refs、policy_revision、selected_facts、omissions、drilldown_refs、content_hash | 可重建选择视图，不是测量权威 |
+| EvaluationManifest | candidate/attempt、合同、工具、参考、原始/规范 stage、artifacts、status | CC-01 已实现；先封存再发布，不依赖全局 latest |
+| EvidenceSnapshot | manifest、checks、measurements、observations、missing、source_refs | CC-01 已实现；数值、单位、阶段、环境和候选不可分离 |
+| EvidenceBundle | recipe、facts、conditions、coverage、open_needs、drilldown | CC-01 已实现 failure/delta 两个最小配方 |
+| ContextPacket | snapshot_refs、policy_revision、selected、missing、drilldown_refs、content_hash | CC-01 已实现静态选择；可重建选择视图，不是测量权威 |
 | DesignEpisode | observation、hypothesis、patch_ref、validation_refs、outcome、applicability、visibility | 假设和事实分开，知识隔离可审计 |
 
 ## 设计、证据和经验
@@ -26,6 +30,8 @@
 
 ## 缓存和交付
 
-提取键包含产物哈希、解析器版本和配置；选择键另含策略、目标、设计与知识权限。交付状态按 session、branch、context generation、packet 隔离。消息持久化后再记录已交付；压缩后重建必要 snapshot。
+CC-01 的内容键绑定候选复合身份、合同、所有登记输入的内容哈希、parser revision
+和 packet policy。选择键另含策略与知识权限。runtime 交付状态尚未实现；后续应按
+session、branch、context generation 和 packet 隔离，并在消息持久化后记录已交付。
 
 [清单草案](../configs/evidence-policy.example.json) 仅描述建议行为。

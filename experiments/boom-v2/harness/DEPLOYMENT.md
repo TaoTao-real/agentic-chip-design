@@ -77,7 +77,26 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 python -c 'import chia, ray; print("ray", ray.__version__)'
 chia-boom --help
+chia-chipcontext --help
 ```
+
+### 3.1 只复测 ChipContext CC-01
+
+CC-01 的公开样例只使用 Python 标准库，不要求 Chipyard、Ray、Vivado、
+Verilator 或 DeepSeek key。仍建议在上面的 Python 3.12 环境中执行：
+
+```bash
+python -m unittest chia_boom.tests.test_chipcontext -v
+OUT=/tmp/chipcontext-success
+chia-chipcontext prepare \
+  --request chia_boom/chipcontext/fixtures/success/request.json \
+  --output "$OUT"
+cat "$OUT/context.md"
+```
+
+success 和 failure fixture 内的 `expected.json`、`expected-context.md` 是固定
+预期；测试会分别从三个空输出目录重建并核对内容哈希。它们是 synthetic 数据，
+不能替代下面真实 BOOM 环境的 qualification、smoke 或私有证据 parser 校准。
 
 `pyproject.toml` 固定 `chialoops==1.0.1`；其依赖固定 Ray 2.54.0。
 本仓库不复制 CHIA 源码，依赖来源和许可证见
