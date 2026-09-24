@@ -11,11 +11,13 @@ from chia.trace.profiler import get_collector, start_collector, stop_collector
 from .artifacts import dump_json, load_json, sha256_file
 from .campaign import campaign_report, init_campaign, run_campaign
 from .core import validate_config
+from .deployment import doctor
 from .environment import load_config
 from .finalize import finalize_campaign, reconcile_interactive_finalization
 from .frozen import seal_frozen_run, verify_frozen_run, verify_qualification
 from .interactive import finalize_interactive_issueq, run_interactive_issueq
 from .qualification import qualify
+from .smoke import run_baseline_smoke
 
 
 def connect(namespace: str, profile_dir: Path) -> None:
@@ -74,6 +76,34 @@ def command_qualify(args: argparse.Namespace) -> int:
         return 0 if result["passed"] else 1
     finally:
         stop_collector()
+
+
+def command_doctor(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    result = doctor(
+        config,
+        require_qualification=args.require_qualification,
+        check_api=args.check_api,
+    )
+    print(json.dumps(result, indent=2))
+    return 0 if result["passed"] else 2
+
+
+def command_smoke(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    validate_config(config)
+    result = run_baseline_smoke(
+        config,
+        config_path=args.config,
+        output=args.output,
+        target_id=args.target,
+        cycles=args.cycles,
+        seed=args.seed,
+        jobs=args.jobs,
+        force=args.force,
+    )
+    print(json.dumps(result, indent=2))
+    return 0 if result["passed"] else 3
 
 
 def command_start(args: argparse.Namespace, *, preflight: bool) -> int:
@@ -169,6 +199,18 @@ def build_parser() -> argparse.ArgumentParser:
     qualify_parser = sub.add_parser("qualify")
     qualify_parser.add_argument("--config", type=Path, required=True)
     qualify_parser.add_argument("--output", type=Path)
+    doctor_parser = sub.add_parser("doctor")
+    doctor_parser.add_argument("--config", type=Path, required=True)
+    doctor_parser.add_argument("--require-qualification", action="store_true")
+    doctor_parser.add_argument("--check-api", action="store_true")
+    smoke_parser = sub.add_parser("smoke")
+    smoke_parser.add_argument("--config", type=Path, required=True)
+    smoke_parser.add_argument("--output", type=Path, required=True)
+    smoke_parser.add_argument("--target")
+    smoke_parser.add_argument("--cycles", type=int, default=10_000)
+    smoke_parser.add_argument("--seed", type=int, default=20_260_924)
+    smoke_parser.add_argument("--jobs", type=int)
+    smoke_parser.add_argument("--force", action="store_true")
     for name in ("preflight", "run"):
         item = sub.add_parser(name)
         item.add_argument("--config", type=Path, required=True)
@@ -201,7 +243,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
-    if args.command == "qualify":
+    if args.command == "doctor":
+        code = command_doctor(args)
+    elif args.command == "smoke":
+        code = command_smoke(args)
+    elif args.command == "qualify":
         code = command_qualify(args)
     elif args.command == "preflight":
         code = command_start(args, preflight=True)

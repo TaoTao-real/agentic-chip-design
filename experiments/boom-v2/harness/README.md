@@ -58,7 +58,9 @@ feedback for C/D.
 The entry point exposes the frozen v13 workflow:
 
 ```text
+chia-boom doctor
 chia-boom qualify
+chia-boom smoke
 chia-boom preflight
 chia-boom run
 chia-boom resume
@@ -67,6 +69,11 @@ chia-boom report
 chia-boom interactive
 chia-boom interactive-finalize
 ```
+
+`doctor` checks the host, pinned checkouts and optional model access without
+printing or storing the API-key value. `smoke` performs a no-model-call,
+baseline-vs-baseline differential run from a private frozen snapshot before a
+user spends model tokens on search.
 
 Use [`DEPLOYMENT.md`](DEPLOYMENT.md) for the complete installation and replay
 procedure. The portable config is

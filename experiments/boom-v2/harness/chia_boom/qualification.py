@@ -172,6 +172,88 @@ class BoomQualificationTargetNode:
         return result
 
 
+class BoomQualificationResourceNode:
+    """Measure one representative elaboration+synthesis job in isolation."""
+
+    @ChiaFunction(
+        resources={"chipyard": 1, "boom_vivado": 1},
+        max_retries=0,
+    )
+    def run(
+        self,
+        *,
+        target: dict[str, Any],
+        config: dict[str, Any],
+        output_dir: str,
+        probe_id: int,
+    ) -> dict[str, Any]:
+        output = Path(output_dir)
+        output.mkdir(parents=True, exist_ok=True)
+        source_path = (
+            Path(config["remote"]["frozen_inputs_root"])
+            / target["id"]
+            / "baseline-source.scala"
+        )
+        candidate = CandidateArtifact(
+            campaign_id="qualification-resource-probe",
+            target=target["id"], arm="Q0-resource", seed=probe_id,
+            index=probe_id, parent_id=None, source=source_path.read_text(),
+            diff="baseline-resource-probe",
+            diagnosis=[{
+                "evidence": "baseline", "source_region": "none",
+                "hypothesis": "none", "predicted_effect": "none", "risk": "none",
+            }],
+            selected_hypothesis=0, visible_feedback="",
+            request_sha256="", response_sha256="", usage=None,
+        )
+        failure: dict[str, Any] | None = None
+        with _MemorySampler() as memory:
+            with acquire_workspace(config["remote"]) as lease:
+                elaboration = BoomElaborationNode().run(
+                    candidate=candidate,
+                    target=target,
+                    config=config,
+                    workspace=str(lease.workspace),
+                    output_dir=str(output / "elaboration"),
+                )
+                if not elaboration.success:
+                    failure = elaboration.to_dict()
+                else:
+                    synthesis = BoomVivadoNode().run(
+                        target=target,
+                        config=config,
+                        rtl_dir=elaboration.payload["rtl_dir"],
+                        output_dir=str(output / "vivado"),
+                        route=False,
+                        workspace_slot=str(lease.slot_root),
+                    )
+                    if not synthesis.success:
+                        failure = synthesis.to_dict()
+        result = {
+            "probe_id": probe_id,
+            "passed": failure is None,
+            "peak_tree_rss_bytes": memory.peak,
+        }
+        if failure is not None:
+            result["failure"] = failure
+        return result
+
+
+def qualified_parallel_runs(
+    requested: int,
+    probes: list[dict[str, Any]],
+    *,
+    memory_limit_bytes: int = 24 * 1024 ** 3,
+) -> tuple[int, int]:
+    """Open two slots only after two concurrently launched probes fit."""
+    if requested < 2:
+        peak = max((int(item.get("peak_tree_rss_bytes", 0)) for item in probes), default=0)
+        return 1, peak
+    combined = sum(int(item.get("peak_tree_rss_bytes", 0)) for item in probes)
+    passed = len(probes) == 2 and all(item.get("passed") for item in probes)
+    return (2 if passed and combined <= memory_limit_bytes else 1), combined
+
+
 def qualify(config: dict[str, Any], output: Path) -> dict[str, Any]:
     output.mkdir(parents=True, exist_ok=True)
     tool_versions = runtime_tool_versions(config)
@@ -216,8 +298,30 @@ def qualify(config: dict[str, Any], output: Path) -> dict[str, Any]:
     for target_id, ref in pending:
         targets_by_id[target_id] = get(ref)
     targets = [targets_by_id[target_id] for target_id in sorted(config["targets"])]
-    combined_peak = sum(int(item.get("peak_tree_rss_bytes", 0)) for item in targets)
-    slots = 2 if combined_peak <= 24 * 1024 ** 3 and all(item["passed"] for item in targets) else 1
+    requested_parallel_runs = min(
+        2, max(1, int(config.get("search", {}).get("parallel_runs", 1)))
+    )
+    resource_probes: list[dict[str, Any]] = []
+    if requested_parallel_runs >= 2 and all(item["passed"] for item in targets):
+        probe_node = BoomQualificationResourceNode()
+        target = config["targets"][sorted(config["targets"])[0]]
+        probe_refs = [
+            probe_node.run.chia_remote(
+                probe_node,
+                target=target,
+                config=config,
+                output_dir=str(output / f"resource-probe-{probe_id}"),
+                probe_id=probe_id,
+                _chia_display_name=f"qualify:resource-probe-{probe_id}",
+            )
+            for probe_id in (1, 2)
+        ]
+        # Both tasks are submitted before either result is collected, so the
+        # measurement exercises the two physical resource slots concurrently.
+        resource_probes = [get(ref) for ref in probe_refs]
+    slots, combined_peak = qualified_parallel_runs(
+        requested_parallel_runs, resource_probes
+    )
     replay_root = Path(config["remote"]["replay_root"])
     replay_required = bool(
         config.get("qualification", {}).get("q1_replay_required", False)
@@ -236,6 +340,7 @@ def qualify(config: dict[str, Any], output: Path) -> dict[str, Any]:
         "targets": targets,
         "combined_peak_tree_rss_bytes": combined_peak,
         "qualified_parallel_runs": slots,
+        "resource_probes": resource_probes,
         "q1_replay": replay,
     }
     request = qualification_request(config)

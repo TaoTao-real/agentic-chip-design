@@ -13,7 +13,14 @@ boundaries.
 1. Read the frozen experiment config; do not reconstruct commits or paths from memory.
 2. Read [references/environment.md](references/environment.md) when installing or qualifying a host.
 3. Read [references/protocol.md](references/protocol.md) before blind discovery or a memory ablation.
-4. Run `scripts/verify_environment.sh`. Treat source, tool, qualification, credential or frozen-input drift as a new experiment version.
+4. Run `CONFIG=... scripts/verify_environment.sh prequal` before Q0 and
+   `CONFIG=... scripts/verify_environment.sh postqual` afterward. Use the
+   `api` phase only when the user has supplied `DEEPSEEK_API_KEY`. Treat source,
+   tool, qualification, credential or frozen-input drift as a new experiment
+   version.
+5. Before spending model tokens, run the public `chia-boom smoke` frozen
+   baseline-vs-baseline gate and require `passed=true`, `interface_ok=true` and
+   `model_calls=0`.
 5. Inject the model key through `DEEPSEEK_API_KEY`; never save its value in config, prompts, commands, logs or artifacts.
 
 ## Choose the operation

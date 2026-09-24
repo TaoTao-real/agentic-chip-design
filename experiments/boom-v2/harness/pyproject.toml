@@ -20,4 +20,11 @@ chia-boom = "chia_boom.cli:main"
 include = ["chia_boom*"]
 
 [tool.setuptools.package-data]
-chia_boom = ["design_episodes/*.json", "tools/*.py", "tools/*.tcl"]
+chia_boom = [
+  "config/*.json",
+  "design_episodes/*.json",
+  "scripts/*.py",
+  "scripts/*.sh",
+  "tools/*.py",
+  "tools/*.tcl",
+]

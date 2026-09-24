@@ -12,5 +12,8 @@ against the selected config and the execution host:
 - `MegaBoomChiaBigCacheConfig`
 
 Use two physical slots only after qualification shows stable baselines and a
+pair of concurrently submitted representative elaboration+synthesis jobs has a
 combined peak memory below 24 GiB. Keep each physical task at no more than 12
-CPUs unless a new qualification version supports another setting.
+CPUs unless a new qualification version supports another setting. Run
+`chia-boom doctor` before qualification, `doctor --require-qualification`
+afterward, and the no-model `chia-boom smoke` before search.

@@ -17,6 +17,7 @@ from chia_boom.artifacts import (
     dump_json,
 )
 from chia_boom.campaign import packaged_process_memory, validate_process_memory_bundle
+from chia_boom.deployment import doctor
 from chia_boom.finalize import (
     _cached_finalization,
     BoomFinalizationNode,
@@ -37,7 +38,9 @@ from chia_boom.interactive import (
     _prepare_interactive_snapshot,
 )
 from chia_boom.nodes import BoomCandidateEvaluationNode, _run, acquire_workspace
+from chia_boom.qualification import qualified_parallel_runs
 from chia_boom.scripts.prepare_inputs import git_blob
+from chia_boom.smoke import run_baseline_smoke
 from chia_boom.tools.differential_test import compare_port_signatures
 
 
@@ -242,6 +245,101 @@ class IntegrityTests(unittest.TestCase):
             ).stdout.strip()
             source.write_text("dirty\n")
             self.assertEqual(git_blob(repo, revision, "T.scala"), b"committed\n")
+
+    def test_two_slots_require_two_passing_concurrent_resource_probes(self) -> None:
+        one_probe = [{"passed": True, "peak_tree_rss_bytes": 8 * 1024 ** 3}]
+        slots, combined = qualified_parallel_runs(2, one_probe)
+        self.assertEqual(slots, 1)
+        self.assertEqual(combined, 8 * 1024 ** 3)
+        two_probes = one_probe * 2
+        slots, combined = qualified_parallel_runs(2, two_probes)
+        self.assertEqual(slots, 2)
+        self.assertEqual(combined, 16 * 1024 ** 3)
+        slots, _ = qualified_parallel_runs(
+            2,
+            [
+                {"passed": True, "peak_tree_rss_bytes": 13 * 1024 ** 3},
+                {"passed": True, "peak_tree_rss_bytes": 13 * 1024 ** 3},
+            ],
+        )
+        self.assertEqual(slots, 1)
+
+    def test_baseline_smoke_freezes_inputs_and_never_records_api_key(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            config = self._reference(root)
+            config["remote"]["install_root"] = str(root / "install")
+            config["targets"]["T0"]["rtl_top"] = "Top"
+            qualification = root / "install/qualification/QUALIFICATION.json"
+            qualification.parent.mkdir(parents=True)
+            qualification.write_text('{"passed": true}\n')
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps(config))
+            output = root / "smoke"
+            secret = "must-not-appear-in-smoke-evidence"
+
+            def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+                run = output / "differential"
+                run.mkdir(parents=True)
+                (run / "result.json").write_text(json.dumps({
+                    "passed": True,
+                    "interface_ok": True,
+                    "cycles": 1000,
+                    "seed": 41,
+                }))
+                return subprocess.CompletedProcess(args=[], returncode=0, stdout="PASS", stderr="")
+
+            with (
+                mock.patch("chia_boom.smoke.verify_qualification"),
+                mock.patch("chia_boom.smoke.subprocess.run", side_effect=fake_run),
+                mock.patch.dict(os.environ, {"DEEPSEEK_API_KEY": secret}),
+            ):
+                result = run_baseline_smoke(
+                    config,
+                    config_path=config_path,
+                    output=output,
+                    target_id="T0",
+                    cycles=1000,
+                    seed=41,
+                )
+            self.assertTrue(result["passed"])
+            self.assertEqual(result["model_calls"], 0)
+            self.assertFalse(result["api_key_used"])
+            self.assertNotIn(secret, (output / "SMOKE.json").read_text())
+            self.assertTrue((output / "frozen/FROZEN_RUN_MANIFEST.json").is_file())
+
+    def test_deployment_doctor_records_only_credential_presence(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            config = self._reference(root)
+            config.update({
+                "version": "test",
+                "model": {
+                    "api_key_env": "DEEPSEEK_API_KEY",
+                    "api_base": "https://api.deepseek.com/v1",
+                    "id": "deepseek-v4-pro",
+                },
+                "environment": {
+                    "conda_setup": str(root / "conda.sh"),
+                    "vivado_settings": str(root / "vivado.sh"),
+                },
+                "arms": ["A", "B", "C", "D"],
+            })
+            config["remote"].update({
+                "workspace_slots": str(root / "slots"),
+                "install_root": str(root / "install"),
+            })
+            secret = "doctor-must-not-serialize-this-value"
+            with (
+                mock.patch("chia_boom.deployment.validate_config"),
+                mock.patch.dict(os.environ, {"DEEPSEEK_API_KEY": secret}),
+            ):
+                result = doctor(config)
+            rendered = json.dumps(result)
+            self.assertNotIn(secret, rendered)
+            credential = result["checks"]["model_credential"]
+            self.assertIn("present=true", credential["detail"])
+            self.assertFalse(credential["required"])
 
     def test_arm_d_packaged_memory_is_nonempty_and_generic(self) -> None:
         episodes = packaged_process_memory()
