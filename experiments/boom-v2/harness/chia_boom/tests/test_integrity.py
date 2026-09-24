@@ -348,7 +348,9 @@ class IntegrityTests(unittest.TestCase):
             root = Path(raw)
             config = self._reference(root)
             config["remote"]["install_root"] = str(root / "install")
-            config["physical"]["candidate_timeout_seconds"] = 1
+            # A cold hosted runner can spend more than one second starting
+            # login bash and Python before the fixture records its child PID.
+            config["physical"]["candidate_timeout_seconds"] = 5
             config["targets"]["T0"]["rtl_top"] = "Top"
             qualification = root / "install/qualification/QUALIFICATION.json"
             qualification.parent.mkdir(parents=True)
@@ -493,7 +495,9 @@ endmodule
                 cwd=root,
                 stdout_path=root / "stdout",
                 stderr_path=root / "stderr",
-                timeout=1,
+                # Leave enough time for a cold login shell to publish the PID;
+                # the command still must reach the real timeout path.
+                timeout=5,
             )
             self.assertEqual(rc, -9)
             pid = int((root / "child.pid").read_text())
