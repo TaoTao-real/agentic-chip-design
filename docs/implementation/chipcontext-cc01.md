@@ -11,8 +11,9 @@
   两个最小配方、ContextPacket、Markdown 渲染和有界原文查询。
 - 未实现：Agent/runtime 接入、`feedback_mode`、DesignIndex、CC-02～CC-06、
   付费模型调用和优化效果实验。
-- 与计划的偏差：冻结工具链的 `doctor --require-qualification` 未通过当前
-  资源门槛，因此按停止规则没有启动新的 baseline-vs-baseline smoke。
+- 与计划的偏差：初始 32/200 GiB 资源门槛不适合这台 32 GB/约 100 GiB
+  空闲磁盘服务器；经用户确认，为单槽、无模型 smoke 建立新配置版本，将门槛
+  调为 30/80 GiB。该门槛不用于双槽搜索资格。
 
 ## 公开安全样例
 
@@ -57,15 +58,17 @@ hash 和 8 个 post-synth 指标均与既有记录一致。失败 attempt 的身
 服务器 Python 3.12.3 环境实际执行：
 
 - ChipContext 离线故障矩阵：31 项通过；
-- 完整 harness：81 项通过；
+- 完整 harness：83 项通过；
 - `compileall`、两个 CLI help 和所有 shell 脚本语法检查通过；
-- 无 DS API 调用、无 Ray 启动、无 EDA 运行、模型费用为 0。
+- 无 DS API 调用、无 Ray 启动、无 Vivado 运行、模型费用为 0。
 
-环境脚本确认既有 qualification 仍为通过且两个物理槽的历史资格记录可读；
-随后 public `doctor --require-qualification` 的 qualification 子检查通过，但总门禁
-因当前可用内存低于固定 32 GiB 下限、可用磁盘低于固定 200 GiB 下限而失败。
-因此没有用旧 smoke 冒充本次 public smoke，也没有降低门槛或修改配置继续运行。
-私有 doctor 和环境日志只以哈希出现在机器可读摘要中。
+低资源配置下 public `doctor --require-qualification` 全部通过，沿用的新版
+qualification 合同和工具版本保持 current。第一次 smoke 暴露了一个入口反例：
+相对 `--output` 在子进程切换 cwd 后被再次解释，工具执行成功但结果写入错误目录；
+该失败证据被保留。入口随后在启动前把 config/output 规范化为绝对路径并增加
+回归测试。新目录中的 10,000 周期 baseline-vs-baseline smoke 通过全部八个
+定向阶段和随机差分，耗时 17.452 秒，模型调用为 0。私有日志和路径仍不公开；
+doctor、失败 smoke 和通过 smoke 只在机器可读摘要中保留哈希与必要统计。
 
 ## 结论与下一批建议
 

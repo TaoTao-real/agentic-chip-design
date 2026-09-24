@@ -16,6 +16,21 @@ from .core import validate_config
 from .frozen import TOOL_FILES, verify_qualification
 
 
+GIB = 1024 ** 3
+
+
+def _resource_threshold_bytes(
+    section: dict[str, Any], key: str, default_gib: float,
+) -> tuple[float, int]:
+    value = section.get(key, default_gib)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{key} must be a positive GiB number")
+    value = float(value)
+    if value <= 0:
+        raise ValueError(f"{key} must be a positive GiB number")
+    return value, int(value * GIB)
+
+
 def _command(command: list[str], *, timeout: int = 120) -> tuple[bool, str]:
     try:
         result = subprocess.run(
@@ -94,20 +109,32 @@ def doctor(
         logical_cpus >= required_cpus,
         f"found={logical_cpus} required={required_cpus}",
     )
+    minimum_memory_gib, minimum_memory_bytes = _resource_threshold_bytes(
+        config["physical"], "minimum_total_memory_gib", 32
+    )
     total_memory = int(psutil.virtual_memory().total)
     record(
         "memory",
-        total_memory >= 32 * 1024 ** 3,
-        f"total_bytes={total_memory} required_bytes={32 * 1024 ** 3}",
+        total_memory >= minimum_memory_bytes,
+        (
+            f"total_bytes={total_memory} required_bytes={minimum_memory_bytes}; "
+            f"configured_gib={minimum_memory_gib:g}"
+        ),
     )
     disk_path = Path(config["remote"]["install_root"])
     while not disk_path.exists() and disk_path != disk_path.parent:
         disk_path = disk_path.parent
+    minimum_disk_gib, minimum_disk_bytes = _resource_threshold_bytes(
+        config["remote"], "minimum_free_disk_gib", 200
+    )
     free_disk = int(shutil.disk_usage(disk_path).free)
     record(
         "disk",
-        free_disk >= 200 * 1024 ** 3,
-        f"path={disk_path}; free_bytes={free_disk}; required_bytes={200 * 1024 ** 3}",
+        free_disk >= minimum_disk_bytes,
+        (
+            f"path={disk_path}; free_bytes={free_disk}; "
+            f"required_bytes={minimum_disk_bytes}; configured_gib={minimum_disk_gib:g}"
+        ),
     )
     for executable in ("git", "ray", "verilator", "java"):
         found = shutil.which(executable)

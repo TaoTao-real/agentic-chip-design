@@ -70,15 +70,39 @@
     }
   },
   "environment_review": {
-    "doctor_failed_required_checks": [
-      "disk",
-      "memory"
-    ],
-    "doctor_passed": false,
-    "doctor_sha256": "7b0af1c7b60de60b99e2601a885b8eb7a9fe3b605a5eb9a4bcfcc52465e80ccb",
+    "doctor_failed_required_checks": [],
+    "doctor_passed": true,
+    "doctor_sha256": "26ace214781b043a513802b4777b050c21ef095b848afd61951de76bc8860db8",
     "existing_qualification_current": true,
-    "new_baseline_smoke": "not_run",
-    "new_baseline_smoke_reason": "doctor_required_resource_gate_failed",
+    "failed_smoke": {
+      "cycles": 10000,
+      "reason": "relative_output_path_resolved_after_subprocess_cwd_change",
+      "sha256": "6273c620e73db52e15204402ba1c6355c6cbf91ea0cad8f4cb1eeca1656af95e",
+      "status": "failed"
+    },
+    "measured_resources": {
+      "available_memory_bytes": 26996989952,
+      "free_disk_bytes": 107979886592,
+      "logical_cpus": 64,
+      "total_memory_bytes": 33491304448
+    },
+    "new_baseline_smoke": {
+      "api_key_used": false,
+      "cycles": 10000,
+      "differential_result_sha256": "4ccb1f269fbd7830f67b064dd826b1d4f61a7085a2ba3ac9cc438ea82111fc83",
+      "elapsed_seconds": 17.451859642053023,
+      "frozen_run_fingerprint": "4b3a1f1f90eb9420dab79d54deead01f074b4d393b063332c7811111d447c870",
+      "jobs": 12,
+      "model_calls": 0,
+      "seed": 20260925,
+      "sha256": "c63346f501ea2de54ec7ea1eb9a02b1e6edd70b092f76e496d13ffc73bc9ca1d",
+      "status": "passed"
+    },
+    "resource_thresholds": {
+      "minimum_free_disk_gib": 80,
+      "minimum_total_memory_gib": 30,
+      "scope": "single_slot_no_model_smoke"
+    },
     "verify_environment_passed": true,
     "verify_environment_sha256": "36c45681cc349cb03e66834760cae2f6ca245fe95f65a0304bdb0dc09efd6fe5"
   },

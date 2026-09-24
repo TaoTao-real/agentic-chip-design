@@ -32,6 +32,12 @@ API key 不属于实验输入包。所有命令只从 `DEEPSEEK_API_KEY` 环境�
 | Java | OpenJDK 11（受控环境） | BOOM Chisel elaboration |
 | Scala | 由冻结 Chipyard 环境提供 | BOOM Chisel elaboration |
 
+`doctor` 默认仍要求 32 GiB 总内存和 200 GiB 可用磁盘。仅运行单槽、无模型的
+资格或 smoke 时，可以在新实验配置中显式设置
+`physical.minimum_total_memory_gib` 和 `remote.minimum_free_disk_gib`；该调整
+必须记录实测资源和用途，不能沿用为双槽搜索资格，也不会改变硬件/工具
+qualification 指纹。
+
 冻结的源码版本：
 
 - Chipyard `4ab72313087580a44d647b52923389a06ec0712f`
