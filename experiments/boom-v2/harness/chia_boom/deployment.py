@@ -113,11 +113,22 @@ def doctor(
         found = shutil.which(executable)
         record(f"executable:{executable}", bool(found), found or "not found")
 
-    conda_setup = Path(config["environment"]["conda_setup"])
-    vivado_settings = Path(config["environment"]["vivado_settings"])
-    record("conda_setup", conda_setup.is_file(), str(conda_setup))
-    record("vivado_settings", vivado_settings.is_file(), str(vivado_settings))
-    if vivado_settings.is_file():
+    environment = config.get("environment", {})
+    conda_value = environment.get("conda_setup")
+    vivado_value = environment.get("vivado_settings")
+    conda_setup = Path(conda_value) if conda_value else None
+    vivado_settings = Path(vivado_value) if vivado_value else None
+    record(
+        "conda_setup",
+        bool(conda_setup and conda_setup.is_file()),
+        str(conda_setup) if conda_setup else "not configured",
+    )
+    record(
+        "vivado_settings",
+        bool(vivado_settings and vivado_settings.is_file()),
+        str(vivado_settings) if vivado_settings else "not configured",
+    )
+    if vivado_settings and vivado_settings.is_file():
         ok, detail = _command([
             "bash", "-lc",
             f"source {shlex.quote(str(vivado_settings))}; vivado -version | head -3",

@@ -341,6 +341,33 @@ class IntegrityTests(unittest.TestCase):
             self.assertIn("present=true", credential["detail"])
             self.assertFalse(credential["required"])
 
+    def test_deployment_doctor_reports_missing_environment_without_crashing(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            config = self._reference(root)
+            config.update({
+                "version": "legacy-test",
+                "model": {
+                    "api_key_env": "DEEPSEEK_API_KEY",
+                    "api_base": "https://api.deepseek.com/v1",
+                    "id": "deepseek-v4-pro",
+                },
+                "arms": ["A", "B", "C", "D"],
+            })
+            config["remote"].update({
+                "workspace_slots": str(root / "slots"),
+                "install_root": str(root / "install"),
+            })
+            with mock.patch("chia_boom.deployment.validate_config"):
+                result = doctor(config)
+            self.assertFalse(result["passed"])
+            self.assertEqual(
+                result["checks"]["conda_setup"]["detail"], "not configured"
+            )
+            self.assertEqual(
+                result["checks"]["vivado_settings"]["detail"], "not configured"
+            )
+
     def test_arm_d_packaged_memory_is_nonempty_and_generic(self) -> None:
         episodes = packaged_process_memory()
         self.assertGreater(len(episodes), 0)
