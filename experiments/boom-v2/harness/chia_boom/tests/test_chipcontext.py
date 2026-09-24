@@ -395,6 +395,27 @@ class StoreAndBudgetTests(ChipContextTestCase):
         with self.assertRaisesRegex(SchemaError, "symlink"):
             self.prepare(fixture, "symlink-out")
 
+    def test_core_input_traversal_is_rejected_before_parsing(self) -> None:
+        fixture = self.copy_fixture("success")
+        outside = self.root / "outside-candidate.json"
+        outside.write_text((fixture / "candidate.json").read_text())
+        request = self.read_json(fixture / "request.json")
+        request["candidate"] = "../outside-candidate.json"
+        self.write_json(fixture / "request.json", request)
+        with self.assertRaisesRegex(SchemaError, "controlled input root"):
+            self.prepare(fixture)
+
+    def test_core_input_symlink_is_rejected_before_parsing(self) -> None:
+        fixture = self.copy_fixture("success")
+        outside = self.root / "outside-candidate.json"
+        outside.write_text((fixture / "candidate.json").read_text())
+        (fixture / "candidate-link.json").symlink_to(outside)
+        request = self.read_json(fixture / "request.json")
+        request["candidate"] = "candidate-link.json"
+        self.write_json(fixture / "request.json", request)
+        with self.assertRaisesRegex(SchemaError, "symlink"):
+            self.prepare(fixture)
+
     def test_controlled_artifact_requires_explicit_access(self) -> None:
         fixture = self.copy_fixture("failure")
         request = self.read_json(fixture / "request.json")

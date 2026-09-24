@@ -356,7 +356,24 @@ class ChipContextService:
                 return None
             if not isinstance(raw, str) or Path(raw).is_absolute():
                 raise SchemaError(f"{name} must be a relative path")
-            return input_root / raw
+            relative = Path(raw)
+            if ".." in relative.parts:
+                raise SchemaError(f"{name} escapes the controlled input root")
+            cursor = input_root
+            for component in relative.parts:
+                if component == ".":
+                    continue
+                cursor = cursor / component
+                if cursor.is_symlink():
+                    raise SchemaError(f"{name} traverses a symlink")
+            resolved = (input_root / relative).resolve(strict=True)
+            try:
+                resolved.relative_to(input_root)
+            except ValueError as exc:
+                raise SchemaError(
+                    f"{name} escapes the controlled input root"
+                ) from exc
+            return resolved
 
         candidate_path = path_for("candidate")
         result_path = path_for("evaluation")
@@ -483,10 +500,6 @@ class ChipContextService:
             "tool_fingerprint": tool_fingerprint,
             "reference_fingerprint": reference_fingerprint,
         }
-        condition_overrides = request.get("current_conditions") or {}
-        if not isinstance(condition_overrides, dict):
-            raise SchemaError("current_conditions must be an object")
-        conditions.update(condition_overrides)
         checks, conflicts = _checks(evaluation, refs["evaluation"].ref_id)
         measurements = _measurements(
             evaluation,

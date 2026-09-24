@@ -56,8 +56,8 @@ hash 和 8 个 post-synth 指标均与既有记录一致。失败 attempt 的身
 
 服务器 Python 3.12.3 环境实际执行：
 
-- ChipContext 离线故障矩阵：29 项通过；
-- 完整 harness：79 项通过；
+- ChipContext 离线故障矩阵：31 项通过；
+- 完整 harness：81 项通过；
 - `compileall`、两个 CLI help 和所有 shell 脚本语法检查通过；
 - 无 DS API 调用、无 Ray 启动、无 EDA 运行、模型费用为 0。
 
