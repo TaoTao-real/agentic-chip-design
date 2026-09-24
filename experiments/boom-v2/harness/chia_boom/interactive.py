@@ -25,8 +25,10 @@ from .frozen import (
     load_frozen_run_config,
     qualification_request,
     qualified_artifact_hashes,
+    runtime_tool_versions,
     seal_frozen_run,
     verify_frozen_run,
+    verify_qualification,
 )
 from .knowledge import MEMORY_MODES, MEMORY_TOOL_SPECS, KnowledgeStore
 from .nodes import BoomCandidateEvaluationNode
@@ -46,12 +48,26 @@ the best measured candidate. Do not claim improvement without tool evidence."""
 def _prepare_interactive_snapshot(
     config: dict[str, Any], output: Path
 ) -> dict[str, Any]:
+    qualification_path = (
+        Path(config["remote"]["install_root"])
+        / "qualification/QUALIFICATION.json"
+    )
+    qualification = load_json(qualification_path)
+    tool_versions = runtime_tool_versions(config)
+    verify_qualification(
+        config, qualification, tool_versions=tool_versions
+    )
     source_reference = {
         "qualification_fingerprint": qualification_request(config)["fingerprint"],
         "qualified_artifact_hashes": qualified_artifact_hashes(config),
+        "tool_versions": tool_versions,
     }
     source_reference["fingerprint"] = canonical_hash(source_reference)
     frozen_config = freeze_run_inputs(config, output / "frozen")
+    qualification_root = output / "frozen/qualification"
+    qualification_root.mkdir(parents=True)
+    dump_json(qualification_root / "QUALIFICATION.json", qualification)
+    dump_json(qualification_root / "TOOL_VERSIONS.json", tool_versions)
     frozen_manifest = seal_frozen_run(output / "frozen", frozen_config)
     manifest = {
         "schema_version": "interactive-frozen-run-v1",
@@ -71,12 +87,26 @@ def _prepare_interactive_snapshot(
 def _load_interactive_snapshot(
     requested_config: dict[str, Any], output: Path
 ) -> dict[str, Any]:
-    return load_frozen_run_config(
+    config = load_frozen_run_config(
         requested_config,
         root=output / "frozen",
         run_manifest=output / "INTERACTIVE_MANIFEST.json",
         schema_version="interactive-frozen-run-v1",
     )
+    qualification_root = output / "frozen/qualification"
+    qualification = load_json(qualification_root / "QUALIFICATION.json")
+    recorded_versions = load_json(
+        qualification_root / "TOOL_VERSIONS.json"
+    )
+    current_versions = runtime_tool_versions(config)
+    if current_versions != recorded_versions:
+        raise RuntimeError(
+            "interactive compiler, simulator, or EDA versions changed"
+        )
+    verify_qualification(
+        config, qualification, tool_versions=current_versions
+    )
+    return config
 
 
 def _interactive_system(memory_mode: str) -> str:

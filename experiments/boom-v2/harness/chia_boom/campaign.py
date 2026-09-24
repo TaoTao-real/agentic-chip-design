@@ -563,6 +563,7 @@ def campaign_report(campaign: Path) -> dict[str, Any]:
         best_delay = best.post_route["critical_delay_ns"] if best else None
         improvement = max(0.0, baseline_route - best_delay) if best_delay is not None else 0.0
         provider_tokens = sum(known_tokens) if len(known_tokens) == len(tokens) else None
+        provider_usage_complete = len(known_tokens) == len(tokens)
         search_eda_active_seconds = sum(
             float(row.get(
                 "search_active_seconds_total",
@@ -621,7 +622,7 @@ def campaign_report(campaign: Path) -> dict[str, Any]:
                 "best_post_route_delay_ns": best_delay,
                 "delay_improvement_ns": improvement,
                 "provider_tokens": provider_tokens,
-                "provider_usage_complete": len(known_tokens) == len(tokens),
+                "provider_usage_complete": provider_usage_complete,
                 "search_model_active_seconds": search_model_active_seconds,
                 "search_eda_active_seconds": search_eda_active_seconds,
                 "search_active_seconds": search_active_seconds,
@@ -632,7 +633,10 @@ def campaign_report(campaign: Path) -> dict[str, Any]:
                 "first_final_acceptance_active_seconds": final_acceptance_active_seconds,
                 "token_efficiency_ns_per_million": (
                     improvement * 1_000_000 / provider_tokens
-                    if provider_tokens else 0.0
+                    if provider_usage_complete
+                    and provider_tokens is not None
+                    and provider_tokens > 0
+                    else None
                 ),
                 "active_time_efficiency_ns_per_hour": (
                     improvement * 3600 / search_active_seconds
@@ -805,24 +809,45 @@ def paired_loop_analysis(rows: list[dict[str, Any]]) -> dict[str, Any]:
         return sum(row.get("valid_candidates", 0) for row in group) / max(
             1, sum(row.get("candidate_count", 0) for row in group)
         )
-    def median_metric(group: list[dict[str, Any]], name: str) -> float:
-        values = [float(row.get(name, 0.0)) for row in group]
-        return statistics.median(values) if values else 0.0
-    b_token_eff = median_metric(b_rows, "token_efficiency_ns_per_million")
-    c_token_eff = median_metric(c_rows, "token_efficiency_ns_per_million")
-    b_time_eff = median_metric(b_rows, "active_time_efficiency_ns_per_hour")
-    c_time_eff = median_metric(c_rows, "active_time_efficiency_ns_per_hour")
-    token_better = c_token_eff > b_token_eff
-    time_better = c_time_eff > b_time_eff
-    token_within = c_token_eff >= 0.8 * b_token_eff
-    time_within = c_time_eff >= 0.8 * b_time_eff
+    def complete_median(
+        group: list[dict[str, Any]], name: str
+    ) -> float | None:
+        values = [row.get(name) for row in group]
+        if not values or any(not isinstance(value, (int, float)) for value in values):
+            return None
+        return statistics.median(float(value) for value in values)
+    b_token_eff = complete_median(b_rows, "token_efficiency_ns_per_million")
+    c_token_eff = complete_median(c_rows, "token_efficiency_ns_per_million")
+    b_time_eff = complete_median(b_rows, "active_time_efficiency_ns_per_hour")
+    c_time_eff = complete_median(c_rows, "active_time_efficiency_ns_per_hour")
+    token_usage_complete = bool(b_rows and c_rows) and all(
+        row.get("provider_usage_complete") is True
+        for row in (*b_rows, *c_rows)
+    )
+    efficiency_evidence_complete = token_usage_complete and all(
+        value is not None
+        for value in (b_token_eff, c_token_eff, b_time_eff, c_time_eff)
+    )
+    efficiency_gate = False
+    if efficiency_evidence_complete:
+        assert b_token_eff is not None and c_token_eff is not None
+        assert b_time_eff is not None and c_time_eff is not None
+        token_better = c_token_eff > b_token_eff
+        time_better = c_time_eff > b_time_eff
+        token_within = c_token_eff >= 0.8 * b_token_eff
+        time_within = c_time_eff >= 0.8 * b_time_eff
+        efficiency_gate = (
+            (token_better and time_within)
+            or (time_better and token_within)
+        )
     gates = {
         "paired_results_complete": len(pairs) == expected_pairs,
         "wins_at_least_two_thirds": wins >= required_wins,
         "median_gain_at_least_five_percent": bool(gains and statistics.median(gains) >= 5.0),
         "valid_improved_runs_not_lower": sum(bool(row.get("valid_improvement")) for row in c_rows) >= sum(bool(row.get("valid_improvement")) for row in b_rows),
         "valid_candidate_rate_not_lower": rate(c_rows) >= rate(b_rows),
-        "efficiency_gate": (token_better and time_within) or (time_better and token_within),
+        "efficiency_evidence_complete": efficiency_evidence_complete,
+        "efficiency_gate": efficiency_gate,
         "all_compared_results_final_valid": len(pairs) == expected_pairs,
     }
     return {
@@ -835,6 +860,7 @@ def paired_loop_analysis(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "valid_candidate_rate": {"B": rate(b_rows), "C": rate(c_rows)},
         "median_token_efficiency": {"B": b_token_eff, "C": c_token_eff},
         "median_active_time_efficiency": {"B": b_time_eff, "C": c_time_eff},
+        "token_usage_complete": token_usage_complete,
         "gates": gates,
         "primary_pair_gates_pass": all(gates.values()),
     }

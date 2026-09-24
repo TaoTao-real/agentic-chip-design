@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
+import shlex
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +16,7 @@ from .frozen import (
     verify_frozen_run,
     verify_qualification,
 )
+from .nodes import _run
 
 
 def run_baseline_smoke(
@@ -74,28 +74,13 @@ def run_baseline_smoke(
         "--scenario", target_id,
         "--jobs", str(jobs or config["physical"]["cpus_per_job"]),
     ]
-    started = time.monotonic()
-    try:
-        completed = subprocess.run(
-            command,
-            text=True,
-            capture_output=True,
-            timeout=int(config["physical"]["candidate_timeout_seconds"]),
-        )
-        returncode = completed.returncode
-        stdout = completed.stdout
-        stderr = completed.stderr
-    except subprocess.TimeoutExpired as exc:
-        returncode = -9
-        stdout = exc.stdout or ""
-        stderr = exc.stderr or "smoke differential timed out"
-        if isinstance(stdout, bytes):
-            stdout = stdout.decode(errors="replace")
-        if isinstance(stderr, bytes):
-            stderr = stderr.decode(errors="replace")
-    elapsed = time.monotonic() - started
-    stdout_path.write_text(stdout)
-    stderr_path.write_text(stderr)
+    returncode, stdout, stderr, elapsed = _run(
+        shlex.join(command),
+        cwd=output,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        timeout=int(config["physical"]["candidate_timeout_seconds"]),
+    )
     result_path = run_dir / "result.json"
     differential = (
         json.loads(result_path.read_text()) if result_path.is_file() else None

@@ -10,7 +10,10 @@ from chia_boom.campaign import campaign_report, paired_loop_analysis, preflight_
 
 class ReportTests(unittest.TestCase):
     @staticmethod
-    def row(target: str, seed: int, arm: str, delay: float, efficiency: float) -> dict:
+    def row(
+        target: str, seed: int, arm: str, delay: float,
+        efficiency: float | None,
+    ) -> dict:
         return {
             "target": target, "seed": seed, "arm": arm,
             "best_post_route_delay_ns": delay,
@@ -18,6 +21,7 @@ class ReportTests(unittest.TestCase):
             "valid_improvement": True,
             "active_time_efficiency_ns_per_hour": 1.0,
             "token_efficiency_ns_per_million": efficiency,
+            "provider_usage_complete": efficiency is not None,
         }
 
     def test_pair_gate(self) -> None:
@@ -28,6 +32,7 @@ class ReportTests(unittest.TestCase):
                     "valid_candidates": 5, "candidate_count": 5,
                     "valid_improvement": True,
                     "active_time_efficiency_ns_per_hour": 1.0,
+                    "provider_usage_complete": True,
                 }
                 rows.append({
                     **common, "target": target, "seed": seed, "arm": "B",
@@ -43,6 +48,7 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(result["wins"], 6)
         self.assertTrue(result["primary_pair_gates_pass"])
         self.assertEqual(len(result["bootstrap_median_95_percent"]), 2)
+        self.assertTrue(result["token_usage_complete"])
 
     def test_single_target_blind_reproduction_pair_count(self) -> None:
         rows = []
@@ -53,6 +59,47 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(result["expected_pairs"], 3)
         self.assertEqual(result["required_wins"], 2)
         self.assertTrue(result["primary_pair_gates_pass"])
+
+    def test_pair_gate_rejects_bilateral_unknown_token_efficiency(self) -> None:
+        rows = []
+        for seed in (42, 43, 44):
+            b = self.row("T0", seed, "B", 10.0, None)
+            c = self.row("T0", seed, "C", 9.0, None)
+            c["active_time_efficiency_ns_per_hour"] = 2.0
+            rows.extend((b, c))
+        result = paired_loop_analysis(rows)
+        self.assertIsNone(result["median_token_efficiency"]["B"])
+        self.assertIsNone(result["median_token_efficiency"]["C"])
+        self.assertFalse(result["gates"]["efficiency_evidence_complete"])
+        self.assertFalse(result["gates"]["efficiency_gate"])
+        self.assertFalse(result["primary_pair_gates_pass"])
+        self.assertFalse(result["token_usage_complete"])
+
+    def test_pair_gate_rejects_unilateral_unknown_token_efficiency(self) -> None:
+        rows = []
+        for seed in (42, 43, 44):
+            rows.append(self.row("T0", seed, "B", 10.0, 1.0))
+            c = self.row("T0", seed, "C", 9.0, None)
+            c["active_time_efficiency_ns_per_hour"] = 2.0
+            rows.append(c)
+        result = paired_loop_analysis(rows)
+        self.assertEqual(result["median_token_efficiency"]["B"], 1.0)
+        self.assertIsNone(result["median_token_efficiency"]["C"])
+        self.assertFalse(result["gates"]["efficiency_evidence_complete"])
+        self.assertFalse(result["gates"]["efficiency_gate"])
+
+    def test_pair_gate_rejects_numeric_efficiency_with_incomplete_usage(self) -> None:
+        rows = []
+        for seed in (42, 43, 44):
+            rows.append(self.row("T0", seed, "B", 10.0, 1.0))
+            c = self.row("T0", seed, "C", 9.0, 2.0)
+            c["provider_usage_complete"] = False
+            c["active_time_efficiency_ns_per_hour"] = 2.0
+            rows.append(c)
+        result = paired_loop_analysis(rows)
+        self.assertFalse(result["token_usage_complete"])
+        self.assertFalse(result["gates"]["efficiency_evidence_complete"])
+        self.assertFalse(result["gates"]["efficiency_gate"])
 
     def test_campaign_report_loads_each_target_baseline(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

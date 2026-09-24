@@ -36,6 +36,7 @@ from chia_boom.frozen import (
 from chia_boom.interactive import (
     _load_interactive_snapshot,
     _prepare_interactive_snapshot,
+    finalize_interactive_issueq,
 )
 from chia_boom.nodes import BoomCandidateEvaluationNode, _run, acquire_workspace
 from chia_boom.qualification import qualified_parallel_runs
@@ -152,12 +153,36 @@ class IntegrityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             config = self._reference(root)
+            config["remote"]["install_root"] = str(root / "install")
+            versions = {
+                "python": "3.10", "java": "17", "verilator": "5",
+                "vivado": "2024.1", "chialoops": "1.0.1", "ray": "2",
+            }
+            request = qualification_request(config)
+            qualification = {
+                "passed": True,
+                "qualification_fingerprint": request["fingerprint"],
+                "qualified_artifact_hashes": qualified_artifact_hashes(config),
+                "tool_versions": versions,
+            }
+            qualification_path = (
+                root / "install/qualification/QUALIFICATION.json"
+            )
+            dump_json(qualification_path, qualification)
             output = root / "interactive"
             output.mkdir()
-            frozen_config = _prepare_interactive_snapshot(config, output)
+            with mock.patch(
+                "chia_boom.interactive.runtime_tool_versions",
+                return_value=versions,
+            ):
+                frozen_config = _prepare_interactive_snapshot(config, output)
             shared = root / "rtl/T0/Top.sv"
             shared.write_text("later shared golden\n")
-            restored = _load_interactive_snapshot(config, output)
+            with mock.patch(
+                "chia_boom.interactive.runtime_tool_versions",
+                return_value=versions,
+            ):
+                restored = _load_interactive_snapshot(config, output)
             self.assertEqual(restored, frozen_config)
             self.assertEqual(
                 (baseline_rtl(restored, "T0") / "Top.sv").read_text(),
@@ -169,6 +194,14 @@ class IntegrityTests(unittest.TestCase):
                     "frozen_run_fingerprint"
                 ],
             )
+            with (
+                mock.patch(
+                    "chia_boom.interactive.runtime_tool_versions",
+                    return_value=versions | {"vivado": "2025.1"},
+                ),
+                self.assertRaisesRegex(RuntimeError, "versions changed"),
+            ):
+                finalize_interactive_issueq(config, output)
 
             candidate = CandidateArtifact(
                 campaign_id="interactive", target="T0", arm="I", seed=41,
@@ -278,7 +311,7 @@ class IntegrityTests(unittest.TestCase):
             output = root / "smoke"
             secret = "must-not-appear-in-smoke-evidence"
 
-            def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+            def fake_run(*args: object, **kwargs: object) -> tuple[int, str, str, float]:
                 run = output / "differential"
                 run.mkdir(parents=True)
                 (run / "result.json").write_text(json.dumps({
@@ -287,11 +320,13 @@ class IntegrityTests(unittest.TestCase):
                     "cycles": 1000,
                     "seed": 41,
                 }))
-                return subprocess.CompletedProcess(args=[], returncode=0, stdout="PASS", stderr="")
+                Path(kwargs["stdout_path"]).write_text("PASS")
+                Path(kwargs["stderr_path"]).write_text("")
+                return 0, "PASS", "", 0.1
 
             with (
                 mock.patch("chia_boom.smoke.verify_qualification"),
-                mock.patch("chia_boom.smoke.subprocess.run", side_effect=fake_run),
+                mock.patch("chia_boom.smoke._run", side_effect=fake_run),
                 mock.patch.dict(os.environ, {"DEEPSEEK_API_KEY": secret}),
             ):
                 result = run_baseline_smoke(
@@ -307,6 +342,42 @@ class IntegrityTests(unittest.TestCase):
             self.assertFalse(result["api_key_used"])
             self.assertNotIn(secret, (output / "SMOKE.json").read_text())
             self.assertTrue((output / "frozen/FROZEN_RUN_MANIFEST.json").is_file())
+
+    def test_baseline_smoke_timeout_reaps_descendant_processes(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            config = self._reference(root)
+            config["remote"]["install_root"] = str(root / "install")
+            config["physical"]["candidate_timeout_seconds"] = 1
+            config["targets"]["T0"]["rtl_top"] = "Top"
+            qualification = root / "install/qualification/QUALIFICATION.json"
+            qualification.parent.mkdir(parents=True)
+            qualification.write_text('{"passed": true}\n')
+            tool = root / "tools/differential_test.py"
+            tool.write_text(
+                "import pathlib, subprocess, sys\n"
+                "child = subprocess.Popen([sys.executable, '-c', "
+                "'import time; time.sleep(30)'])\n"
+                "pathlib.Path('child.pid').write_text(str(child.pid))\n"
+                "child.wait()\n"
+            )
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps(config))
+            output = root / "smoke"
+            with mock.patch("chia_boom.smoke.verify_qualification"):
+                result = run_baseline_smoke(
+                    config,
+                    config_path=config_path,
+                    output=output,
+                    target_id="T0",
+                    cycles=1000,
+                    seed=41,
+                )
+            self.assertEqual(result["returncode"], -9)
+            self.assertFalse(result["passed"])
+            pid = int((output / "child.pid").read_text())
+            with self.assertRaises(ProcessLookupError):
+                os.kill(pid, 0)
 
     def test_deployment_doctor_records_only_credential_presence(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
