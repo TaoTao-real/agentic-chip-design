@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
+import psutil
+
 from chia.base.ChiaFunction import ChiaFunction
 
 from .artifacts import (
@@ -143,10 +145,30 @@ def _terminate_process_group(
 def _require_process_group_gone(
     process_group: int, workspace_slot: Path | None
 ) -> None:
-    try:
-        os.killpg(process_group, 0)
-    except ProcessLookupError:
-        return
+    deadline = time.monotonic() + 2
+    while True:
+        try:
+            os.killpg(process_group, 0)
+        except ProcessLookupError:
+            return
+        live_members = []
+        for process in psutil.process_iter(["pid", "status"]):
+            try:
+                if (
+                    os.getpgid(process.pid) == process_group
+                    and process.info.get("status") != psutil.STATUS_ZOMBIE
+                ):
+                    live_members.append(process.pid)
+            except (ProcessLookupError, PermissionError, psutil.Error):
+                continue
+        # A reaped group leader can briefly leave an orphaned zombie visible
+        # to killpg(0) on some Linux init implementations. Zombies cannot run
+        # or retain EDA resources, so they are not a cleanup failure.
+        if not live_members:
+            return
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.05)
     if workspace_slot is not None:
         _quarantine_workspace(workspace_slot, "process group survived cleanup")
     raise RuntimeError("process_group_cleanup_failed")
