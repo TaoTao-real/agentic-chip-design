@@ -1,6 +1,6 @@
 # ChipContext：确定性证据准备
 
-状态：**CC-00／CC-01、CC-02a 与 CC-02b 查询基础已实现；Agent/runtime 接入和效果消融尚未实现。**
+状态：**CC-00／CC-01、CC-02a 与 CC-02b 领域查询已实现；查询 CLI、Agent/runtime 接入和效果消融尚未实现。**
 
 首批实现位于
 [`experiments/boom-v2/harness/chia_boom/chipcontext/`](../experiments/boom-v2/harness/chia_boom/chipcontext/)，
@@ -131,10 +131,11 @@ stage 或数值不一致时记录 conflict，该指标不产生 delta。既有 B
 字段来源、公开样例、复测命令、受控校准边界和当前限制见
 [`implementation/chipcontext-cc02.md`](implementation/chipcontext-cc02.md)。
 
-## CC-02b：显式范围的查询基础
+## CC-02b：显式范围的领域查询
 
 查询基础用明确的 store、snapshot、候选和 attempt 定位封存证据，并回答候选
-检查状态、登记产物和有界原文读取。每个确定性答案保留适用源码版本、缺失、
+检查状态、登记产物、有界原文读取、失败观测、严格指标比较和已采集时序路径。
+每个确定性答案保留适用源码版本、缺失、
 冲突、证据条件和内容引用；当前工作源码变化时只显示 `historical`，不会把历史
 PPA 当作当前结果。
 
@@ -143,18 +144,20 @@ store 路径和权限来自可信注册表，查询内容与分页 cursor 不能
 的归属及内容身份。artifact 和 extraction 都可以成为事实来源；extraction 会展开
 到原始 artifact 做权限与哈希校验。所有查询在筛选前授权候选公共 envelope，空
 结果不会泄露受控候选身份；原文分页保持 UTF-8 字符完整，非法文本明确拒绝。
-答案不返回机器路径或 artifact 存储位置。公开纵向样例与
+答案不返回机器路径或 artifact 存储位置。指标比较逐项区分可比、缺失、冲突和
+不可比，delta 固定为 current-reference；路径查询保留原始 rank、top-k 和解析
+coverage，不把过滤结果称为全局最差路径。公开纵向样例与
 当前 API 边界见
 [`implementation/chipcontext-cc02.md`](implementation/chipcontext-cc02.md)。
 
 ## 当前没有实现
 
 - 没有把 packet 交给 Agent，也没有新增 `feedback_mode`；
-- 没有 DesignIndex、源码到 RTL 的实体映射或 CC-02b 的失败、指标比较和时序路径查询；
+- 没有 DesignIndex、源码到 RTL 的实体映射或公共 query CLI；
 - 没有 CC-03 runtime bridge、CC-04 Agent 消融、CC-05 留出模块；
 - 没有 CC-06 AI workload 或软硬件协同设计；
 - 当前字节预算只防止序列化溢出，不表示已经找到最优 token 预算；
 - 尚未声称 ChipContext 提高了优化成功率、速度、token 效率或 QoR。
 
-下一批 CC-02b 将在已封存 extraction 上加入显式 scope 的领域查询；它仍不接入
-搜索 runtime 或 Agent。
+下一批 CC-02b 将加入 query CLI、JSON/Markdown 渲染、最终输出预算、行范围续页
+和成本计量；它仍不接入搜索 runtime 或 Agent。

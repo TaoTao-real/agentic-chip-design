@@ -14,7 +14,7 @@ store and must not be copied into a blind Agent workspace.
 | Target component | Implementation in this harness | Status |
 |---|---|---|
 | Design Core | frozen BOOM Chisel source plus generated RTL | implemented legacy adapter |
-| ChipContext | deterministic legacy/raw evidence plus scoped query foundation | CC-02b PR-B1 implemented; no DesignIndex/runtime delivery yet |
+| ChipContext | deterministic legacy/raw evidence plus scoped domain queries | CC-02b PR-B2 implemented; no public query CLI or runtime delivery yet |
 | Loop Engine | `campaign.py`, `interactive.py`, `qualification.py`, `finalize.py` | implemented through CHIA 1.0.1 and Ray |
 | EvidenceStore | immutable campaign directories, hashes and JSON artifacts | implemented as files |
 | KnowledgeStore | `knowledge.py` and generic Design Episodes | implemented with access modes |
@@ -90,9 +90,10 @@ artifacts. It does not require a model credential, start Ray, run EDA, or change
 the existing campaign behavior. See [`docs/chipcontext.md`](../../../docs/chipcontext.md).
 Registered raw Vivado and differential artifacts can additionally produce
 content-addressed CC-02a extraction sidecars with exact source spans; the
-scoped Python API can query status, artifacts and bounded source spans. The
-public query CLI and domain failure/PPA/timing queries remain later Issue #11
-deliverables.
+scoped Python API can query status, artifacts, bounded source spans, grounded
+failure observations, per-metric baseline/snapshot deltas and collected timing
+paths. The public query CLI, JSON/Markdown renderer, output budget and query
+cost meter remain the final Issue #11 deliverable.
 
 ## What the published tests establish
 

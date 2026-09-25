@@ -74,22 +74,31 @@ class QueryTestCase(unittest.TestCase):
         raw_check_only: bool = False,
         request_access: str = "public",
         destination: str = "raw",
+        raw_wns: float = -4.0,
+        extra_utilization: str = "",
+        timing_path_content: str | None = None,
+        include_timing_paths: bool = True,
     ):
         fixture = self.root / f"input-{destination}"
         shutil.copytree(FIXTURES / "success", fixture)
         (fixture / "raw-summary.rpt").write_text(
             "WNS(ns) TNS(ns) TNS Failing Endpoints TNS Total Endpoints\n"
             "------- ------- --------------------- -------------------\n"
-            "-4.000 -12.000 2 128\n"
+            f"{raw_wns:.3f} -12.000 2 128\n"
         )
         (fixture / "raw-utilization.rpt").write_text(
             "| Slice LUTs* | 102 | 0 |\n"
             "| Slice Registers | 80 | 0 |\n"
+            + extra_utilization
         )
-        shutil.copy(
-            FIXTURES / "extraction" / "post_synth_timing_paths.rpt",
-            fixture / "raw-paths.rpt",
-        )
+        if include_timing_paths:
+            if timing_path_content is None:
+                shutil.copy(
+                    FIXTURES / "extraction" / "post_synth_timing_paths.rpt",
+                    fixture / "raw-paths.rpt",
+                )
+            else:
+                (fixture / "raw-paths.rpt").write_text(timing_path_content)
         request = json.loads((fixture / "request.json").read_text())
         request["access"] = request_access
         request["artifacts"].extend([
@@ -103,12 +112,13 @@ class QueryTestCase(unittest.TestCase):
                 "kind": "post_synth_utilization",
                 "path": "raw-utilization.rpt",
             },
-            {
+        ])
+        if include_timing_paths:
+            request["artifacts"].append({
                 "name": "post_synth_timing_paths",
                 "kind": "post_synth_timing_paths",
                 "path": "raw-paths.rpt",
-            },
-        ])
+            })
         result = json.loads((fixture / "result.json").read_text())
         evaluation = result["search_evaluation"]
         if drop_legacy_metric:
@@ -149,6 +159,45 @@ class QueryTestCase(unittest.TestCase):
         candidate = CandidateRef(**{
             key: value
             for key, value in prepared.snapshot["candidate_ref"].items()
+            if key != "ref_id"
+        })
+        scope = QueryScope(
+            EvidenceHandle(destination, prepared.snapshot["content_hash"]),
+            expected_candidate=candidate,
+            expected_attempt_id=prepared.evaluation_manifest["attempt_id"],
+            working_source_sha256=candidate.source_sha256,
+        )
+        return fixture, store, prepared, candidate, scope
+
+    def prepare_failure_raw(self, *, destination: str = "raw-failure"):
+        fixture = self.root / f"input-{destination}"
+        shutil.copytree(FIXTURES / "failure", fixture)
+        shutil.copy(
+            FIXTURES / "extraction" / "differential-result.json",
+            fixture / "raw-differential.json",
+        )
+        shutil.copy(
+            FIXTURES / "extraction" / "differential.stdout",
+            fixture / "raw-differential.stdout",
+        )
+        request = json.loads((fixture / "request.json").read_text())
+        request["artifacts"].extend([
+            {
+                "name": "differential_result",
+                "kind": "differential_result",
+                "path": "raw-differential.json",
+            },
+            {
+                "name": "differential_stdout",
+                "kind": "differential_stdout",
+                "path": "raw-differential.stdout",
+            },
+        ])
+        (fixture / "request.json").write_text(json.dumps(request, indent=2))
+        store = EvidenceStore(self.root / f"store-{destination}", {"input": fixture})
+        prepared = ChipContextService(store).prepare(fixture / "request.json")
+        candidate = CandidateRef(**{
+            key: value for key, value in prepared.snapshot["candidate_ref"].items()
             if key != "ref_id"
         })
         scope = QueryScope(
@@ -784,6 +833,432 @@ class QueryUtf8ReadTests(QueryTestCase):
                 scope, artifact_ref, limit_bytes=64
             )
         self.assertEqual(caught.exception.code, "invalid_text_encoding")
+
+
+class QueryFailureTests(QueryTestCase):
+    def test_failure_keeps_verdict_and_observation_separate(self) -> None:
+        _, store, prepared, _, scope = self.prepare_failure_raw()
+        extraction_ref = next(
+            ref for ref in prepared.snapshot["extraction_refs"]
+            if store.read_record("extractions", ref)["extractor"]["name"]
+            == "verilator_differential"
+        )
+        answer = self.service("raw-failure", store, "public").failure(
+            scope,
+            check="differential_correctness",
+            extraction_ref=extraction_ref,
+        )
+        self.assertEqual(answer["query"]["revision"], "chipcontext-query-domain-v2")
+        self.assertEqual(answer["result"]["recorded_check"]["outcome"], "fail")
+        observation = answer["result"]["observation"]
+        self.assertEqual(observation["availability"], "available")
+        self.assertEqual(observation["configured_cycles"], 1_000_000)
+        self.assertIsNone(observation["completed_cycles"])
+        self.assertEqual(observation["first_mismatch"]["cycle"], 28)
+        self.assertEqual(observation["first_mismatch"]["signal"], "io_output_ready")
+        self.assertIsNone(observation["first_mismatch"]["expected"])
+        self.assertTrue(any(
+            value["type"] == "source_location" for value in answer["source_refs"]
+        ))
+
+    def test_failure_requires_a_check_and_marks_missing_observation(self) -> None:
+        _, store, _, _, scope = self.prepare("failure", store_id="failure")
+        service = self.service("failure", store, "public")
+        with self.assertRaises(SchemaError):
+            service.failure(scope, check="")
+        answer = service.failure(scope, check="differential_correctness")
+        self.assertEqual(answer["result"]["recorded_check"]["outcome"], "fail")
+        self.assertEqual(
+            answer["result"]["observation"]["availability"], "not_collected"
+        )
+
+    def test_failure_rejects_a_non_differential_extraction(self) -> None:
+        _, store, prepared, _, scope = self.prepare_raw(destination="wrong-failure")
+        with self.assertRaises(QueryError) as caught:
+            self.service("wrong-failure", store, "public").failure(
+                scope,
+                check="differential_correctness",
+                extraction_ref=prepared.snapshot["extraction_refs"][0],
+            )
+        self.assertEqual(caught.exception.code, "scope_mismatch")
+
+    def test_public_domain_answer_hashes_are_frozen(self) -> None:
+        expected = json.loads(
+            (FIXTURES / "query-domain" / "expected.json").read_text()
+        )
+        _, failure_store, failure_prepared, _, failure_scope = (
+            self.prepare_failure_raw(destination="hash-failure")
+        )
+        differential_ref = next(
+            ref for ref in failure_prepared.snapshot["extraction_refs"]
+            if failure_store.read_record("extractions", ref)["extractor"]["name"]
+            == "verilator_differential"
+        )
+        failure = self.service(
+            "hash-failure", failure_store, "public"
+        ).failure(
+            failure_scope,
+            check="differential_correctness",
+            extraction_ref=differential_ref,
+        )
+        _, path_store, path_prepared, _, path_scope = self.prepare_raw(
+            destination="hash-paths"
+        )
+        vivado_ref = next(
+            ref for ref in path_prepared.snapshot["extraction_refs"]
+            if path_store.read_record("extractions", ref)["extractor"]["name"]
+            == "vivado"
+        )
+        service = self.service("hash-paths", path_store, "public")
+        metrics = service.compare_metrics(
+            path_scope,
+            reference="bound_baseline",
+            stage="post_synth",
+            metric_ids=["critical_delay_ns", "slice_luts"],
+        )
+        paths = service.timing_paths(
+            path_scope,
+            extraction_ref=vivado_ref,
+            stage="post_synth",
+            limit=10,
+        )
+        self.assertEqual(failure["content_hash"], expected["failure"])
+        self.assertEqual(metrics["content_hash"], expected["metrics"])
+        self.assertEqual(paths["content_hash"], expected["timing_paths"])
+
+
+class QueryMetricComparisonTests(QueryTestCase):
+    def test_bound_baseline_comparison_is_per_metric(self) -> None:
+        _, store, _, _, scope = self.prepare(store_id="metrics")
+        answer = self.service("metrics", store, "public").compare_metrics(
+            scope,
+            reference="bound_baseline",
+            stage="post_synth",
+            metric_ids=["critical_delay_ns", "slice_luts", "unknown_metric"],
+        )
+        values = {
+            value["metric_id"]: value
+            for value in answer["result"]["comparisons"]
+        }
+        self.assertEqual(values["critical_delay_ns"]["status"], "comparable")
+        self.assertEqual(values["critical_delay_ns"]["delta"], -1.0)
+        self.assertEqual(values["slice_luts"]["delta"], 2)
+        self.assertEqual(values["unknown_metric"]["status"], "missing")
+        self.assertTrue(answer["result"]["any_comparable"])
+        self.assertFalse(answer["result"]["all_comparable"])
+        self.assertEqual(
+            answer["query"]["parameters"]["delta_direction"],
+            "current_minus_reference",
+        )
+
+    def test_explicit_snapshot_reference_is_not_inferred(self) -> None:
+        _, left_store, _, _, left_scope = self.prepare(
+            store_id="left", destination="left"
+        )
+        _, right_store, _, _, right_scope = self.prepare(
+            store_id="right", destination="right"
+        )
+        service = ChipContextQueryService(
+            {"left": left_store, "right": right_store},
+            {"left": {"public"}, "right": {"public"}},
+        )
+        answer = service.compare_metrics(
+            right_scope,
+            reference=left_scope,
+            stage="post_synth",
+            metric_ids=["critical_delay_ns"],
+        )
+        comparison = answer["result"]["comparisons"][0]
+        self.assertEqual(comparison["status"], "comparable")
+        self.assertEqual(comparison["delta"], 0.0)
+        self.assertEqual(
+            answer["query"]["parameters"]["reference"]["snapshot_ref"],
+            left_scope.handle.snapshot_ref,
+        )
+
+    def test_condition_mismatch_suppresses_delta(self) -> None:
+        _, store, _, _, scope = self.prepare(store_id="stage-mismatch")
+        answer = self.service("stage-mismatch", store, "public").compare_metrics(
+            scope,
+            reference="bound_baseline",
+            stage="post_route",
+            metric_ids=["critical_delay_ns"],
+        )
+        comparison = answer["result"]["comparisons"][0]
+        self.assertEqual(comparison["status"], "missing")
+        self.assertIsNone(comparison["delta"])
+
+    def test_conflicted_metric_never_gets_a_delta(self) -> None:
+        _, conflict_store, conflict_prepared, _, conflict_scope = self.prepare_raw(
+            destination="metric-conflict", raw_wns=-5.0
+        )
+        answer = self.service(
+            "metric-conflict", conflict_store, "public"
+        ).compare_metrics(
+            conflict_scope,
+            reference="bound_baseline",
+            stage="post_synth",
+            metric_ids=["critical_delay_ns", "slice_luts"],
+        )
+        values = {row["metric_id"]: row for row in answer["result"]["comparisons"]}
+        self.assertEqual(values["critical_delay_ns"]["status"], "conflict")
+        self.assertIsNone(values["critical_delay_ns"]["delta"])
+        self.assertEqual(values["slice_luts"]["status"], "comparable")
+        conflict = next(
+            value for value in answer["conflicts"]
+            if "critical_delay_ns" in value["affected_requested_metrics"]
+        )
+        self.assertEqual(conflict["evidence_side"], "current")
+        self.assertEqual(conflict["store_id"], "metric-conflict")
+        self.assertEqual(
+            conflict["snapshot_ref"], conflict_prepared.snapshot["content_hash"]
+        )
+        returned = {
+            value["ref"] for value in answer["source_refs"]
+            if value["evidence_side"] == "current"
+        }
+        self.assertTrue(set(conflict["source_refs"]).issubset(returned))
+
+    def test_conflicts_from_both_snapshots_keep_side_and_sources(self) -> None:
+        _, current_store, _, _, current_scope = self.prepare_raw(
+            destination="current-conflict", raw_wns=-5.0
+        )
+        _, reference_store, _, _, reference_scope = self.prepare_raw(
+            destination="reference-conflict",
+            extra_utilization="| Slice LUTs* | 999 | 0 |\n",
+        )
+        service = ChipContextQueryService(
+            {
+                "current-conflict": current_store,
+                "reference-conflict": reference_store,
+            },
+            {
+                "current-conflict": {"public"},
+                "reference-conflict": {"public"},
+            },
+        )
+        answer = service.compare_metrics(
+            current_scope,
+            reference=reference_scope,
+            stage="post_synth",
+            metric_ids=["critical_delay_ns", "slice_luts", "slice_registers"],
+        )
+        values = {row["metric_id"]: row for row in answer["result"]["comparisons"]}
+        self.assertEqual(values["critical_delay_ns"]["status"], "conflict")
+        self.assertEqual(values["slice_luts"]["status"], "conflict")
+        self.assertEqual(values["slice_registers"]["status"], "comparable")
+        self.assertEqual(values["slice_registers"]["delta"], 0)
+        sides = {
+            metric: {
+                row["evidence_side"] for row in answer["conflicts"]
+                if metric in row["affected_requested_metrics"]
+            }
+            for metric in ("critical_delay_ns", "slice_luts")
+        }
+        self.assertEqual(sides["critical_delay_ns"], {"current"})
+        self.assertEqual(sides["slice_luts"], {"reference"})
+        source_sides = {row["evidence_side"] for row in answer["source_refs"]}
+        self.assertEqual(source_sides, {"current", "reference"})
+
+
+class QueryTimingPathTests(QueryTestCase):
+    def _prepared(self, destination: str = "paths", **kwargs):
+        _, store, prepared, _, scope = self.prepare_raw(
+            destination=destination, **kwargs
+        )
+        extraction_ref = next(
+            ref for ref in prepared.snapshot["extraction_refs"]
+            if store.read_record("extractions", ref)["extractor"]["name"] == "vivado"
+        )
+        return store, scope, extraction_ref
+
+    def test_report_first_and_exact_filtered_minimum_are_distinct(self) -> None:
+        store, scope, extraction_ref = self._prepared()
+        service = self.service("paths", store, "public")
+        answer = service.timing_paths(
+            scope,
+            extraction_ref=extraction_ref,
+            stage="post_synth",
+            destination="grant_reg[1]/D",
+        )
+        self.assertEqual(answer["result"]["report_first"]["fact"]["rank"], 1)
+        self.assertEqual(answer["result"]["filtered_minimum"]["fact"]["rank"], 2)
+        self.assertEqual(answer["result"]["paths"][0]["rank"], 2)
+        self.assertEqual(
+            answer["result"]["global_worst"]["availability"], "not_supported"
+        )
+        self.assertEqual(
+            answer["coverage"]["report"]["requested_max_paths"], 2
+        )
+        self.assertTrue(
+            answer["result"]["filtered_minimum"][
+                "confirmed_for_collected_matches"
+            ]
+        )
+
+    def test_unparseable_first_slack_makes_parsed_minimum_partial(self) -> None:
+        content = (
+            FIXTURES / "extraction" / "post_synth_timing_paths.rpt"
+        ).read_text().replace(
+            "Slack (VIOLATED) :        -1.250ns",
+            "Slack (VIOLATED) :        N/A",
+            1,
+        )
+        store, scope, extraction_ref = self._prepared(
+            "paths-partial-slack", timing_path_content=content
+        )
+        answer = self.service(
+            "paths-partial-slack", store, "public"
+        ).timing_paths(
+            scope, extraction_ref=extraction_ref, stage="post_synth"
+        )
+        self.assertEqual(
+            answer["result"]["report_first"]["availability"], "parse_failed"
+        )
+        minimum = answer["result"]["filtered_minimum"]
+        self.assertEqual(minimum["availability"], "partial")
+        self.assertEqual(minimum["fact"]["rank"], 2)
+        self.assertFalse(minimum["confirmed_for_collected_matches"])
+        self.assertEqual(minimum["unparseable_definite_ranks"], [1])
+        self.assertEqual(
+            minimum["basis"], "minimum_among_parsed_definite_matches"
+        )
+
+    def test_all_unparseable_slacks_are_parse_failed(self) -> None:
+        content = (
+            FIXTURES / "extraction" / "post_synth_timing_paths.rpt"
+        ).read_text()
+        content = content.replace("-1.250ns", "N/A", 1).replace(
+            "-0.750ns", "N/A", 1
+        )
+        store, scope, extraction_ref = self._prepared(
+            "paths-all-unparseable", timing_path_content=content
+        )
+        minimum = self.service(
+            "paths-all-unparseable", store, "public"
+        ).timing_paths(
+            scope, extraction_ref=extraction_ref, stage="post_synth"
+        )["result"]["filtered_minimum"]
+        self.assertEqual(minimum["availability"], "parse_failed")
+        self.assertIsNone(minimum["fact"])
+        self.assertEqual(minimum["unparseable_definite_ranks"], [1, 2])
+
+    def test_missing_and_unparseable_reports_are_not_no_match(self) -> None:
+        missing_store, missing_scope, missing_ref = self._prepared(
+            "paths-not-collected", include_timing_paths=False
+        )
+        missing = self.service(
+            "paths-not-collected", missing_store, "public"
+        ).timing_paths(
+            missing_scope, extraction_ref=missing_ref, stage="post_synth"
+        )["result"]["filtered_minimum"]
+        self.assertEqual(missing["availability"], "not_collected")
+
+        broken_store, broken_scope, broken_ref = self._prepared(
+            "paths-no-blocks",
+            timing_path_content=(
+                "Timing Report\nSource: state_reg/C\nDestination: grant_reg/D\n"
+            ),
+        )
+        broken = self.service(
+            "paths-no-blocks", broken_store, "public"
+        ).timing_paths(
+            broken_scope, extraction_ref=broken_ref, stage="post_synth"
+        )["result"]["filtered_minimum"]
+        self.assertEqual(broken["availability"], "parse_failed")
+
+    def test_missing_exact_filter_field_is_possible_not_no_match(self) -> None:
+        content = (
+            FIXTURES / "extraction" / "post_synth_timing_paths.rpt"
+        ).read_text().replace(
+            "  Source:                 state_reg[3]/C\n", "", 1
+        )
+        store, scope, extraction_ref = self._prepared(
+            "paths-unknown-filter", timing_path_content=content
+        )
+        answer = self.service(
+            "paths-unknown-filter", store, "public"
+        ).timing_paths(
+            scope,
+            extraction_ref=extraction_ref,
+            stage="post_synth",
+            source="state_reg[3]/C",
+        )
+        minimum = answer["result"]["filtered_minimum"]
+        self.assertEqual(minimum["availability"], "inconclusive")
+        self.assertEqual(minimum["possible_match_ranks"], [1])
+        self.assertEqual(answer["coverage"]["matching_count"], 0)
+        self.assertEqual(answer["coverage"]["possible_match_count"], 1)
+
+    def test_unrelated_optional_field_does_not_weaken_minimum(self) -> None:
+        content = (
+            FIXTURES / "extraction" / "post_synth_timing_paths.rpt"
+        ).read_text().replace(
+            "  Logic Levels:           7  (LUT5=1 LUT6=6)\n", "", 1
+        )
+        store, scope, extraction_ref = self._prepared(
+            "paths-optional-field", timing_path_content=content
+        )
+        minimum = self.service(
+            "paths-optional-field", store, "public"
+        ).timing_paths(
+            scope,
+            extraction_ref=extraction_ref,
+            stage="post_synth",
+            destination="grant_reg[0]/D",
+        )["result"]["filtered_minimum"]
+        self.assertEqual(minimum["availability"], "available")
+        self.assertTrue(minimum["confirmed_for_collected_matches"])
+        self.assertEqual(minimum["fact"]["availability"], "partial")
+
+    def test_no_match_and_original_rank_pagination(self) -> None:
+        store, scope, extraction_ref = self._prepared("paths-page")
+        service = self.service("paths-page", store, "public")
+        first = service.timing_paths(
+            scope,
+            extraction_ref=extraction_ref,
+            stage="post_synth",
+            limit=1,
+        )
+        second = service.timing_paths(
+            scope,
+            extraction_ref=extraction_ref,
+            stage="post_synth",
+            limit=1,
+            cursor=first["pagination"]["next_cursor"],
+        )
+        self.assertEqual(first["result"]["paths"][0]["rank"], 1)
+        self.assertEqual(second["result"]["paths"][0]["rank"], 2)
+        none = service.timing_paths(
+            scope,
+            extraction_ref=extraction_ref,
+            stage="post_synth",
+            source="does-not-exist",
+        )
+        self.assertEqual(
+            none["result"]["filtered_minimum"]["availability"], "no_match"
+        )
+
+    def test_stage_and_cursor_binding_fail_closed(self) -> None:
+        store, scope, extraction_ref = self._prepared("paths-binding")
+        service = self.service("paths-binding", store, "public")
+        with self.assertRaises(QueryError) as caught:
+            service.timing_paths(
+                scope, extraction_ref=extraction_ref, stage="post_route"
+            )
+        self.assertEqual(caught.exception.code, "scope_mismatch")
+        first = service.timing_paths(
+            scope, extraction_ref=extraction_ref, stage="post_synth", limit=1
+        )
+        with self.assertRaises(SchemaError):
+            service.timing_paths(
+                scope,
+                extraction_ref=extraction_ref,
+                stage="post_synth",
+                limit=1,
+                path_group="clock",
+                cursor=first["pagination"]["next_cursor"],
+            )
 
 
 class QueryContractValidationTests(QueryTestCase):
