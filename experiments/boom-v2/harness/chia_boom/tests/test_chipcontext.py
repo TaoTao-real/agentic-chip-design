@@ -341,6 +341,27 @@ class SemanticsAndComparabilityTests(ChipContextTestCase):
         self.assertTrue(checks["differential_correctness"]["executed"])
         self.assertEqual(checks["differential_correctness"]["outcome"], "inconclusive")
 
+    def test_elaboration_infrastructure_interruption_is_inconclusive(self) -> None:
+        fixture = self.copy_fixture("failure")
+        value = self.read_json(fixture / "result.json")
+        evaluation = value["search_evaluation"]
+        evaluation["status"] = "infra_blocked"
+        evaluation["stage"] = "elaboration"
+        evaluation["failure_class"] = "elaboration_infrastructure_failure"
+        evaluation["build_ok"] = False
+        evaluation["differential"] = None
+        evaluation["stages"] = [{
+            "stage": "elaboration", "success": False, "status": "infra_blocked"
+        }]
+        self.write_json(fixture / "result.json", value)
+        result, _, _ = self.prepare(fixture)
+        elaboration = next(
+            row for row in result.snapshot["checks"]
+            if row["check_id"] == "elaboration"
+        )
+        self.assertTrue(elaboration["executed"])
+        self.assertEqual(elaboration["outcome"], "inconclusive")
+
     def test_regression_success_contract_is_normalized(self) -> None:
         fixture = self.copy_fixture("success")
         value = self.read_json(fixture / "result.json")
@@ -361,6 +382,81 @@ class SemanticsAndComparabilityTests(ChipContextTestCase):
         )
         self.assertTrue(regression["executed"])
         self.assertEqual(regression["outcome"], "pass")
+
+    def test_differential_payload_pass_conflicting_with_failed_stage_is_inconclusive(self) -> None:
+        fixture = self.copy_fixture("failure")
+        value = self.read_json(fixture / "result.json")
+        value["search_evaluation"]["differential"]["passed"] = True
+        self.write_json(fixture / "result.json", value)
+        result, _, _ = self.prepare(fixture)
+        correctness = next(
+            row for row in result.snapshot["checks"]
+            if row["check_id"] == "differential_correctness"
+        )
+        self.assertEqual(correctness["outcome"], "inconclusive")
+        self.assertTrue(any(
+            row["field"] == "checks.differential_correctness"
+            and "payload=true" in row["detail"]
+            and "stage=false" in row["detail"]
+            for row in result.packet["conflicts"]
+        ))
+        validation = next(
+            row["summary"] for row in result.packet["selected"]
+            if row["kind"] == "validation_status"
+        )
+        self.assertIn("differential_correctness=inconclusive", validation)
+
+    def test_differential_payload_fail_conflicting_with_passed_stage_is_inconclusive(self) -> None:
+        fixture = self.copy_fixture("success")
+        value = self.read_json(fixture / "result.json")
+        value["search_evaluation"]["differential"]["passed"] = False
+        value["search_evaluation"]["correctness_ok"] = False
+        self.write_json(fixture / "result.json", value)
+        result, _, _ = self.prepare(fixture)
+        correctness = next(
+            row for row in result.snapshot["checks"]
+            if row["check_id"] == "differential_correctness"
+        )
+        self.assertEqual(correctness["outcome"], "inconclusive")
+        self.assertTrue(any(
+            row["field"] == "checks.differential_correctness"
+            and "payload=false" in row["detail"]
+            and "stage=true" in row["detail"]
+            for row in result.packet["conflicts"]
+        ))
+
+    def test_regression_payload_and_stage_conflicts_are_inconclusive(self) -> None:
+        cases = (
+            (True, 0, False, "payload=true", "stage=false"),
+            (False, 1, True, "payload=false", "stage=true"),
+        )
+        for index, (success, returncode, stage, payload_text, stage_text) in enumerate(cases):
+            fixture = self.copy_fixture("success", f"regression-conflict-{index}")
+            value = self.read_json(fixture / "result.json")
+            evaluation = value["search_evaluation"]
+            evaluation["regression"] = {
+                "success": success,
+                "returncode": returncode,
+                "acceptance_rule": "chia_verilator_run_success_and_returncode_zero",
+            }
+            evaluation["stages"].append({
+                "stage": "regression",
+                "success": stage,
+                "status": "complete" if stage else "candidate_invalid",
+            })
+            self.write_json(fixture / "result.json", value)
+            result, _, _ = self.prepare(fixture, f"regression-conflict-out-{index}")
+            regression = next(
+                row for row in result.snapshot["checks"]
+                if row["check_id"] == "processor_regression"
+            )
+            self.assertEqual(regression["outcome"], "inconclusive")
+            self.assertTrue(any(
+                row["field"] == "checks.processor_regression"
+                and payload_text in row["detail"]
+                and stage_text in row["detail"]
+                for row in result.packet["conflicts"]
+            ))
 
     def test_conflicting_check_sources_are_explicitly_inconclusive(self) -> None:
         fixture = self.copy_fixture("success")
@@ -424,6 +520,44 @@ class SemanticsAndComparabilityTests(ChipContextTestCase):
         unit_result, _, _ = self.prepare(unit_fixture, "unit-out")
         self.assertFalse(unit_result.bundle["facts"]["comparable"])
         self.assertEqual(unit_result.bundle["facts"]["deltas"], [])
+
+    def test_bound_baseline_without_stage_remains_unknown(self) -> None:
+        fixture = self.copy_fixture("success")
+        baseline = self.read_json(fixture / "baseline-ppa.json")
+        baseline.pop("stage")
+        self.write_json(fixture / "baseline-ppa.json", baseline)
+        self.reseal(fixture, "baseline", "baseline-ppa.json")
+        result, _, _ = self.prepare(fixture)
+        self.assertFalse(result.bundle["facts"]["comparable"])
+        self.assertEqual(result.bundle["facts"]["deltas"], [])
+        self.assertIsNone(result.bundle["conditions"]["baseline"]["stage"])
+        self.assertTrue(any(
+            row["field"] == "baseline.stage"
+            and row["reason"] == "not_collected"
+            for row in result.packet["missing"]
+        ))
+
+    def test_explicit_same_stage_remains_comparable(self) -> None:
+        fixture = self.copy_fixture("success")
+        baseline = self.read_json(fixture / "baseline-ppa.json")
+        baseline["stage"] = "post_synth"
+        self.write_json(fixture / "baseline-ppa.json", baseline)
+        self.reseal(fixture, "baseline", "baseline-ppa.json")
+        result, _, _ = self.prepare(fixture)
+        self.assertTrue(result.bundle["facts"]["comparable"])
+        self.assertTrue(result.bundle["facts"]["deltas"])
+
+    def test_explicit_legacy_stage_name_uses_versioned_stage_map(self) -> None:
+        fixture = self.copy_fixture("success")
+        baseline = self.read_json(fixture / "baseline-ppa.json")
+        baseline["stage"] = "synthesis"
+        self.write_json(fixture / "baseline-ppa.json", baseline)
+        self.reseal(fixture, "baseline", "baseline-ppa.json")
+        result, _, _ = self.prepare(fixture)
+        self.assertTrue(result.bundle["facts"]["comparable"])
+        self.assertEqual(
+            result.bundle["conditions"]["baseline"]["stage"], "post_synth"
+        )
 
     def test_missing_tool_identity_prevents_delta(self) -> None:
         fixture = self.copy_fixture("success")

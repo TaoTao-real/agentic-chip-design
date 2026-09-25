@@ -20,18 +20,20 @@
       },
       "missing_count": 9,
       "output_hashes": {
-        "bundle": "b1e434ec6bde6ec1aeca3a3412be52fe1be2291893f8de872ed09f35c890d99b",
-        "evaluation_manifest": "557388aab5f73f52cacac9e3072de38ddeca8e544cb8c514333dde2856dc525b",
-        "packet": "a56f812ddff91fbc021c24e46ec8c73128a3205e2134b9b089183dc45bd07491",
+        "bundle": "464fd1b2f6451ac6c674078991ee3ec8cfb22b17aa8bb92d107d8709897c6937",
+        "evaluation_manifest": "40777b16eb6bcf59147e2a3b23a970ba3d39586c0edb974633fe5d33670da385",
+        "packet": "42e316d260eebe4c0bc750ad12f3ebaafeb3e39f23777214bca38a51ca8b4c77",
         "packet_bytes": 3789,
         "schema_version": "chipcontext.preparation-result.v1",
-        "snapshot": "ace2278fd1e4972e2a25f2b5d295672ea4f8e65aa5e8574be2d86d69df14aa60"
+        "snapshot": "147052d7232d6f97beaf9e11bc989c3369759e3143be1ab5621b886aad7d9d25"
       },
       "packet_actual_bytes": 3789,
       "packet_required_bytes": 3789,
-      "prepare_milliseconds": 144.687,
+      "parser_revision": "legacy-evaluation-v3",
+      "prepare_milliseconds": 90.0,
       "query_artifact_sha256": "af47369aa7755f14a4e4b32a2d424074568a4ef463f8352b8200a7352bdea510",
       "query_bytes": 328,
+      "query_milliseconds": 60.0,
       "query_span": {
         "end_byte": 328,
         "end_line": 4,
@@ -60,18 +62,20 @@
       },
       "missing_count": 5,
       "output_hashes": {
-        "bundle": "0de4bc2295a9ed4c28cfba21b127640dd0bd33c12856ecf868be3e48abcfc412",
-        "evaluation_manifest": "9279aa27f452ae8cc551cfac80442efcf160cbd3fee437b499992877f485fd9e",
-        "packet": "459d1c01281b8eacce0383248ee296cde5ce49f44ca701fe93e969ace26a1f99",
+        "bundle": "fec088578dcf58486cc2f59543377c5ebbd980ae75a749e514a74f296fea2630",
+        "evaluation_manifest": "e8e1b340e75a7e28fe2e075973c4855e6e1539bee1e20f2a868e8ab90fb718a1",
+        "packet": "854ae2de6e7756abb645d2a137e988788fc230e26ba77e2ce21f2efd29ebae78",
         "packet_bytes": 3355,
         "schema_version": "chipcontext.preparation-result.v1",
-        "snapshot": "b7c569e1374c5548522f5cb771ddd0fe9a305c46f0dfd8810f73d84b9f0702e7"
+        "snapshot": "412e97d3434fdad21731db80c30976dc42111c90ed4d45ce5d4f224bdd8350ed"
       },
       "packet_actual_bytes": 3355,
       "packet_required_bytes": 3355,
-      "prepare_milliseconds": 136.459,
+      "parser_revision": "legacy-evaluation-v3",
+      "prepare_milliseconds": 90.0,
       "query_artifact_sha256": "dbf713ce115cb94377374a332a91ee3fd4a601b05b0659aa3020ea8391d50f3d",
       "query_bytes": 922,
+      "query_milliseconds": 70.0,
       "query_span": {
         "end_byte": 922,
         "end_line": 8,
@@ -119,6 +123,6 @@
     "verify_environment_sha256": "36c45681cc349cb03e66834760cae2f6ca245fe95f65a0304bdb0dc09efd6fe5"
   },
   "public_safe": true,
-  "schema_version": "chipcontext.controlled-calibration-summary.v2",
+  "schema_version": "chipcontext.controlled-calibration-summary.v3",
   "source_type": "controlled_real"
 }

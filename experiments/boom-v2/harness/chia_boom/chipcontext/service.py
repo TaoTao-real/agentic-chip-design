@@ -21,7 +21,7 @@ from .schema import (
 from .store import EvidenceStore
 
 
-PARSER_REVISION = "legacy-evaluation-v2"
+PARSER_REVISION = "legacy-evaluation-v3"
 POLICY_REVISION = "cc01-static-required-v1"
 METRIC_DEFINITIONS = {
     "critical_delay_ns": ("timing-critical-delay-v1", "ns"),
@@ -276,91 +276,118 @@ def _checks(
             source_ref=source_ref if executed else None,
         )
 
+    def reconcile(
+        check_id: str, sources: dict[str, bool | None],
+    ) -> bool | None:
+        known = {
+            name: value for name, value in sources.items()
+            if isinstance(value, bool)
+        }
+        if not known:
+            return None
+        if len(set(known.values())) > 1:
+            conflicts.append({
+                "field": f"checks.{check_id}",
+                "reason": "conflicting_sources",
+                "detail": ", ".join(
+                    f"{name}={str(value).lower()}"
+                    for name, value in sorted(known.items())
+                ),
+                "source_ref": source_ref,
+            })
+            return None
+        return next(iter(known.values()))
+
     regression = evaluation.get("regression")
-    regression_passed: bool | None = None
+    regression_payload: bool | None = None
     if (
         isinstance(regression, dict)
         and not _stage_infra_blocked(evaluation, {"regression"})
     ):
         if isinstance(regression.get("passed"), bool):
-            regression_passed = regression["passed"]
+            regression_payload = regression["passed"]
         elif isinstance(regression.get("success"), bool) and isinstance(
             regression.get("returncode"), int
         ):
-            regression_passed = bool(
+            regression_payload = bool(
                 regression["success"] and regression["returncode"] == 0
             )
-    if regression_passed is None:
-        regression_passed = regression_stage
-
-    build_passed = build_stage
-    correctness_passed = (
+    differential_payload = (
         bool(differential["passed"])
         if isinstance(differential, dict)
         and isinstance(differential.get("passed"), bool)
-        else correctness_stage
+        and not _stage_infra_blocked(evaluation, {"correctness"})
+        else None
     )
-    synth_passed = synth_stage
-    if (
-        synth_passed is None
-        and isinstance(evaluation.get("post_synth"), dict)
+    interface_payload = (
+        bool(differential["interface_ok"])
+        if isinstance(differential, dict)
+        and isinstance(differential.get("interface_ok"), bool)
+        and not _stage_infra_blocked(evaluation, {"correctness"})
+        else None
+    )
+    synth_payload = (
+        True
+        if isinstance(evaluation.get("post_synth"), dict)
         and not _stage_infra_blocked(evaluation, {"synthesis", "post_synth"})
-    ):
-        synth_passed = True
-    route_passed = route_stage
-    if (
-        route_passed is None
-        and isinstance(evaluation.get("post_route"), dict)
+        else None
+    )
+    route_payload = (
+        True
+        if isinstance(evaluation.get("post_route"), dict)
         and not _stage_infra_blocked(evaluation, {"route", "post_route"})
-    ):
-        route_passed = True
+        else None
+    )
 
-    def reconcile(
-        check_id: str,
-        explicit: bool | None,
-        staged: bool | None,
-        current: bool | None,
-    ) -> bool | None:
-        if explicit is not None and staged is not None and explicit != staged:
-            conflicts.append({
-                "field": f"checks.{check_id}",
-                "reason": "conflicting_sources",
-                "detail": (
-                    f"legacy boolean={str(explicit).lower()} conflicts with "
-                    f"stage outcome={str(staged).lower()}"
-                ),
-                "source_ref": source_ref,
-            })
-            return None
-        return current
-
-    # Only compare the summary booleans after a concrete producer payload or
-    # stage result establishes execution.  A default False on its own is not a
-    # failed check.
+    # Default summary False fields do not prove execution. Once a concrete
+    # payload proves the predicate was evaluated, however, every available
+    # synonymous source must agree before the check can be certified.
     build_passed = reconcile(
         "elaboration",
-        bool(evaluation["build_ok"])
-        if build_executed and isinstance(evaluation.get("build_ok"), bool)
-        else None,
-        build_stage,
-        build_passed,
+        {
+            "summary": bool(evaluation["build_ok"])
+            if build_stage is not None
+            and isinstance(evaluation.get("build_ok"), bool)
+            else None,
+            "stage": build_stage,
+        },
     )
     correctness_passed = reconcile(
         "differential_correctness",
-        bool(evaluation["correctness_ok"])
-        if isinstance(differential, dict)
-        and isinstance(evaluation.get("correctness_ok"), bool)
-        else None,
-        correctness_stage,
-        correctness_passed,
+        {
+            "payload": differential_payload,
+            "summary": bool(evaluation["correctness_ok"])
+            if differential_payload is not None
+            and isinstance(evaluation.get("correctness_ok"), bool)
+            else None,
+            "stage": correctness_stage,
+        },
+    )
+    interface_passed = reconcile(
+        "interface_signature",
+        {
+            "payload": interface_payload,
+            "summary": bool(evaluation["interface_ok"])
+            if interface_payload is not None
+            and isinstance(evaluation.get("interface_ok"), bool)
+            else None,
+        },
+    )
+    synth_passed = reconcile(
+        "post_synth", {"payload": synth_payload, "stage": synth_stage}
+    )
+    route_passed = reconcile(
+        "post_route", {"payload": route_payload, "stage": route_stage}
+    )
+    regression_passed = reconcile(
+        "processor_regression",
+        {"payload": regression_payload, "stage": regression_stage},
     )
     checks = [
         record("elaboration", build_executed, build_passed),
         # A legacy lint_ok=False does not prove lint was executed.
         record("lint", _stage_executed(evaluation, {"lint"}), None),
-        record("interface_signature", interface_executed, (
-            bool(differential.get("interface_ok")) if interface_executed else None
-        )),
+        record("interface_signature", interface_executed, interface_passed),
         record("differential_correctness", correctness_executed, correctness_passed),
         record("post_synth", synth_executed, synth_passed),
         record("post_route", route_executed, route_passed),
@@ -828,8 +855,30 @@ class ChipContextService:
                 value.metric_id: value for value in measurements
                 if value.availability == "available"
             }
+            baseline_stage_raw = baseline.get("stage")
+            baseline_stage = (
+                STAGE_MAP.get(baseline_stage_raw)
+                if isinstance(baseline_stage_raw, str)
+                else None
+            )
+            if baseline_stage_raw is None:
+                missing.append({
+                    "field": "baseline.stage",
+                    "reason": "not_collected",
+                    "detail": (
+                        "bound baseline record does not identify its evaluation stage"
+                    ),
+                })
+            elif baseline_stage is None:
+                missing.append({
+                    "field": "baseline.stage",
+                    "reason": "not_supported",
+                    "detail": (
+                        f"baseline stage {baseline_stage_raw!r} has no v1 mapping"
+                    ),
+                })
             baseline_conditions = {
-                "stage": str(baseline.get("stage", normalized_stage)),
+                "stage": baseline_stage,
                 "part": baseline.get("part", conditions["part"])
                 if baseline_bound else baseline.get("part"),
                 "clock_period_ns": baseline.get(
@@ -925,7 +974,7 @@ class ChipContextService:
                 },
                 "open_needs": [
                     item for item in missing
-                    if item["field"] == "performance_delta"
+                    if item["field"] in {"performance_delta", "baseline.stage"}
                 ],
                 "drilldown_refs": [
                     refs["baseline"].ref_id, refs["evaluation"].ref_id

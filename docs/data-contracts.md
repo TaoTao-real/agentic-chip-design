@@ -22,7 +22,11 @@
 
 ## 比较
 
-先校验指标定义、单位、目标器件、工具链、约束、阶段和 workload。跨 fidelity 不直接相减。失败候选的未测性能为 unavailable；旧有效候选只能以明确历史身份展示。
+先校验指标定义、单位、目标器件、工具链、约束、阶段和 workload。基线阶段必须
+显式记录或由版本化 producer/parser 合同映射，不能从当前候选推断。跨 fidelity
+不直接相减。失败候选的未测性能为 unavailable；旧有效候选只能以明确历史身份
+展示。payload、stage 和 summary 等同义检查来源冲突时保留冲突并输出
+inconclusive，不静默选择其中一个结论。
 
 ## 映射
 
