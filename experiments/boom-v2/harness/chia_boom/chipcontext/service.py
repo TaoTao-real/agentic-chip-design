@@ -129,7 +129,19 @@ def _reconcile_extractions(
     for record in records:
         extraction_ref = record["content_hash"]
         missing.extend(record.get("missing", []))
-        conflicts.extend(record.get("conflicts", []))
+        record_conflicts = record.get("conflicts", [])
+        conflicts.extend(record_conflicts)
+        # Extractors can reject an ambiguous fact before a raw metric exists.
+        # Preserve the affected metric identity so a matching legacy value
+        # cannot silently restore comparison eligibility.
+        for conflict in record_conflicts:
+            if not isinstance(conflict, dict):
+                continue
+            affected = conflict.get("affected_metrics", [])
+            if isinstance(affected, list):
+                conflict_metrics.update(
+                    value for value in affected if isinstance(value, str)
+                )
         facts = record.get("facts", {})
         for raw in facts.get("metrics", []):
             metric_id = raw.get("metric_id")
@@ -165,6 +177,8 @@ def _reconcile_extractions(
                 conflict_metrics.add(metric_id)
                 conflicts.append({
                     "field": f"measurements.{metric_id}",
+                    "affected_metrics": [metric_id],
+                    "scope": {"stage": raw.get("stage")},
                     "reason": "conflicting_sources",
                     "detail": (
                         "raw and legacy metric differ in value, unit, definition, "
@@ -172,14 +186,41 @@ def _reconcile_extractions(
                     ),
                     "source_refs": [legacy.source_ref, extraction_ref],
                 })
-        raw_check = facts.get("check")
-        if isinstance(raw_check, dict):
+        raw_checks = facts.get("checks")
+        if not isinstance(raw_checks, list):
+            raw_check = facts.get("check")
+            raw_checks = [raw_check] if isinstance(raw_check, dict) else []
+        for raw_check in raw_checks:
+            if not isinstance(raw_check, dict):
+                continue
             check_id = raw_check.get("check_id")
             index = check_index.get(check_id)
             if index is not None:
                 legacy = checks[index]
+                raw_executed = raw_check.get("executed") is True
                 raw_outcome = raw_check.get("outcome")
-                if not legacy.executed and raw_outcome in {
+                if not raw_executed:
+                    # A versioned raw producer can prove that a downstream
+                    # behavior check never ran (for example interface mismatch
+                    # before simulation). Do not retain a derived legacy fail.
+                    producer_proves_not_run = (
+                        check_id == "differential_correctness"
+                        and record.get("coverage", {}).get(
+                            "simulator_execution"
+                        ) == "not_run"
+                    )
+                    if legacy.executed and producer_proves_not_run:
+                        checks[index] = CheckRecord(
+                            check_id=legacy.check_id,
+                            executed=False,
+                            outcome=None,
+                            scope={
+                                "raw_extractor": record["extractor"]["revision"],
+                                "reason": "producer_reports_not_run",
+                            },
+                            source_ref=None,
+                        )
+                elif not legacy.executed and raw_outcome in {
                     "pass", "fail", "inconclusive"
                 }:
                     checks[index] = CheckRecord(
@@ -413,8 +454,16 @@ def _checks(
     # infrastructure interruption).  Dataclass default booleans are summaries,
     # not execution evidence, and are only reconciled with concrete payloads.
     build_executed = _stage_executed(evaluation, {"elaboration"})
-    correctness_executed = isinstance(differential, dict) or _stage_executed(
-        evaluation, {"correctness"}
+    interface_prevented_run = (
+        isinstance(differential, dict)
+        and differential.get("interface_ok") is False
+    )
+    correctness_executed = (
+        False
+        if interface_prevented_run
+        else isinstance(differential, dict) or _stage_executed(
+            evaluation, {"correctness"}
+        )
     )
     interface_executed = isinstance(differential, dict) and (
         "interface_ok" in differential
@@ -481,6 +530,7 @@ def _checks(
         bool(differential["passed"])
         if isinstance(differential, dict)
         and isinstance(differential.get("passed"), bool)
+        and not interface_prevented_run
         and not _stage_infra_blocked(evaluation, {"correctness"})
         else None
     )

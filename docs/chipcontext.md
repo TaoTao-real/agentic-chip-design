@@ -117,8 +117,8 @@ chia-chipcontext read-artifact \
 
 ## CC-02a：原始工程证据提取
 
-CC-02a 已加入 `vivado-2024.1-v1` 和
-`verilator-differential-v1`。它们只解析 EvidenceStore 已校验的同一份字节，
+CC-02a 已加入 `vivado-2024.1-v2` 和
+`verilator-differential-v2`。它们只解析 EvidenceStore 已校验的同一份字节，
 把 PPA、已采集 timing path、差分检查和首个 grounded mismatch 保存为
 `chipcontext.extraction.v1` sidecar。每个事实都带 artifact hash 与 JSON pointer
 或 byte/line span；timing path 同时保存 top-k 和过滤范围，因此未出现在报告中的

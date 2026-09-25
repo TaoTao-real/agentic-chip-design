@@ -9,15 +9,21 @@ runtime is using these facts.
 
 CC-02a adds two standard-library extractors:
 
-- `vivado-2024.1-v1` reads the timing summary, utilization report and collected
+- `vivado-2024.1-v2` reads the timing summary, utilization report and collected
   timing-path report. It records each supported value with an artifact hash and
   exact source span. Timing-path coverage records the producer command form,
   requested `max_paths`, filters, stage, returned count and report order. A path
-  absent from the collected top-k is unknown, rather than proved absent.
-- `verilator-differential-v1` reads the differential result JSON and optional
-  stdout. It records pass status, seed, cycles, scenario, directed phases,
-  return code and the first grounded mismatch. Missing expected/actual values
-  remain `not_collected`.
+  absent from the collected top-k is unknown, rather than proved absent. A
+  partially parsed rank-one path remains rank one and is marked `partial`; a
+  supplied but unparseable report is `parse_failed`, distinct from an absent
+  report (`not_collected`).
+- `verilator-differential-v2` reads the differential result JSON and optional
+  stdout. It separates interface checking, simulator execution and functional
+  correctness. A process crash without a grounded mismatch is `inconclusive`,
+  while an interface mismatch records the interface failure and leaves the
+  differential behavior check `not_run`. The JSON `cycles` value is a
+  configured upper bound; `completed_cycles` is published only when a matching
+  stdout `PASS cycles=N` marker proves completion.
 
 The machine-readable field contract is in
 [`chipcontext-cc02-field-sources.json`](chipcontext-cc02-field-sources.json).
@@ -31,9 +37,13 @@ artifact roles keep the CC-01 record shape and hashes.
 
 When both raw and legacy values exist, matching definition, unit, stage and
 value merge their source references. A difference is an explicit conflict, and
-that metric cannot produce a delta. `nodes.parse_vivado_ppa()` delegates to the
-same byte parser while preserving its existing return fields, so BOOM scoring
-and ChipContext do not acquire independent PPA definitions.
+that metric cannot produce a delta. Extractor-internal ambiguity carries an
+explicit affected-metric set, so a rejected duplicate cannot be restored from
+the legacy record. `nodes.parse_vivado_ppa()` delegates to the same byte parser
+while preserving the frozen parser's fields on valid, unambiguous reports.
+Contradictory duplicate Vivado rows are an intentional compatibility narrowing:
+the old parser selected the first row, while the shared parser now fails closed
+because the physical score is ambiguous.
 
 ## Registered raw artifact roles
 
@@ -78,7 +88,10 @@ the evaluator entry point and the new parsing core.
 The public-safe hashes, counts, logical bytes and measured preparation/query
 times are recorded in
 [`chipcontext-cc02a-controlled-calibration.json`](chipcontext-cc02a-controlled-calibration.json).
-The server ran 63 ChipContext tests and all 115 harness tests successfully.
+The v2 server replay passed all 128 harness tests and the frozen low-resource
+qualification doctor. It reused the prior 10,000-cycle smoke by verified hash;
+no simulator, EDA, or model run was added. Revision, hashes, counts and timings
+are recorded in the adjacent calibration JSON.
 Environment verification and `doctor --require-qualification` passed against
 the frozen single-slot qualification profile. The prior 10,000-cycle
 baseline-vs-baseline smoke was hash-checked and remained passing; it was not

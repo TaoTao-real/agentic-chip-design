@@ -139,18 +139,34 @@ class ExtractionService:
         if record.get("extractor", {}).get("name") != "vivado":
             raise SchemaError("timing-path lookup requires a Vivado extraction")
         paths = record.get("facts", {}).get("timing_paths")
+        coverage = record.get("coverage", {}).get("timing_paths")
         if not isinstance(paths, list) or not paths:
+            availability = (
+                "parse_failed"
+                if isinstance(coverage, dict)
+                and coverage.get("parse_status") == "parse_failed"
+                else "not_collected"
+            )
             return {
-                "availability": "not_collected",
+                "availability": availability,
                 "fact": None,
-                "coverage": record.get("coverage", {}).get("timing_paths"),
+                "coverage": coverage,
+                "missing": record.get("missing", []),
+                "source_ref": extraction_ref,
+            }
+        first = paths[0]
+        if first.get("rank") != 1:
+            return {
+                "availability": "inconclusive",
+                "fact": None,
+                "coverage": coverage,
                 "missing": record.get("missing", []),
                 "source_ref": extraction_ref,
             }
         return {
-            "availability": "available",
-            "fact": paths[0],
-            "coverage": record.get("coverage", {}).get("timing_paths"),
+            "availability": first.get("availability", "available"),
+            "fact": first,
+            "coverage": coverage,
             "missing": record.get("missing", []),
             "source_ref": extraction_ref,
         }

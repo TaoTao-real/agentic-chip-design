@@ -68,13 +68,36 @@ class VivadoExtractorTests(ExtractorTestCase):
             (self.input / "post_synth_utilization.rpt").read_bytes(),
             5.0,
         )
-        self.assertEqual(result["wns_ns"], -1.25)
-        self.assertEqual(result["critical_delay_ns"], 6.25)
-        self.assertEqual(result["tns_ns"], -3.75)
-        self.assertEqual(result["failing_endpoints"], 3)
-        self.assertEqual(result["total_endpoints"], 42)
-        self.assertEqual(result["slice_luts"], 1234)
-        self.assertEqual(result["slice_registers"], 567)
+        # Frozen from main@bb39ffd's independent nodes.py parser. This is not
+        # computed through the new parsing core, so compatibility drift cannot
+        # make both sides of the assertion change together.
+        self.assertEqual(result, {
+            "clock_period_ns": 5.0,
+            "wns_ns": -1.25,
+            "critical_delay_ns": 6.25,
+            "tns_ns": -3.75,
+            "failing_endpoints": 3,
+            "total_endpoints": 42,
+            "slice_luts": 1234,
+            "slice_registers": 567,
+            "timing_report_sha256": (
+                "804df99ac66108d27307296fcfa1b7f713df7419e3545aaa55a86c043739401b"
+            ),
+            "utilization_report_sha256": (
+                "9b338c72cca4eef99e2740ae872b3593c9f62e9129b9ac5af3115b3b847e4c90"
+            ),
+        })
+
+    def test_ambiguous_duplicate_narrows_legacy_first_match_behavior(self) -> None:
+        utilization = (
+            self.input / "post_synth_utilization.rpt"
+        ).read_bytes() + b"| Slice LUTs* | 999 | 0 |\n"
+        with self.assertRaisesRegex(ValueError, "cannot parse"):
+            parse_ppa_bytes(
+                (self.input / "post_synth_timing_summary.rpt").read_bytes(),
+                utilization,
+                5.0,
+            )
 
     def test_content_addressed_extraction_and_worst_path_drilldown(self) -> None:
         record = self.vivado_record()
@@ -146,7 +169,10 @@ class VivadoExtractorTests(ExtractorTestCase):
             stage="post_synth",
         )
         self.assertEqual(result["facts"]["metrics"], [])
-        self.assertEqual(result["facts"]["timing_paths"], [])
+        self.assertEqual(len(result["facts"]["timing_paths"]), 1)
+        self.assertEqual(
+            result["facts"]["timing_paths"][0]["availability"], "partial"
+        )
         fields = {item["field"] for item in result["missing"]}
         self.assertIn("vivado.timing_summary", fields)
         self.assertIn("vivado.slice_luts", fields)
@@ -180,6 +206,60 @@ class VivadoExtractorTests(ExtractorTestCase):
             "slice_luts",
             {item["metric_id"] for item in result["facts"]["metrics"]},
         )
+        conflict = next(
+            item for item in result["conflicts"]
+            if item["field"] == "vivado.slice_luts"
+        )
+        self.assertEqual(conflict["affected_metrics"], ["slice_luts"])
+
+    def test_partial_rank_one_remains_the_worst_path(self) -> None:
+        path = self.input / "post_synth_timing_paths.rpt"
+        path.write_bytes(path.read_bytes().replace(
+            b"  Logic Levels:           7  (LUT5=1 LUT6=6)\n",
+            b"",
+            1,
+        ))
+        record = self.vivado_record()
+        answer = ExtractionService(self.store).worst_timing_path(
+            record["content_hash"]
+        )
+        self.assertEqual(answer["availability"], "partial")
+        self.assertEqual(answer["fact"]["rank"], 1)
+        self.assertEqual(answer["fact"]["slack_ns"], -1.25)
+        self.assertIsNone(answer["fact"]["logic_levels"])
+        self.assertEqual(answer["coverage"]["parse_status"], "partial")
+
+    def test_malformed_path_report_is_not_reported_as_not_collected(self) -> None:
+        (self.input / "post_synth_timing_paths.rpt").write_text(
+            "Timing Report\nSource: state_reg/C\nDestination: grant_reg/D\n"
+        )
+        record = self.vivado_record()
+        answer = ExtractionService(self.store).worst_timing_path(
+            record["content_hash"]
+        )
+        self.assertEqual(answer["availability"], "parse_failed")
+        self.assertIsNone(answer["fact"])
+        self.assertEqual(answer["coverage"]["parse_status"], "parse_failed")
+
+    def test_absent_path_report_is_not_collected(self) -> None:
+        timing = self.register(
+            "post_synth_timing_summary.rpt", "post_synth_timing_summary"
+        )
+        utilization = self.register(
+            "post_synth_utilization.rpt", "post_synth_utilization"
+        )
+        record = ExtractionService(self.store).vivado(
+            timing_summary_ref=timing.ref_id,
+            utilization_ref=utilization.ref_id,
+            timing_paths_ref=None,
+            period_ns=5.0,
+            stage="post_synth",
+        )
+        answer = ExtractionService(self.store).worst_timing_path(
+            record["content_hash"]
+        )
+        self.assertEqual(answer["availability"], "not_collected")
+        self.assertIsNone(answer["fact"])
 
     def test_registered_file_replacement_is_rejected(self) -> None:
         ref = self.register("post_synth_timing_summary.rpt")
@@ -230,6 +310,19 @@ class VivadoExtractorTests(ExtractorTestCase):
 
 
 class DifferentialExtractorTests(ExtractorTestCase):
+    def extract(self, value: dict, stdout: bytes | None) -> dict:
+        return extract_differential(
+            result=SourceDocument(
+                "1" * 64,
+                "2" * 64,
+                json.dumps(value).encode(),
+            ),
+            stdout=(
+                SourceDocument("3" * 64, "4" * 64, stdout)
+                if stdout is not None else None
+            ),
+        )
+
     def test_failure_fields_and_missing_expected_actual_are_grounded(self) -> None:
         result = self.register("differential-result.json", "differential_result")
         stdout = self.register("differential.stdout", "differential_stdout")
@@ -247,6 +340,7 @@ class DifferentialExtractorTests(ExtractorTestCase):
             {
                 "differential.first_mismatch.expected",
                 "differential.first_mismatch.actual",
+                "differential.completed_cycles",
             },
         )
 
@@ -264,16 +358,116 @@ class DifferentialExtractorTests(ExtractorTestCase):
         self.assertEqual(record["facts"]["check"]["outcome"], "inconclusive")
         self.assertTrue(record["conflicts"])
 
-    def test_nonfinite_or_wrong_typed_json_is_rejected(self) -> None:
-        value = json.loads((self.input / "differential-result.json").read_text())
-        value["cycles"] = float("nan")
-        document = SourceDocument(
-            "1" * 64,
-            "2" * 64,
-            json.dumps(value).encode(),
+    def test_normal_pass_has_exact_completed_coverage(self) -> None:
+        value = {
+            "cycles": 100,
+            "seed": 41,
+            "scenario": "normal-pass",
+            "directed_phases": ["idle", "dispatch"],
+            "returncode": 0,
+            "interface_ok": True,
+            "passed": True,
+        }
+        result = self.extract(value, b"PASS cycles=100\n")
+        self.assertEqual(result["facts"]["check"]["outcome"], "pass")
+        self.assertEqual(result["facts"]["completed_cycles"], 100)
+        self.assertFalse(result["conflicts"])
+
+    def test_crash_without_mismatch_is_inconclusive(self) -> None:
+        value = {
+            "cycles": 100,
+            "seed": 41,
+            "scenario": "crash",
+            "directed_phases": ["idle"],
+            "returncode": -11,
+            "passed": False,
+        }
+        result = self.extract(value, b"Segmentation fault\n")
+        self.assertEqual(
+            result["facts"]["check"]["outcome"], "inconclusive"
         )
-        with self.assertRaisesRegex(SchemaError, "finite"):
-            extract_differential(result=document, stdout=None)
+        self.assertEqual(
+            result["facts"]["failure_class"],
+            "infrastructure_or_unclassified",
+        )
+
+    def test_missing_stdout_does_not_claim_completed_cycles(self) -> None:
+        value = {
+            "cycles": 100,
+            "seed": 41,
+            "scenario": "missing-stdout",
+            "directed_phases": ["idle"],
+            "returncode": 0,
+            "passed": True,
+        }
+        result = self.extract(value, None)
+        self.assertEqual(result["facts"]["check"]["outcome"], "pass")
+        self.assertIsNone(result["facts"]["completed_cycles"])
+        self.assertTrue(any(
+            item["field"] == "differential.completed_cycles"
+            for item in result["missing"]
+        ))
+
+    def test_registered_stdout_without_pass_marker_is_inconclusive(self) -> None:
+        value = {
+            "cycles": 100,
+            "seed": 41,
+            "scenario": "missing-pass-marker",
+            "directed_phases": ["idle"],
+            "returncode": 0,
+            "passed": True,
+        }
+        result = self.extract(value, b"simulation exited normally\n")
+        self.assertEqual(
+            result["facts"]["check"]["outcome"], "inconclusive"
+        )
+        self.assertIsNone(result["facts"]["completed_cycles"])
+
+    def test_mismatching_pass_count_is_inconclusive(self) -> None:
+        value = {
+            "cycles": 100,
+            "seed": 41,
+            "scenario": "bad-pass-count",
+            "directed_phases": ["idle"],
+            "returncode": 0,
+            "passed": True,
+        }
+        result = self.extract(value, b"PASS cycles=7\n")
+        self.assertEqual(
+            result["facts"]["check"]["outcome"], "inconclusive"
+        )
+        self.assertIsNone(result["facts"]["completed_cycles"])
+
+    def test_interface_mismatch_preserves_not_run_behavior(self) -> None:
+        value = {
+            "cycles": 0,
+            "seed": 41,
+            "scenario": "interface-mismatch",
+            "passed": False,
+            "interface_ok": False,
+            "failure_class": "candidate_interface_mismatch",
+            "baseline_signature": {"input": 1},
+            "candidate_signature": {"input": 2},
+        }
+        result = self.extract(value, None)
+        checks = {item["check_id"]: item for item in result["facts"]["checks"]}
+        self.assertEqual(checks["interface_signature"]["outcome"], "fail")
+        self.assertFalse(checks["differential_correctness"]["executed"])
+        self.assertIsNone(checks["differential_correctness"]["outcome"])
+        self.assertIsNone(result["facts"]["return_code"])
+        self.assertEqual(result["coverage"]["simulator_execution"], "not_run")
+
+    def test_noninteger_counters_are_rejected_without_truncation(self) -> None:
+        value = json.loads((self.input / "differential-result.json").read_text())
+        for field in ("cycles", "seed"):
+            for bad in (3.75, float("nan"), True):
+                with self.subTest(field=field, bad=bad):
+                    changed = dict(value)
+                    changed[field] = bad
+                    with self.assertRaisesRegex(
+                        SchemaError, "non-negative integer"
+                    ):
+                        self.extract(changed, None)
 
 
 class PreparationIntegrationTests(ExtractorTestCase):
@@ -343,6 +537,77 @@ class PreparationIntegrationTests(ExtractorTestCase):
             item["field"] == "measurements.critical_delay_ns"
             for item in result.packet["conflicts"]
         ))
+
+    def test_internal_duplicate_lut_conflict_prevents_only_lut_delta(self) -> None:
+        fixture = self._raw_success_fixture()
+        utilization = fixture / "raw-utilization.rpt"
+        utilization.write_text(
+            utilization.read_text() + "| Slice LUTs* | 999 | 0 |\n"
+        )
+        result = ChipContextService(
+            EvidenceStore(self.root / "duplicate-lut", {"input": fixture})
+        ).prepare(fixture / "request.json")
+        deltas = {item["metric_id"] for item in result.bundle["facts"]["deltas"]}
+        self.assertNotIn("slice_luts", deltas)
+        self.assertIn("critical_delay_ns", deltas)
+        self.assertIn("slice_registers", deltas)
+
+    def test_duplicate_timing_summary_suppresses_timing_deltas(self) -> None:
+        fixture = self._raw_success_fixture()
+        summary = fixture / "raw-summary.rpt"
+        summary.write_text(
+            summary.read_text()
+            + "WNS(ns) TNS(ns) TNS Failing Endpoints TNS Total Endpoints\n"
+            + "------- ------- --------------------- -------------------\n"
+            + "-5.000 -15.000 3 128\n"
+        )
+        result = ChipContextService(
+            EvidenceStore(self.root / "duplicate-summary", {"input": fixture})
+        ).prepare(fixture / "request.json")
+        deltas = {item["metric_id"] for item in result.bundle["facts"]["deltas"]}
+        self.assertTrue({
+            "wns_ns", "tns_ns", "failing_endpoints",
+            "total_endpoints", "critical_delay_ns",
+        }.isdisjoint(deltas))
+        self.assertIn("slice_luts", deltas)
+        self.assertIn("slice_registers", deltas)
+
+    def test_prepare_accepts_interface_failure_producer_shape(self) -> None:
+        fixture = self.root / "interface-failure"
+        shutil.copytree(FIXTURE.parent / "failure", fixture)
+        raw = {
+            "cycles": 0,
+            "seed": 43,
+            "scenario": "synthetic-interface-mismatch",
+            "passed": False,
+            "interface_ok": False,
+            "failure_class": "candidate_interface_mismatch",
+            "baseline_signature": {"input": "UInt<4>"},
+            "candidate_signature": {"input": "UInt<5>"},
+        }
+        (fixture / "raw-differential.json").write_text(json.dumps(raw))
+        legacy_result = json.loads((fixture / "result.json").read_text())
+        evaluation = legacy_result["search_evaluation"]
+        evaluation["differential"] = raw
+        evaluation["interface_ok"] = False
+        evaluation["failure_class"] = "candidate_interface_mismatch"
+        (fixture / "result.json").write_text(json.dumps(legacy_result, indent=2))
+        request = json.loads((fixture / "request.json").read_text())
+        request["artifacts"].append({
+            "name": "differential_result",
+            "kind": "differential_result",
+            "path": "raw-differential.json",
+        })
+        (fixture / "request.json").write_text(json.dumps(request, indent=2))
+        result = ChipContextService(
+            EvidenceStore(self.root / "interface-store", {"input": fixture})
+        ).prepare(fixture / "request.json")
+        checks = {
+            item["check_id"]: item for item in result.snapshot["checks"]
+        }
+        self.assertEqual(checks["interface_signature"]["outcome"], "fail")
+        self.assertFalse(checks["differential_correctness"]["executed"])
+        self.assertIsNone(checks["differential_correctness"]["outcome"])
 
 
 if __name__ == "__main__":

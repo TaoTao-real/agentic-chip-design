@@ -1,30 +1,45 @@
 {
-  "schema_version": "chipcontext.field-source-registry.v1",
   "extractors": {
-    "verilator-differential-v1": {
+    "verilator-differential-v2": {
       "fields": {
         "check.outcome": {
-          "format": "JSON boolean plus return code; reconciled with stdout markers",
-          "missing": "parse_failed or inconclusive",
+          "format": "separate interface and differential behavior predicates; result JSON reconciled with grounded stdout markers",
+          "missing": "not_run or inconclusive",
           "producer": "BoomDifferentialNode",
           "source": "result.json#/passed and #/returncode",
-          "stages": ["correctness"],
+          "stages": [
+            "correctness"
+          ],
           "unit": null
         },
+        "completed_cycles": {
+          "format": "exact PASS cycles=N stdout marker matching configured upper bound",
+          "missing": "not_collected",
+          "producer": "Verilator differential testbench",
+          "source": "stdout PASS marker byte and line span",
+          "stages": [
+            "correctness"
+          ],
+          "unit": "cycles"
+        },
         "cycles": {
-          "format": "JSON integer",
+          "format": "exact JSON integer configured upper bound; not executed coverage",
           "missing": "parse_failed",
           "producer": "BoomDifferentialNode",
           "source": "result.json#/cycles",
-          "stages": ["correctness"],
+          "stages": [
+            "correctness"
+          ],
           "unit": "cycles"
         },
         "directed_phases": {
           "format": "JSON string array",
-          "missing": "parse_failed",
+          "missing": "not_run for interface mismatch; otherwise parse_failed",
           "producer": "BoomDifferentialNode",
           "source": "result.json#/directed_phases",
-          "stages": ["correctness"],
+          "stages": [
+            "correctness"
+          ],
           "unit": null
         },
         "first_mismatch.cycle": {
@@ -32,7 +47,9 @@
           "missing": "not_collected",
           "producer": "Verilator differential testbench",
           "source": "stdout byte and line span",
-          "stages": ["correctness"],
+          "stages": [
+            "correctness"
+          ],
           "unit": "cycles"
         },
         "first_mismatch.expected_actual": {
@@ -40,7 +57,9 @@
           "missing": "not_collected",
           "producer": "Verilator differential testbench",
           "source": "stdout byte and line span",
-          "stages": ["correctness"],
+          "stages": [
+            "correctness"
+          ],
           "unit": null
         },
         "first_mismatch.signal": {
@@ -48,7 +67,19 @@
           "missing": "not_collected",
           "producer": "Verilator differential testbench",
           "source": "stdout byte and line span",
-          "stages": ["correctness"],
+          "stages": [
+            "correctness"
+          ],
+          "unit": null
+        },
+        "interface_check": {
+          "format": "JSON interface_ok boolean; false may stop before simulator launch",
+          "missing": "not_collected",
+          "producer": "tools/differential_test.py",
+          "source": "result.json#/interface_ok",
+          "stages": [
+            "correctness"
+          ],
           "unit": null
         },
         "passed": {
@@ -56,15 +87,19 @@
           "missing": "parse_failed",
           "producer": "BoomDifferentialNode",
           "source": "result.json#/passed",
-          "stages": ["correctness"],
+          "stages": [
+            "correctness"
+          ],
           "unit": null
         },
         "return_code": {
           "format": "JSON integer",
-          "missing": "parse_failed",
+          "missing": "not_run for interface mismatch; otherwise parse_failed",
           "producer": "BoomDifferentialNode",
           "source": "result.json#/returncode",
-          "stages": ["correctness"],
+          "stages": [
+            "correctness"
+          ],
           "unit": null
         },
         "scenario": {
@@ -72,7 +107,9 @@
           "missing": "parse_failed",
           "producer": "BoomDifferentialNode",
           "source": "result.json#/scenario",
-          "stages": ["correctness"],
+          "stages": [
+            "correctness"
+          ],
           "unit": null
         },
         "seed": {
@@ -80,12 +117,14 @@
           "missing": "parse_failed",
           "producer": "BoomDifferentialNode",
           "source": "result.json#/seed",
-          "stages": ["correctness"],
+          "stages": [
+            "correctness"
+          ],
           "unit": null
         }
       }
     },
-    "vivado-2024.1-v1": {
+    "vivado-2024.1-v2": {
       "fields": {
         "clock_period_ns": {
           "definition_revision": "clock-constraint-v1",
@@ -93,7 +132,10 @@
           "missing": "not_collected",
           "producer": "FROZEN_RUN_MANIFEST physical contract",
           "source": "extraction configuration plus timing-summary span",
-          "stages": ["post_synth", "post_route"],
+          "stages": [
+            "post_synth",
+            "post_route"
+          ],
           "unit": "ns"
         },
         "critical_delay_ns": {
@@ -102,7 +144,10 @@
           "missing": "parse_failed",
           "producer": "derived from Vivado timing summary and frozen clock",
           "source": "Design Timing Summary row span",
-          "stages": ["post_synth", "post_route"],
+          "stages": [
+            "post_synth",
+            "post_route"
+          ],
           "unit": "ns"
         },
         "failing_endpoints": {
@@ -111,7 +156,10 @@
           "missing": "parse_failed",
           "producer": "Vivado report_timing_summary",
           "source": "value byte and line span",
-          "stages": ["post_synth", "post_route"],
+          "stages": [
+            "post_synth",
+            "post_route"
+          ],
           "unit": "count"
         },
         "slice_luts": {
@@ -120,7 +168,10 @@
           "missing": "parse_failed",
           "producer": "Vivado report_utilization",
           "source": "Slice LUTs row value span",
-          "stages": ["post_synth", "post_route"],
+          "stages": [
+            "post_synth",
+            "post_route"
+          ],
           "unit": "count"
         },
         "slice_registers": {
@@ -129,18 +180,24 @@
           "missing": "parse_failed",
           "producer": "Vivado report_utilization",
           "source": "Slice Registers row value span",
-          "stages": ["post_synth", "post_route"],
+          "stages": [
+            "post_synth",
+            "post_route"
+          ],
           "unit": "count"
         },
         "timing_paths": {
+          "coverage": "command, max_paths, delay_type, path_type, report order, returned count and parse status",
           "definition_revision": "vivado-timing-path-v1",
-          "format": "ordered report_timing path blocks",
-          "missing": "not_collected or parse_failed",
+          "format": "ordered report_timing path blocks; rank and slack survive missing optional fields",
+          "missing": "not_collected, partial, or parse_failed",
           "producer": "Vivado report_timing",
           "source": "whole path-block byte and line span",
-          "stages": ["post_synth", "post_route"],
-          "unit": "mixed; ns and count fields are explicit",
-          "coverage": "command, max_paths, delay_type, path_type, report order and returned count"
+          "stages": [
+            "post_synth",
+            "post_route"
+          ],
+          "unit": "mixed; ns and count fields are explicit"
         },
         "tns_ns": {
           "definition_revision": "timing-tns-v1",
@@ -148,7 +205,10 @@
           "missing": "parse_failed",
           "producer": "Vivado report_timing_summary",
           "source": "value byte and line span",
-          "stages": ["post_synth", "post_route"],
+          "stages": [
+            "post_synth",
+            "post_route"
+          ],
           "unit": "ns"
         },
         "total_endpoints": {
@@ -157,7 +217,10 @@
           "missing": "parse_failed",
           "producer": "Vivado report_timing_summary",
           "source": "value byte and line span",
-          "stages": ["post_synth", "post_route"],
+          "stages": [
+            "post_synth",
+            "post_route"
+          ],
           "unit": "count"
         },
         "wns_ns": {
@@ -166,11 +229,15 @@
           "missing": "parse_failed",
           "producer": "Vivado report_timing_summary",
           "source": "value byte and line span",
-          "stages": ["post_synth", "post_route"],
+          "stages": [
+            "post_synth",
+            "post_route"
+          ],
           "unit": "ns"
         }
       }
     }
   },
-  "legacy_adapter": "legacy-evaluation-v3"
+  "legacy_adapter": "legacy-evaluation-v3",
+  "schema_version": "chipcontext.field-source-registry.v1"
 }

@@ -10,7 +10,7 @@ from ..schema import SchemaError
 from .common import SourceDocument, missing
 
 
-EXTRACTOR_REVISION = "vivado-2024.1-v1"
+EXTRACTOR_REVISION = "vivado-2024.1-v2"
 
 _SUMMARY = re.compile(
     rb"WNS\(ns\).*?\n\s*-+.*?\n\s*"
@@ -169,7 +169,7 @@ def parse_timing_paths(
     starts = list(_PATH_START.finditer(document.data))
     paths: list[dict[str, Any]] = []
     omitted: list[dict[str, str]] = []
-    required = (
+    optional = (
         b"Source", b"Destination", b"Path Group", b"Path Type",
         b"Requirement", b"Data Path Delay", b"Logic Levels",
     )
@@ -177,7 +177,7 @@ def parse_timing_paths(
         block_start = header.start()
         block_end = starts[index + 1].start() if index + 1 < len(starts) else len(document.data)
         block = document.data[block_start:block_end]
-        fields = {label: _field(block, label) for label in required[:4]}
+        fields = {label: _field(block, label) for label in optional[:4]}
         requirement = _number_field(block, b"Requirement")
         delay = _number_field(block, b"Data Path Delay")
         levels = re.search(rb"^\s*Logic Levels:\s*(\d+)\b", block, re.M)
@@ -194,34 +194,52 @@ def parse_timing_paths(
         if absent:
             omitted.append(missing(
                 f"timing_paths[{index + 1}]",
-                "parse_failed",
-                "path block lacks " + ", ".join(absent),
+                "not_collected",
+                "path block lacks optional field(s): " + ", ".join(absent),
             ))
-            continue
-        def text(label: bytes) -> str:
+        def text(label: bytes) -> str | None:
             match = fields[label]
-            assert match is not None
-            return match.group(1).decode("utf-8", errors="replace").strip()
-        assert requirement and delay and levels
+            return (
+                match.group(1).decode("utf-8", errors="replace").strip()
+                if match is not None else None
+            )
         paths.append({
             "rank": index + 1,
             "stage": stage,
+            "availability": "partial" if absent else "available",
+            "missing_fields": absent,
             "status": header.group("status").decode("ascii", errors="replace").lower(),
             "source": text(b"Source"),
             "destination": text(b"Destination"),
             "slack_ns": _float(header.group("slack"), "timing_path.slack_ns"),
-            "requirement_ns": _float(requirement.group(1), "timing_path.requirement_ns"),
-            "data_path_delay_ns": _float(delay.group(1), "timing_path.data_path_delay_ns"),
-            "logic_levels": int(levels.group(1)),
+            "requirement_ns": (
+                _float(requirement.group(1), "timing_path.requirement_ns")
+                if requirement is not None else None
+            ),
+            "data_path_delay_ns": (
+                _float(delay.group(1), "timing_path.data_path_delay_ns")
+                if delay is not None else None
+            ),
+            "logic_levels": int(levels.group(1)) if levels is not None else None,
             "path_group": text(b"Path Group"),
             "path_type": text(b"Path Type"),
             "source_location": document.location(block_start, block_end),
         })
+    if not starts:
+        omitted.append(missing(
+            "timing_paths",
+            "parse_failed",
+            "registered timing-path report has no recognizable Slack path block",
+        ))
     coverage = _command_coverage(document)
     coverage.update({
         "stage": stage,
         "returned_path_count": len(paths),
         "reported_block_count": len(starts),
+        "parse_status": (
+            "parse_failed" if not starts
+            else ("partial" if omitted else "complete")
+        ),
         "ordering": "producer_report_order",
         "absence_semantics": "not_in_collected_top_k",
     })
@@ -243,6 +261,11 @@ def extract_vivado(
     if _different(summaries, (1, 2, 3, 4)):
         conflicts.append({
             "field": "vivado.timing_summary",
+            "affected_metrics": [
+                "wns_ns", "tns_ns", "failing_endpoints",
+                "total_endpoints", "critical_delay_ns",
+            ],
+            "scope": {"stage": stage},
             "reason": "conflicting_sources",
             "detail": "multiple Design Timing Summary rows disagree",
             "source_refs": [timing_summary.artifact_ref],
@@ -251,6 +274,8 @@ def extract_vivado(
     if _different(lut_rows, (1,)):
         conflicts.append({
             "field": "vivado.slice_luts",
+            "affected_metrics": ["slice_luts"],
+            "scope": {"stage": stage},
             "reason": "conflicting_sources",
             "detail": "multiple Slice LUT rows disagree",
             "source_refs": [utilization.artifact_ref],
@@ -259,6 +284,8 @@ def extract_vivado(
     if _different(reg_rows, (1,)):
         conflicts.append({
             "field": "vivado.slice_registers",
+            "affected_metrics": ["slice_registers"],
+            "scope": {"stage": stage},
             "reason": "conflicting_sources",
             "detail": "multiple Slice Register rows disagree",
             "source_refs": [utilization.artifact_ref],

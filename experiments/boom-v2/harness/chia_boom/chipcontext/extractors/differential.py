@@ -5,10 +5,10 @@ import re
 from typing import Any
 
 from ..schema import SchemaError
-from .common import SourceDocument, finite_number, missing
+from .common import SourceDocument, missing
 
 
-EXTRACTOR_REVISION = "verilator-differential-v1"
+EXTRACTOR_REVISION = "verilator-differential-v2"
 _MISMATCH = re.compile(
     rb"MISMATCH\s+cycle=(?P<cycle>\d+)\s+"
     rb"(?:port|signal)=(?P<signal>\S+)"
@@ -16,6 +16,10 @@ _MISMATCH = re.compile(
     re.I,
 )
 _PASS = re.compile(rb"\bPASS\s+cycles=(\d+)\b", re.I)
+_FUNCTIONAL_FAILURE_CLASSES = {
+    "functional_mismatch",
+    "differential_mismatch",
+}
 
 
 def _load(document: SourceDocument) -> dict[str, Any]:
@@ -28,6 +32,29 @@ def _load(document: SourceDocument) -> dict[str, Any]:
     return value
 
 
+def _nonnegative_integer(value: Any, field: str) -> int:
+    # bool is an int subclass and floats such as 3.75 used to be silently
+    # truncated. Producer counters and seeds are exact integers.
+    if type(value) is not int or value < 0:
+        raise SchemaError(f"{field} must be a non-negative integer")
+    return value
+
+
+def _check(
+    check_id: str,
+    *,
+    executed: bool,
+    outcome: str | None,
+    source_location: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        "check_id": check_id,
+        "executed": executed,
+        "outcome": outcome,
+        "source_location": source_location,
+    }
+
+
 def extract_differential(
     *,
     result: SourceDocument,
@@ -36,23 +63,56 @@ def extract_differential(
     value = _load(result)
     missing_items: list[dict[str, str]] = []
     conflicts: list[dict[str, Any]] = []
+
     passed = value.get("passed")
     if not isinstance(passed, bool):
         raise SchemaError("differential passed must be boolean")
-    returncode = value.get("returncode")
-    if not isinstance(returncode, int) or isinstance(returncode, bool):
-        raise SchemaError("differential returncode must be an integer")
-    cycles = int(finite_number(value.get("cycles"), "differential cycles"))
-    seed = int(finite_number(value.get("seed"), "differential seed"))
+    cycles = _nonnegative_integer(value.get("cycles"), "differential cycles")
+    seed = _nonnegative_integer(value.get("seed"), "differential seed")
     scenario = value.get("scenario")
     if not isinstance(scenario, str) or not scenario:
         raise SchemaError("differential scenario must be a non-empty string")
-    phases = value.get("directed_phases")
-    if not isinstance(phases, list) or not all(isinstance(item, str) for item in phases):
-        raise SchemaError("differential directed_phases must be a string list")
+
+    interface_ok = value.get("interface_ok")
+    if interface_ok is not None and not isinstance(interface_ok, bool):
+        raise SchemaError("differential interface_ok must be boolean when present")
+    interface_failure = interface_ok is False
+
+    returncode: int | None = None
+    phases: list[str] | None = None
+    if interface_failure:
+        # differential_test.py exits before simulation in this producer branch.
+        # Missing run-only fields prove the behavior check was not run; they do
+        # not make this valid producer result malformed or imply rc=0.
+        missing_items.extend([
+            missing(
+                "differential.return_code",
+                "not_run",
+                "interface mismatch prevented simulator execution",
+            ),
+            missing(
+                "differential.directed_phases",
+                "not_run",
+                "interface mismatch prevented directed simulation phases",
+            ),
+        ])
+    else:
+        raw_returncode = value.get("returncode")
+        if type(raw_returncode) is not int:
+            raise SchemaError("differential returncode must be an integer")
+        returncode = raw_returncode
+        raw_phases = value.get("directed_phases")
+        if not isinstance(raw_phases, list) or not all(
+            isinstance(item, str) for item in raw_phases
+        ):
+            raise SchemaError("differential directed_phases must be a string list")
+        phases = raw_phases
+
     mismatch = _MISMATCH.search(stdout.data) if stdout is not None else None
     pass_line = _PASS.search(stdout.data) if stdout is not None else None
-    if passed and returncode != 0:
+    pass_cycles = int(pass_line.group(1)) if pass_line is not None else None
+
+    if not interface_failure and passed and returncode != 0:
         conflicts.append({
             "field": "differential.outcome",
             "reason": "conflicting_sources",
@@ -73,6 +133,23 @@ def extract_differential(
             "detail": "result says fail while stdout contains a PASS marker",
             "source_refs": [result.artifact_ref, stdout.artifact_ref],
         })
+    if pass_cycles is not None and pass_cycles != cycles:
+        conflicts.append({
+            "field": "differential.completed_cycles",
+            "reason": "conflicting_sources",
+            "detail": (
+                f"configured cycles={cycles} but stdout PASS cycles={pass_cycles}"
+            ),
+            "source_refs": [result.artifact_ref, stdout.artifact_ref],
+        })
+    if stdout is not None and passed and pass_line is None:
+        conflicts.append({
+            "field": "differential.outcome",
+            "reason": "conflicting_sources",
+            "detail": "result says pass but registered stdout has no PASS marker",
+            "source_refs": [result.artifact_ref, stdout.artifact_ref],
+        })
+
     mismatch_fact: dict[str, Any] | None = None
     if mismatch is not None and stdout is not None:
         mismatch_fact = {
@@ -95,41 +172,107 @@ def extract_differential(
                     "not_collected",
                     f"stdout mismatch marker has no {field} value",
                 ))
-    elif not passed:
+    elif not passed and not interface_failure:
         missing_items.append(missing(
             "differential.first_mismatch",
             "not_collected" if stdout is not None else "not_run",
             "no grounded mismatch marker was found in registered stdout",
         ))
-    classification = (
-        "functional_mismatch" if mismatch_fact is not None
-        else ("passed" if passed and returncode == 0 else "infrastructure_or_unclassified")
+
+    explicit_failure = value.get("failure_class")
+    grounded_functional_failure = (
+        mismatch_fact is not None
+        or explicit_failure in _FUNCTIONAL_FAILURE_CLASSES
     )
+    behavior_executed = not interface_failure
+    if conflicts:
+        behavior_outcome = "inconclusive" if behavior_executed else None
+    elif passed and returncode == 0:
+        behavior_outcome = "pass"
+    elif grounded_functional_failure:
+        behavior_outcome = "fail"
+    elif behavior_executed:
+        # A crash, timeout, or unexplained nonzero exit is not evidence of a
+        # functional predicate failure.
+        behavior_outcome = "inconclusive"
+    else:
+        behavior_outcome = None
+
+    interface_check = _check(
+        "interface_signature",
+        executed=interface_ok is not None,
+        outcome=("pass" if interface_ok else "fail") if interface_ok is not None else None,
+        source_location=(
+            result.pointer("/interface_ok") if interface_ok is not None else None
+        ),
+    )
+    behavior_check = _check(
+        "differential_correctness",
+        executed=behavior_executed,
+        outcome=behavior_outcome,
+        source_location=(result.pointer("/passed") if behavior_executed else None),
+    )
+
+    source_locations = {
+        "passed": result.pointer("/passed"),
+        "seed": result.pointer("/seed"),
+        "cycles": result.pointer("/cycles"),
+        "scenario": result.pointer("/scenario"),
+    }
+    if phases is not None:
+        source_locations["directed_phases"] = result.pointer("/directed_phases")
+    if returncode is not None:
+        source_locations["return_code"] = result.pointer("/returncode")
+    if interface_ok is not None:
+        source_locations["interface_ok"] = result.pointer("/interface_ok")
+
+    classification = (
+        "interface_mismatch" if interface_failure
+        else (
+            "functional_mismatch" if grounded_functional_failure
+            else (
+                "passed"
+                if behavior_outcome == "pass"
+                else "infrastructure_or_unclassified"
+            )
+        )
+    )
+    completed_cycles = (
+        pass_cycles
+        if pass_cycles == cycles and not any(
+            item["field"] == "differential.completed_cycles"
+            for item in conflicts
+        )
+        else None
+    )
+    if completed_cycles is not None and stdout is not None and pass_line is not None:
+        source_locations["completed_cycles"] = stdout.location(
+            pass_line.start(1), pass_line.end(1)
+        )
+    if behavior_executed and completed_cycles is None:
+        missing_items.append(missing(
+            "differential.completed_cycles",
+            "not_collected",
+            "configured cycle limit is not proof of completed simulation coverage",
+        ))
+
     facts = {
-        "check": {
-            "check_id": "differential_correctness",
-            "executed": True,
-            "outcome": (
-                "inconclusive" if conflicts else ("pass" if passed and returncode == 0 else "fail")
-            ),
-            "source_location": result.pointer("/passed"),
-        },
+        # Keep the singular field for v1 consumers while publishing both
+        # predicates explicitly for reconciliation.
+        "check": behavior_check,
+        "checks": [interface_check, behavior_check],
         "passed": passed,
+        "interface_ok": interface_ok,
         "seed": seed,
         "cycles": cycles,
+        "cycles_semantics": "configured_upper_bound",
+        "completed_cycles": completed_cycles,
         "scenario": scenario,
         "directed_phases": phases,
         "return_code": returncode,
         "failure_class": classification,
         "first_mismatch": mismatch_fact,
-        "source_locations": {
-            "passed": result.pointer("/passed"),
-            "seed": result.pointer("/seed"),
-            "cycles": result.pointer("/cycles"),
-            "scenario": result.pointer("/scenario"),
-            "directed_phases": result.pointer("/directed_phases"),
-            "return_code": result.pointer("/returncode"),
-        },
+        "source_locations": source_locations,
     }
     return {
         "extractor_revision": EXTRACTOR_REVISION,
@@ -137,7 +280,9 @@ def extract_differential(
         "coverage": {
             "result_json": "collected",
             "stdout": "collected" if stdout is not None else "not_collected",
+            "simulator_execution": "not_run" if interface_failure else "attempted",
             "mismatch_policy": "first_grounded_marker",
+            "cycle_count_policy": "stdout_pass_marker_exact_match",
         },
         "missing": missing_items,
         "conflicts": conflicts,
