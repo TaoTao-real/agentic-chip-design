@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import dataclasses
 import json
+import math
 import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping
@@ -18,11 +19,21 @@ from .schema import (
     hashed_record,
     require_sha256,
 )
+from .recipes import (
+    METRIC_DEFINITIONS,
+    STAGE_MAP,
+    baseline_measurement,
+    compare_metric_sets,
+    comparison_conditions,
+    measurement_from_value,
+    metric_map,
+)
 from .store import DEFAULT_LIMIT_BYTES, MAX_LIMIT_BYTES, EvidenceStore
 
 
 QUERY_ANSWER_SCHEMA = "chipcontext.query-answer.v1"
 QUERY_REVISION = "chipcontext-query-foundation-v2"
+DOMAIN_QUERY_REVISION = "chipcontext-query-domain-v1"
 QUERY_CURSOR_SCHEMA = "chipcontext.query-cursor.v1"
 ARTIFACT_STAGE_MAP_REVISION = "artifact-stage-map-v1"
 STORE_REGISTRY_SCHEMA = "chipcontext.store-registry.v1"
@@ -601,6 +612,105 @@ class EvidenceResolver:
         )
 
 
+def _measurement_index(
+    snapshot: Mapping[str, Any], *, stage: str
+) -> tuple[dict[str, Any], set[str]]:
+    """Validate and index measurements without resolving duplicate evidence."""
+    rows = snapshot.get("measurements")
+    if not isinstance(rows, list):
+        raise QueryError("integrity_error", "snapshot measurements are invalid")
+    indexed: dict[str, Any] = {}
+    conflicts = _conflicted_metrics(snapshot)
+    for raw in rows:
+        try:
+            measurement = measurement_from_value(raw)
+        except SchemaError as exc:
+            raise QueryError("integrity_error", "snapshot measurement is invalid") from exc
+        if measurement.scope.get("stage") != stage:
+            continue
+        if measurement.metric_id in indexed:
+            conflicts.add(measurement.metric_id)
+            continue
+        indexed[measurement.metric_id] = measurement
+    return indexed, conflicts
+
+
+def _conflicted_metrics(snapshot: Mapping[str, Any]) -> set[str]:
+    values: set[str] = set()
+    conflicts = snapshot.get("conflicts", [])
+    if not isinstance(conflicts, list):
+        raise QueryError("integrity_error", "snapshot conflicts are invalid")
+    for conflict in conflicts:
+        if not isinstance(conflict, dict):
+            raise QueryError("integrity_error", "snapshot conflict is invalid")
+        affected = conflict.get("affected_metrics", [])
+        if isinstance(affected, list):
+            values.update(item for item in affected if isinstance(item, str))
+        field = conflict.get("field")
+        if isinstance(field, str) and field.startswith("measurements."):
+            values.add(field.split(".", 1)[1])
+    return values
+
+
+def _validate_metric_ids(metric_ids: Iterable[str]) -> list[str]:
+    if isinstance(metric_ids, (str, bytes)):
+        raise SchemaError("metric_ids must be a collection of strings")
+    try:
+        values = sorted(set(metric_ids))
+    except TypeError as exc:
+        raise SchemaError("metric_ids must be a collection of strings") from exc
+    if not values or any(not isinstance(value, str) or not value for value in values):
+        raise SchemaError("metric_ids must contain non-empty strings")
+    return values
+
+
+def _nonnegative_int_or_none(value: Any, field: str) -> int | None:
+    if value is None:
+        return None
+    if type(value) is not int or value < 0:
+        raise QueryError("integrity_error", f"{field} is invalid")
+    return value
+
+
+def _validated_timing_paths(
+    paths: Any, *, stage: str, allowed_artifact_refs: set[str]
+) -> list[dict[str, Any]]:
+    if not isinstance(paths, list):
+        raise QueryError("integrity_error", "timing path facts are invalid")
+    ranks: set[int] = set()
+    validated: list[dict[str, Any]] = []
+    for value in paths:
+        if not isinstance(value, dict):
+            raise QueryError("integrity_error", "timing path fact is invalid")
+        rank = value.get("rank")
+        if type(rank) is not int or rank < 1 or rank in ranks:
+            raise QueryError("integrity_error", "timing path rank is invalid")
+        ranks.add(rank)
+        if value.get("stage") != stage:
+            raise QueryError("integrity_error", "timing path stage is invalid")
+        if value.get("availability") not in {"available", "partial", "parse_failed"}:
+            raise QueryError("integrity_error", "timing path availability is invalid")
+        slack = value.get("slack_ns")
+        if slack is not None and (
+            not isinstance(slack, (int, float))
+            or isinstance(slack, bool)
+            or not math.isfinite(float(slack))
+        ):
+            raise QueryError("integrity_error", "timing path slack is invalid")
+        for field in ("source", "destination", "path_group", "path_type"):
+            if value.get(field) is not None and not isinstance(value[field], str):
+                raise QueryError("integrity_error", "timing path field is invalid")
+        location = value.get("source_location")
+        if not isinstance(location, dict) or not isinstance(
+            location.get("artifact_ref"), str
+        ):
+            raise QueryError("integrity_error", "timing path source is invalid")
+        if location["artifact_ref"] not in allowed_artifact_refs:
+            raise QueryError("integrity_error", "timing path source is outside extraction")
+        validated.append(value)
+    return validated
+
+
 class ChipContextQueryService:
     """Deterministic, read-only queries over sealed ChipContext evidence."""
 
@@ -618,17 +728,18 @@ class ChipContextQueryService:
         operation: str,
         parameters: dict[str, Any],
         result: Any,
-        conditions: list[dict[str, Any]] | None = None,
+        conditions: list[dict[str, Any]] | dict[str, Any] | None = None,
         coverage: dict[str, Any] | None = None,
         missing: list[dict[str, Any]] | None = None,
         conflicts: list[dict[str, Any]] | None = None,
         source_refs: list[dict[str, Any]] | None = None,
         pagination: dict[str, Any] | None = None,
+        revision: str = QUERY_REVISION,
     ) -> dict[str, Any]:
         payload = {
             "query": {
                 "name": operation,
-                "revision": QUERY_REVISION,
+                "revision": revision,
                 "parameters": parameters,
             },
             "resolved_scope": {
@@ -824,6 +935,583 @@ class ChipContextQueryService:
         return self.candidate_artifacts(
             scope, stage=stage, kinds=kinds, limit=limit, cursor=cursor
         )
+
+    def failure(
+        self,
+        scope: QueryScope,
+        *,
+        check: str,
+        extraction_ref: str | None = None,
+    ) -> dict[str, Any]:
+        if not isinstance(check, str) or not check:
+            raise SchemaError("failure query requires a check")
+        if extraction_ref is not None:
+            require_sha256("extraction_ref", extraction_ref)
+        resolved = self.resolver.resolve(scope)
+        resolved.authorize_envelope()
+        checks: dict[str, CheckRecord] = {}
+        for raw in resolved.snapshot.get("checks", []):
+            try:
+                record = CheckRecord(**raw)
+            except (TypeError, SchemaError) as exc:
+                raise QueryError("integrity_error", "snapshot check is invalid") from exc
+            checks[record.check_id] = record
+        recorded = checks.get(check)
+
+        differential = {
+            ref: value for ref, value in resolved.extractions.items()
+            if value.get("extractor", {}).get("name") == "verilator_differential"
+        }
+        selected_ref: str | None = None
+        selected: dict[str, Any] | None = None
+        if extraction_ref is not None:
+            selected = differential.get(extraction_ref)
+            if selected is None:
+                raise QueryError(
+                    "scope_mismatch",
+                    "extraction is not a differential result for this attempt",
+                )
+            selected_ref = extraction_ref
+        elif len(differential) > 1:
+            raise QueryError(
+                "ambiguous_reference",
+                "multiple differential extractions require an explicit reference",
+            )
+        elif differential:
+            selected_ref, selected = next(iter(differential.items()))
+
+        required: set[str] = set()
+        if recorded is not None and recorded.source_ref is not None:
+            required.add(recorded.source_ref)
+        if selected_ref is not None:
+            required.add(selected_ref)
+        resolved.authorize_sources(required)
+
+        missing = list(resolved.snapshot.get("missing", []))
+        conflicts = list(resolved.snapshot.get("conflicts", []))
+        observation: dict[str, Any] = {
+            "availability": "not_collected",
+            "configured_cycles": None,
+            "completed_cycles": None,
+            "seed": None,
+            "scenario": None,
+            "directed_phases": None,
+            "return_code": None,
+            "failure_class": None,
+            "first_mismatch": None,
+            "extracted_check": None,
+        }
+        coverage: dict[str, Any] = {
+            "selected_extraction_ref": selected_ref,
+            "differential_extraction_count": len(differential),
+        }
+        if selected is not None:
+            if selected.get("extractor", {}).get("revision") != "verilator-differential-v3":
+                raise QueryError(
+                    "unsupported_evidence", "differential extraction revision is unsupported"
+                )
+            facts = selected.get("facts")
+            if not isinstance(facts, dict):
+                raise QueryError("integrity_error", "differential facts are invalid")
+            extracted_checks = facts.get("checks")
+            if not isinstance(extracted_checks, list):
+                extracted_checks = [facts.get("check")]
+            extracted = next(
+                (
+                    value for value in extracted_checks
+                    if isinstance(value, dict) and value.get("check_id") == check
+                ),
+                None,
+            )
+            mismatch = facts.get("first_mismatch")
+            if mismatch is not None and not isinstance(mismatch, dict):
+                raise QueryError("integrity_error", "mismatch observation is invalid")
+            if mismatch is not None:
+                location = mismatch.get("source_location")
+                input_refs = {
+                    value.get("artifact_ref") for value in selected.get("inputs", [])
+                    if isinstance(value, dict)
+                }
+                if (
+                    not isinstance(location, dict)
+                    or location.get("artifact_ref") not in input_refs
+                ):
+                    raise QueryError(
+                        "integrity_error", "mismatch source is outside extraction"
+                    )
+            selected_conflicts = selected.get("conflicts", [])
+            selected_missing = selected.get("missing", [])
+            if not isinstance(selected_conflicts, list) or not isinstance(
+                selected_missing, list
+            ):
+                raise QueryError("integrity_error", "differential status is invalid")
+            conflicts.extend(dict(value) for value in selected_conflicts)
+            missing.extend(dict(value) for value in selected_missing)
+            availability = "available"
+            if selected_conflicts:
+                availability = "inconclusive"
+            elif extracted is None:
+                availability = "not_collected"
+            observation = {
+                "availability": availability,
+                "configured_cycles": _nonnegative_int_or_none(
+                    facts.get("cycles"), "configured cycles"
+                ),
+                "completed_cycles": _nonnegative_int_or_none(
+                    facts.get("completed_cycles"), "completed cycles"
+                ),
+                "seed": _nonnegative_int_or_none(facts.get("seed"), "seed"),
+                "scenario": facts.get("scenario"),
+                "directed_phases": facts.get("directed_phases"),
+                "return_code": facts.get("return_code"),
+                "failure_class": facts.get("failure_class"),
+                "first_mismatch": mismatch,
+                "extracted_check": extracted,
+            }
+            coverage.update(selected.get("coverage", {}))
+            if recorded is not None and extracted is not None and (
+                recorded.executed != extracted.get("executed")
+                or recorded.outcome != extracted.get("outcome")
+            ):
+                conflict = {
+                    "field": f"checks.{check}",
+                    "reason": "conflicting_sources",
+                    "detail": "snapshot and differential extraction disagree",
+                    "source_refs": sorted(filter(None, [recorded.source_ref, selected_ref])),
+                }
+                conflicts.append(conflict)
+                observation["availability"] = "inconclusive"
+
+        if recorded is None:
+            missing.append({
+                "field": f"checks.{check}",
+                "reason": "not_collected",
+                "detail": "the selected snapshot has no record for this check",
+            })
+        source_refs = resolved.describe_sources(required)
+        mismatch = observation.get("first_mismatch")
+        if isinstance(mismatch, dict) and isinstance(mismatch.get("source_location"), dict):
+            source_refs.append({
+                "type": "source_location",
+                "ref": mismatch["source_location"].get("artifact_ref"),
+                "location": mismatch["source_location"],
+            })
+        return self._answer(
+            resolved,
+            operation="failure",
+            revision=DOMAIN_QUERY_REVISION,
+            parameters={"check": check, "extraction_ref": extraction_ref},
+            result={
+                "recorded_check": recorded.to_dict() if recorded is not None else None,
+                "observation": observation,
+                "verdict_is_distinct_from_observation": True,
+            },
+            coverage=coverage,
+            missing=missing,
+            conflicts=conflicts,
+            source_refs=source_refs,
+        )
+
+    def get_failure_bundle(
+        self,
+        scope: QueryScope,
+        *,
+        check: str,
+        extraction_ref: str | None = None,
+    ) -> dict[str, Any]:
+        return self.failure(scope, check=check, extraction_ref=extraction_ref)
+
+    def compare_metrics(
+        self,
+        scope: QueryScope,
+        *,
+        reference: str | QueryScope,
+        stage: str,
+        metric_ids: Iterable[str],
+    ) -> dict[str, Any]:
+        if stage not in {"post_synth", "post_route"}:
+            raise SchemaError("metric comparison stage must be post_synth or post_route")
+        requested = _validate_metric_ids(metric_ids)
+        current = self.resolver.resolve(scope)
+        current.authorize_envelope()
+        current_metrics, current_conflicts = _measurement_index(
+            current.snapshot, stage=stage
+        )
+        current_sources = {
+            value.source_ref for value in current_metrics.values()
+            if value.metric_id in requested
+        }
+        current.authorize_sources(current_sources)
+        current_conditions = comparison_conditions(current_metrics.values())
+
+        reference_metrics: dict[str, Any]
+        reference_conflicts: set[str]
+        reference_conditions: dict[str, Any]
+        reference_sources: set[str]
+        reference_scope: dict[str, Any]
+        reference_ineligibility_reason: str | None = None
+        source_refs = [
+            {"store_id": scope.handle.store_id, **value}
+            for value in current.describe_sources(current_sources)
+        ]
+        if reference == "bound_baseline":
+            baseline_refs = [
+                value for value in current.artifacts.values()
+                if value.kind == "baseline_measurement"
+            ]
+            if len(baseline_refs) != 1:
+                raise QueryError(
+                    "ambiguous_reference" if baseline_refs else "unknown_reference",
+                    "bound baseline must resolve to exactly one registered artifact",
+                )
+            baseline_ref = baseline_refs[0]
+            current.authorize_artifacts([baseline_ref.ref_id])
+            try:
+                _, data = current.store.verified_artifact_bytes(
+                    baseline_ref.ref_id,
+                    allowed_access=set(current.allowed_access),
+                )
+                baseline = json.loads(data)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise QueryError("integrity_error", "baseline record is invalid") from exc
+            if not isinstance(baseline, dict):
+                raise QueryError("integrity_error", "baseline record is invalid")
+            raw_metrics = metric_map(baseline)
+            raw_stage = baseline.get("stage")
+            normalized_stage = STAGE_MAP.get(raw_stage) if isinstance(raw_stage, str) else None
+            bound = current.manifest.get("binding_status", {}).get("baseline") == "verified"
+            qualified = (
+                current.manifest.get("binding_status", {}).get("qualification")
+                == "verified"
+            )
+            if not bound:
+                reference_ineligibility_reason = "baseline_binding_not_verified"
+            elif not qualified:
+                reference_ineligibility_reason = "qualification_binding_not_verified"
+            reference_conditions = {
+                "stage": normalized_stage,
+                "part": baseline.get("part", current_conditions.get("part"))
+                if bound else baseline.get("part"),
+                "clock_period_ns": baseline.get(
+                    "clock_period_ns",
+                    current_conditions.get("clock_period_ns") if bound else None,
+                ),
+                "tool_fingerprint": baseline.get(
+                    "tool_fingerprint",
+                    current_conditions.get("tool_fingerprint")
+                    if bound and qualified else None,
+                ),
+                "reference_fingerprint": baseline.get(
+                    "reference_fingerprint",
+                    current_conditions.get("reference_fingerprint") if bound else None,
+                ),
+            }
+            reference_metrics = {
+                metric_id: baseline_measurement(
+                    baseline, metric_id, baseline_ref.ref_id, reference_conditions
+                )
+                for metric_id in raw_metrics
+            }
+            reference_conflicts = set()
+            reference_sources = {baseline_ref.ref_id}
+            reference_scope = {
+                "kind": "bound_baseline",
+                "content_ref": baseline_ref.ref_id,
+                "binding_status": current.manifest.get("binding_status", {}).get(
+                    "baseline"
+                ),
+            }
+            source_refs.append({
+                "store_id": scope.handle.store_id,
+                "type": "artifact",
+                "ref": baseline_ref.ref_id,
+            })
+        elif isinstance(reference, QueryScope):
+            reference_resolved = self.resolver.resolve(reference)
+            reference_resolved.authorize_envelope()
+            reference_metrics, reference_conflicts = _measurement_index(
+                reference_resolved.snapshot, stage=stage
+            )
+            reference_sources = {
+                value.source_ref for value in reference_metrics.values()
+                if value.metric_id in requested
+            }
+            reference_resolved.authorize_sources(reference_sources)
+            reference_conditions = comparison_conditions(reference_metrics.values())
+            reference_scope = {
+                "kind": "snapshot",
+                "store_id": reference.handle.store_id,
+                "snapshot_ref": reference_resolved.snapshot["content_hash"],
+                "candidate_ref": reference_resolved.candidate.to_dict(),
+                "attempt_id": reference_resolved.attempt_id,
+                "applicability": reference_resolved.applicability,
+            }
+            if (
+                reference_resolved.candidate.contract_sha256
+                != current.candidate.contract_sha256
+            ):
+                reference_ineligibility_reason = "contract_differs"
+            source_refs.extend(
+                {"store_id": reference.handle.store_id, **value}
+                for value in reference_resolved.describe_sources(reference_sources)
+            )
+        else:
+            raise SchemaError(
+                "reference must be 'bound_baseline' or an explicit QueryScope"
+            )
+
+        conflicted = current_conflicts | reference_conflicts
+        comparisons = compare_metric_sets(
+            reference_metrics,
+            current_metrics,
+            metric_ids=requested,
+            reference_conditions=reference_conditions,
+            current_conditions=current_conditions,
+            conflicted_metric_ids=conflicted,
+            ineligibility_reason=reference_ineligibility_reason,
+        )
+        statuses = [value["status"] for value in comparisons]
+        missing: list[dict[str, Any]] = []
+        conflicts: list[dict[str, Any]] = []
+        for value in comparisons:
+            if value["status"] == "conflict":
+                conflicts.append({
+                    "field": f"measurements.{value['metric_id']}",
+                    "reason": "conflicting_sources",
+                    "detail": "at least one selected snapshot marks this metric conflicted",
+                })
+            elif value["status"] != "comparable":
+                missing.append({
+                    "field": f"measurements.{value['metric_id']}",
+                    "reason": (
+                        "not_collected" if value["status"] == "missing"
+                        else "not_comparable"
+                    ),
+                    "detail": value.get("reason"),
+                })
+        return self._answer(
+            current,
+            operation="compare_metrics",
+            revision=DOMAIN_QUERY_REVISION,
+            parameters={
+                "reference": reference_scope,
+                "stage": stage,
+                "metric_ids": requested,
+                "delta_direction": "current_minus_reference",
+            },
+            result={
+                "comparisons": comparisons,
+                "all_comparable": bool(comparisons)
+                and all(status == "comparable" for status in statuses),
+                "any_comparable": any(status == "comparable" for status in statuses),
+            },
+            conditions={
+                "reference": reference_conditions,
+                "current": current_conditions,
+            },
+            coverage={
+                "requested_metric_ids": requested,
+                "known_metric_ids": sorted(METRIC_DEFINITIONS),
+            },
+            missing=missing,
+            conflicts=conflicts,
+            source_refs=source_refs,
+        )
+
+    def timing_paths(
+        self,
+        scope: QueryScope,
+        *,
+        extraction_ref: str,
+        stage: str,
+        path_group: str | None = None,
+        source: str | None = None,
+        destination: str | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        require_sha256("extraction_ref", extraction_ref)
+        if stage not in {"post_synth", "post_route"}:
+            raise SchemaError("timing path stage must be post_synth or post_route")
+        for name, value in (
+            ("path_group", path_group), ("source", source),
+            ("destination", destination),
+        ):
+            if value is not None and (not isinstance(value, str) or not value):
+                raise SchemaError(f"{name} must be a non-empty exact string")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100:
+            raise SchemaError("limit must be between 1 and 100")
+        resolved = self.resolver.resolve(scope)
+        resolved.authorize_envelope()
+        extraction = resolved.extractions.get(extraction_ref)
+        if extraction is None or extraction.get("extractor", {}).get("name") != "vivado":
+            raise QueryError(
+                "scope_mismatch", "extraction is not a Vivado result for this attempt"
+            )
+        if extraction.get("extractor", {}).get("revision") != "vivado-2024.1-v3":
+            raise QueryError(
+                "unsupported_evidence", "Vivado extraction revision is unsupported"
+            )
+        config_stage = extraction.get("config", {}).get("stage")
+        if config_stage != stage:
+            raise QueryError("scope_mismatch", "timing path stage does not match extraction")
+        resolved.authorize_sources([extraction_ref])
+        facts = extraction.get("facts", {})
+        input_refs = {
+            value.get("artifact_ref") for value in extraction.get("inputs", [])
+            if isinstance(value, dict)
+        }
+        paths = _validated_timing_paths(
+            facts.get("timing_paths"),
+            stage=stage,
+            allowed_artifact_refs=input_refs,
+        )
+        coverage = extraction.get("coverage", {}).get("timing_paths")
+        if not (isinstance(coverage, dict) or coverage == "not_collected"):
+            raise QueryError("integrity_error", "timing path coverage is invalid")
+        if isinstance(coverage, dict):
+            if coverage.get("stage") != stage or coverage.get("parse_status") not in {
+                "complete", "partial", "parse_failed"
+            }:
+                raise QueryError("integrity_error", "timing path coverage is invalid")
+            for field in (
+                "requested_max_paths", "returned_path_count",
+                "reported_block_count", "parsed_slack_count",
+            ):
+                _nonnegative_int_or_none(coverage.get(field), f"coverage {field}")
+            if (
+                coverage.get("returned_path_count") != len(paths)
+                or coverage.get("reported_block_count") != len(paths)
+                or coverage.get("parsed_slack_count")
+                != sum(value.get("slack_ns") is not None for value in paths)
+            ):
+                raise QueryError(
+                    "integrity_error", "timing path coverage counts are inconsistent"
+                )
+            maximum = coverage.get("requested_max_paths")
+            if maximum is not None and maximum < len(paths):
+                raise QueryError(
+                    "integrity_error", "timing path top-k coverage is inconsistent"
+                )
+            command_location = coverage.get("command_location")
+            if command_location is not None and (
+                not isinstance(command_location, dict)
+                or command_location.get("artifact_ref") not in input_refs
+            ):
+                raise QueryError(
+                    "integrity_error", "timing path command source is invalid"
+                )
+        filters = {
+            "path_group": path_group,
+            "source": source,
+            "destination": destination,
+        }
+        matched = [
+            value for value in paths
+            if all(expected is None or value.get(key) == expected for key, expected in filters.items())
+        ]
+        report_first = next((value for value in paths if value.get("rank") == 1), None)
+        if report_first is None:
+            report_first_result = {
+                "availability": (
+                    "not_collected" if coverage == "not_collected"
+                    else coverage.get("parse_status", "parse_failed")
+                ),
+                "fact": None,
+            }
+        elif report_first.get("slack_ns") is None:
+            report_first_result = {"availability": "parse_failed", "fact": None}
+        else:
+            report_first_result = {
+                "availability": report_first.get("availability", "available"),
+                "fact": report_first,
+            }
+        numeric = [
+            value for value in matched
+            if isinstance(value.get("slack_ns"), (int, float))
+            and not isinstance(value.get("slack_ns"), bool)
+        ]
+        if numeric:
+            filtered_minimum = {
+                "availability": "available",
+                "fact": min(numeric, key=lambda value: (value["slack_ns"], value["rank"])),
+            }
+        elif matched:
+            filtered_minimum = {"availability": "parse_failed", "fact": None}
+        else:
+            filtered_minimum = {"availability": "no_match", "fact": None}
+        binding = content_hash({
+            "operation": "timing_paths",
+            "revision": DOMAIN_QUERY_REVISION,
+            "scope": {
+                "handle": scope.handle.to_dict(),
+                "expectations": scope.normalized_expectations(),
+            },
+            "extraction_ref": extraction_ref,
+            "stage": stage,
+            "filters": filters,
+            "order": "producer_report_rank",
+            "input_hash": extraction["content_hash"],
+        })
+        offset = _decode_cursor(cursor, binding) if cursor is not None else 0
+        if offset > len(matched):
+            raise SchemaError("cursor exceeds the result set")
+        page = matched[offset:offset + limit]
+        next_offset = offset + len(page)
+        next_cursor = (
+            _encode_cursor(binding, next_offset)
+            if next_offset < len(matched) else None
+        )
+        extraction_conflicts = extraction.get("conflicts", [])
+        extraction_missing = extraction.get("missing", [])
+        if not isinstance(extraction_conflicts, list) or not isinstance(
+            extraction_missing, list
+        ):
+            raise QueryError("integrity_error", "timing path status is invalid")
+        source_refs = resolved.describe_sources([extraction_ref])
+        source_refs.extend({
+            "type": "source_location",
+            "ref": value.get("source_location", {}).get("artifact_ref"),
+            "location": value.get("source_location"),
+        } for value in page if isinstance(value.get("source_location"), dict))
+        return self._answer(
+            resolved,
+            operation="timing_paths",
+            revision=DOMAIN_QUERY_REVISION,
+            parameters={
+                "extraction_ref": extraction_ref,
+                "stage": stage,
+                **filters,
+                "limit": limit,
+                "page_offset": offset,
+            },
+            result={
+                "paths": page,
+                "report_first": report_first_result,
+                "filtered_minimum": filtered_minimum,
+                "global_worst": {
+                    "availability": "not_supported",
+                    "fact": None,
+                    "reason": "a collected top-k report cannot prove global coverage",
+                },
+            },
+            coverage={
+                "matching_count": len(matched),
+                "returned_count": len(page),
+                "filters_are_exact": True,
+                "report": coverage,
+            },
+            missing=list(extraction_missing),
+            conflicts=list(extraction_conflicts),
+            source_refs=source_refs,
+            pagination={
+                "truncated": next_cursor is not None,
+                "next_cursor": next_cursor,
+            },
+        )
+
+    def query_timing_paths(self, scope: QueryScope, **kwargs: Any) -> dict[str, Any]:
+        return self.timing_paths(scope, **kwargs)
 
     def read_artifact(
         self,

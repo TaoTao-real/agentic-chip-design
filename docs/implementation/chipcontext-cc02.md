@@ -172,10 +172,70 @@ the v2 query-contract fixes.
 The run explicitly removed `DEEPSEEK_API_KEY` and made zero model, EDA and
 simulator calls.
 
+## CC-02b PR-B2: evidence-grounded domain queries
+
+PR-B2 extends the same explicit `QueryScope` with three read-only domain
+queries.  These operations use `chipcontext-query-domain-v1`; the B1 status,
+artifact and source-read answers retain `chipcontext-query-foundation-v2`, so
+the already reviewed answer hashes do not change.
+
+- `failure(scope, check, extraction_ref?)` keeps the recorded check verdict
+  separate from an extracted mismatch observation.  It reports configured and
+  completed cycles separately, retains missing expected/actual values and
+  returns the exact registered source span.  More than one differential
+  extraction requires an explicit reference.
+- `compare_metrics(scope, reference, stage, metric_ids)` accepts only the
+  manifest-bound baseline or another explicit `QueryScope`.  Each metric is
+  independently `comparable`, `missing`, `conflict`, or `not_comparable`;
+  deltas are always `current - reference`.  Stage, device, clock, tool,
+  reference fingerprint, definition and unit must all be present and equal.
+  `all_comparable` and `any_comparable` are reported separately.
+- `timing_paths(scope, extraction_ref, stage, ...)` provides exact field
+  filters only.  It preserves producer ranks and distinguishes report rank 1,
+  the minimum slack among the filtered collected rows and the unsupported
+  claim of a global worst path.  Producer command, requested top-k,
+  reported/parsed counts and parse status remain visible.
+
+The comparison qualification is implemented once in `recipes.py`.  The
+legacy prepare path calls the same pure recipe and retains its fixed public
+JSON, Markdown and content hashes.  Domain queries expand and authorize their
+raw dependencies before returning facts; they neither rescan arbitrary paths
+nor launch a parser, simulator or EDA tool outside the sealed extraction.
+
+### Python examples
+
+```python
+failure = service.failure(
+    scope,
+    check="differential_correctness",
+    extraction_ref=differential_extraction_ref,
+)
+
+metrics = service.compare_metrics(
+    scope,
+    reference="bound_baseline",
+    stage="post_synth",
+    metric_ids=["critical_delay_ns", "slice_luts"],
+)
+
+paths = service.timing_paths(
+    scope,
+    extraction_ref=vivado_extraction_ref,
+    stage="post_synth",
+    path_group="clock",       # exact match
+    limit=10,
+)
+```
+
+The snapshot reference form of `reference` is another complete `QueryScope`;
+there is no parent/latest/best shorthand.  A historical scope is still
+queryable, but its applicability remains `historical` and does not claim that
+the current working edit was measured.
+
 ## Current boundary
 
-PR-B1 does not add the public `query` CLI, JSON/Markdown query renderer,
-failure/metric/timing-path domain queries, arbitrary report paths, regex
-queries, Agent integration, Ray, model SDKs or EDA execution. Those interfaces
-remain in Issue #11 PR-B2/PR-B3. The frozen question set and system-level cost
-protocol belong to CC-02c.
+PR-B2 does not add the public `query` CLI, JSON/Markdown query renderer, final
+serialized-output budget, line-range continuation, query-cost meter, arbitrary
+report paths, regex queries, Agent integration, Ray, model SDKs or EDA
+execution. Those interfaces remain in Issue #11 PR-B3/B4. The frozen question
+set and system-level cost protocol belong to CC-02c.

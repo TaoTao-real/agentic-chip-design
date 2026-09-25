@@ -159,6 +159,45 @@ class QueryTestCase(unittest.TestCase):
         )
         return fixture, store, prepared, candidate, scope
 
+    def prepare_failure_raw(self, *, destination: str = "raw-failure"):
+        fixture = self.root / f"input-{destination}"
+        shutil.copytree(FIXTURES / "failure", fixture)
+        shutil.copy(
+            FIXTURES / "extraction" / "differential-result.json",
+            fixture / "raw-differential.json",
+        )
+        shutil.copy(
+            FIXTURES / "extraction" / "differential.stdout",
+            fixture / "raw-differential.stdout",
+        )
+        request = json.loads((fixture / "request.json").read_text())
+        request["artifacts"].extend([
+            {
+                "name": "differential_result",
+                "kind": "differential_result",
+                "path": "raw-differential.json",
+            },
+            {
+                "name": "differential_stdout",
+                "kind": "differential_stdout",
+                "path": "raw-differential.stdout",
+            },
+        ])
+        (fixture / "request.json").write_text(json.dumps(request, indent=2))
+        store = EvidenceStore(self.root / f"store-{destination}", {"input": fixture})
+        prepared = ChipContextService(store).prepare(fixture / "request.json")
+        candidate = CandidateRef(**{
+            key: value for key, value in prepared.snapshot["candidate_ref"].items()
+            if key != "ref_id"
+        })
+        scope = QueryScope(
+            EvidenceHandle(destination, prepared.snapshot["content_hash"]),
+            expected_candidate=candidate,
+            expected_attempt_id=prepared.evaluation_manifest["attempt_id"],
+            working_source_sha256=candidate.source_sha256,
+        )
+        return fixture, store, prepared, candidate, scope
+
     @staticmethod
     def rebind_extraction(
         store: EvidenceStore,
@@ -784,6 +823,284 @@ class QueryUtf8ReadTests(QueryTestCase):
                 scope, artifact_ref, limit_bytes=64
             )
         self.assertEqual(caught.exception.code, "invalid_text_encoding")
+
+
+class QueryFailureTests(QueryTestCase):
+    def test_failure_keeps_verdict_and_observation_separate(self) -> None:
+        _, store, prepared, _, scope = self.prepare_failure_raw()
+        extraction_ref = next(
+            ref for ref in prepared.snapshot["extraction_refs"]
+            if store.read_record("extractions", ref)["extractor"]["name"]
+            == "verilator_differential"
+        )
+        answer = self.service("raw-failure", store, "public").failure(
+            scope,
+            check="differential_correctness",
+            extraction_ref=extraction_ref,
+        )
+        self.assertEqual(answer["query"]["revision"], "chipcontext-query-domain-v1")
+        self.assertEqual(answer["result"]["recorded_check"]["outcome"], "fail")
+        observation = answer["result"]["observation"]
+        self.assertEqual(observation["availability"], "available")
+        self.assertEqual(observation["configured_cycles"], 1_000_000)
+        self.assertIsNone(observation["completed_cycles"])
+        self.assertEqual(observation["first_mismatch"]["cycle"], 28)
+        self.assertEqual(observation["first_mismatch"]["signal"], "io_output_ready")
+        self.assertIsNone(observation["first_mismatch"]["expected"])
+        self.assertTrue(any(
+            value["type"] == "source_location" for value in answer["source_refs"]
+        ))
+
+    def test_failure_requires_a_check_and_marks_missing_observation(self) -> None:
+        _, store, _, _, scope = self.prepare("failure", store_id="failure")
+        service = self.service("failure", store, "public")
+        with self.assertRaises(SchemaError):
+            service.failure(scope, check="")
+        answer = service.failure(scope, check="differential_correctness")
+        self.assertEqual(answer["result"]["recorded_check"]["outcome"], "fail")
+        self.assertEqual(
+            answer["result"]["observation"]["availability"], "not_collected"
+        )
+
+    def test_failure_rejects_a_non_differential_extraction(self) -> None:
+        _, store, prepared, _, scope = self.prepare_raw(destination="wrong-failure")
+        with self.assertRaises(QueryError) as caught:
+            self.service("wrong-failure", store, "public").failure(
+                scope,
+                check="differential_correctness",
+                extraction_ref=prepared.snapshot["extraction_refs"][0],
+            )
+        self.assertEqual(caught.exception.code, "scope_mismatch")
+
+    def test_public_domain_answer_hashes_are_frozen(self) -> None:
+        expected = json.loads(
+            (FIXTURES / "query-domain" / "expected.json").read_text()
+        )
+        _, failure_store, failure_prepared, _, failure_scope = (
+            self.prepare_failure_raw(destination="hash-failure")
+        )
+        differential_ref = next(
+            ref for ref in failure_prepared.snapshot["extraction_refs"]
+            if failure_store.read_record("extractions", ref)["extractor"]["name"]
+            == "verilator_differential"
+        )
+        failure = self.service(
+            "hash-failure", failure_store, "public"
+        ).failure(
+            failure_scope,
+            check="differential_correctness",
+            extraction_ref=differential_ref,
+        )
+        _, path_store, path_prepared, _, path_scope = self.prepare_raw(
+            destination="hash-paths"
+        )
+        vivado_ref = next(
+            ref for ref in path_prepared.snapshot["extraction_refs"]
+            if path_store.read_record("extractions", ref)["extractor"]["name"]
+            == "vivado"
+        )
+        service = self.service("hash-paths", path_store, "public")
+        metrics = service.compare_metrics(
+            path_scope,
+            reference="bound_baseline",
+            stage="post_synth",
+            metric_ids=["critical_delay_ns", "slice_luts"],
+        )
+        paths = service.timing_paths(
+            path_scope,
+            extraction_ref=vivado_ref,
+            stage="post_synth",
+            limit=10,
+        )
+        self.assertEqual(failure["content_hash"], expected["failure"])
+        self.assertEqual(metrics["content_hash"], expected["metrics"])
+        self.assertEqual(paths["content_hash"], expected["timing_paths"])
+
+
+class QueryMetricComparisonTests(QueryTestCase):
+    def test_bound_baseline_comparison_is_per_metric(self) -> None:
+        _, store, _, _, scope = self.prepare(store_id="metrics")
+        answer = self.service("metrics", store, "public").compare_metrics(
+            scope,
+            reference="bound_baseline",
+            stage="post_synth",
+            metric_ids=["critical_delay_ns", "slice_luts", "unknown_metric"],
+        )
+        values = {
+            value["metric_id"]: value
+            for value in answer["result"]["comparisons"]
+        }
+        self.assertEqual(values["critical_delay_ns"]["status"], "comparable")
+        self.assertEqual(values["critical_delay_ns"]["delta"], -1.0)
+        self.assertEqual(values["slice_luts"]["delta"], 2)
+        self.assertEqual(values["unknown_metric"]["status"], "missing")
+        self.assertTrue(answer["result"]["any_comparable"])
+        self.assertFalse(answer["result"]["all_comparable"])
+        self.assertEqual(
+            answer["query"]["parameters"]["delta_direction"],
+            "current_minus_reference",
+        )
+
+    def test_explicit_snapshot_reference_is_not_inferred(self) -> None:
+        _, left_store, _, _, left_scope = self.prepare(
+            store_id="left", destination="left"
+        )
+        _, right_store, _, _, right_scope = self.prepare(
+            store_id="right", destination="right"
+        )
+        service = ChipContextQueryService(
+            {"left": left_store, "right": right_store},
+            {"left": {"public"}, "right": {"public"}},
+        )
+        answer = service.compare_metrics(
+            right_scope,
+            reference=left_scope,
+            stage="post_synth",
+            metric_ids=["critical_delay_ns"],
+        )
+        comparison = answer["result"]["comparisons"][0]
+        self.assertEqual(comparison["status"], "comparable")
+        self.assertEqual(comparison["delta"], 0.0)
+        self.assertEqual(
+            answer["query"]["parameters"]["reference"]["snapshot_ref"],
+            left_scope.handle.snapshot_ref,
+        )
+
+    def test_condition_mismatch_suppresses_delta(self) -> None:
+        _, store, _, _, scope = self.prepare(store_id="stage-mismatch")
+        answer = self.service("stage-mismatch", store, "public").compare_metrics(
+            scope,
+            reference="bound_baseline",
+            stage="post_route",
+            metric_ids=["critical_delay_ns"],
+        )
+        comparison = answer["result"]["comparisons"][0]
+        self.assertEqual(comparison["status"], "missing")
+        self.assertIsNone(comparison["delta"])
+
+    def test_conflicted_metric_never_gets_a_delta(self) -> None:
+        fixture, store, prepared, _, scope = self.prepare_raw(
+            destination="metric-conflict"
+        )
+        summary = fixture / "raw-summary.rpt"
+        # The preparation already sealed the original bytes. Recreate a second
+        # store with a disagreeing raw WNS value to obtain a conflict snapshot.
+        conflict_fixture = self.root / "input-metric-conflict-2"
+        shutil.copytree(fixture, conflict_fixture)
+        conflict_summary = conflict_fixture / "raw-summary.rpt"
+        conflict_summary.write_text(
+            conflict_summary.read_text().replace("-4.000", "-5.000", 1)
+        )
+        conflict_store = EvidenceStore(
+            self.root / "store-metric-conflict-2", {"input": conflict_fixture}
+        )
+        conflict_prepared = ChipContextService(conflict_store).prepare(
+            conflict_fixture / "request.json"
+        )
+        candidate = CandidateRef(**{
+            key: value
+            for key, value in conflict_prepared.snapshot["candidate_ref"].items()
+            if key != "ref_id"
+        })
+        conflict_scope = QueryScope(
+            EvidenceHandle("metric-conflict-2", conflict_prepared.snapshot["content_hash"]),
+            expected_candidate=candidate,
+            expected_attempt_id=conflict_prepared.evaluation_manifest["attempt_id"],
+        )
+        answer = self.service(
+            "metric-conflict-2", conflict_store, "public"
+        ).compare_metrics(
+            conflict_scope,
+            reference="bound_baseline",
+            stage="post_synth",
+            metric_ids=["critical_delay_ns", "slice_luts"],
+        )
+        values = {row["metric_id"]: row for row in answer["result"]["comparisons"]}
+        self.assertEqual(values["critical_delay_ns"]["status"], "conflict")
+        self.assertIsNone(values["critical_delay_ns"]["delta"])
+        self.assertEqual(values["slice_luts"]["status"], "comparable")
+        # Keep locals live long enough to prove the original sealed store was
+        # not used implicitly by the comparison.
+        self.assertTrue(prepared.snapshot["content_hash"])
+        self.assertTrue(summary.exists())
+
+
+class QueryTimingPathTests(QueryTestCase):
+    def _prepared(self, destination: str = "paths"):
+        _, store, prepared, _, scope = self.prepare_raw(destination=destination)
+        extraction_ref = next(
+            ref for ref in prepared.snapshot["extraction_refs"]
+            if store.read_record("extractions", ref)["extractor"]["name"] == "vivado"
+        )
+        return store, scope, extraction_ref
+
+    def test_report_first_and_exact_filtered_minimum_are_distinct(self) -> None:
+        store, scope, extraction_ref = self._prepared()
+        service = self.service("paths", store, "public")
+        answer = service.timing_paths(
+            scope,
+            extraction_ref=extraction_ref,
+            stage="post_synth",
+            destination="grant_reg[1]/D",
+        )
+        self.assertEqual(answer["result"]["report_first"]["fact"]["rank"], 1)
+        self.assertEqual(answer["result"]["filtered_minimum"]["fact"]["rank"], 2)
+        self.assertEqual(answer["result"]["paths"][0]["rank"], 2)
+        self.assertEqual(
+            answer["result"]["global_worst"]["availability"], "not_supported"
+        )
+        self.assertEqual(
+            answer["coverage"]["report"]["requested_max_paths"], 2
+        )
+
+    def test_no_match_and_original_rank_pagination(self) -> None:
+        store, scope, extraction_ref = self._prepared("paths-page")
+        service = self.service("paths-page", store, "public")
+        first = service.timing_paths(
+            scope,
+            extraction_ref=extraction_ref,
+            stage="post_synth",
+            limit=1,
+        )
+        second = service.timing_paths(
+            scope,
+            extraction_ref=extraction_ref,
+            stage="post_synth",
+            limit=1,
+            cursor=first["pagination"]["next_cursor"],
+        )
+        self.assertEqual(first["result"]["paths"][0]["rank"], 1)
+        self.assertEqual(second["result"]["paths"][0]["rank"], 2)
+        none = service.timing_paths(
+            scope,
+            extraction_ref=extraction_ref,
+            stage="post_synth",
+            source="does-not-exist",
+        )
+        self.assertEqual(
+            none["result"]["filtered_minimum"]["availability"], "no_match"
+        )
+
+    def test_stage_and_cursor_binding_fail_closed(self) -> None:
+        store, scope, extraction_ref = self._prepared("paths-binding")
+        service = self.service("paths-binding", store, "public")
+        with self.assertRaises(QueryError) as caught:
+            service.timing_paths(
+                scope, extraction_ref=extraction_ref, stage="post_route"
+            )
+        self.assertEqual(caught.exception.code, "scope_mismatch")
+        first = service.timing_paths(
+            scope, extraction_ref=extraction_ref, stage="post_synth", limit=1
+        )
+        with self.assertRaises(SchemaError):
+            service.timing_paths(
+                scope,
+                extraction_ref=extraction_ref,
+                stage="post_synth",
+                limit=1,
+                path_group="clock",
+                cursor=first["pagination"]["next_cursor"],
+            )
 
 
 class QueryContractValidationTests(QueryTestCase):

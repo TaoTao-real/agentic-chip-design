@@ -19,31 +19,19 @@ from .schema import (
     require_sha256,
 )
 from .extraction import ExtractionService
+from .recipes import (
+    METRIC_DEFINITIONS,
+    STAGE_MAP,
+    baseline_measurement as _baseline_measurement,
+    compare_metric_sets,
+    legacy_delta_rows,
+    metric_map as _metric_map,
+)
 from .store import EvidenceStore
 
 
 PARSER_REVISION = "legacy-evaluation-v4"
 POLICY_REVISION = "cc01-static-required-v1"
-METRIC_DEFINITIONS = {
-    "critical_delay_ns": ("timing-critical-delay-v1", "ns"),
-    "clock_period_ns": ("clock-constraint-v1", "ns"),
-    "wns_ns": ("timing-wns-v1", "ns"),
-    "tns_ns": ("timing-tns-v1", "ns"),
-    "failing_endpoints": ("timing-failing-endpoints-v1", "count"),
-    "total_endpoints": ("timing-total-endpoints-v1", "count"),
-    "slice_luts": ("vivado-slice-luts-v1", "count"),
-    "slice_registers": ("vivado-slice-registers-v1", "count"),
-}
-STAGE_MAP = {
-    "materialize": "materialize",
-    "elaboration": "elaboration",
-    "correctness": "correctness",
-    "synthesis": "post_synth",
-    "post_synth": "post_synth",
-    "route": "post_route",
-    "post_route": "post_route",
-    "regression": "regression",
-}
 _LEGACY_FUNCTIONAL_FAILURE_CLASSES = frozenset({
     "functional_mismatch",
     "differential_mismatch",
@@ -693,36 +681,6 @@ def _measurements(
     return values
 
 
-def _metric_map(value: dict[str, Any]) -> dict[str, Any]:
-    metrics = value.get("metrics") if isinstance(value.get("metrics"), dict) else value
-    return {key: metrics[key] for key in METRIC_DEFINITIONS if key in metrics}
-
-
-def _baseline_measurement(
-    baseline: dict[str, Any], metric_id: str, source_ref: str,
-    conditions: dict[str, Any],
-) -> Measurement:
-    raw = _metric_map(baseline)[metric_id]
-    definition_revision, unit = METRIC_DEFINITIONS[metric_id]
-    if isinstance(raw, dict):
-        value = raw.get("value")
-        definition_revision = str(raw.get("definition_revision", definition_revision))
-        unit = str(raw.get("unit", unit))
-    else:
-        value = raw
-    return Measurement(
-        metric_id=metric_id,
-        definition_revision=definition_revision,
-        value=value,
-        unit=unit,
-        scope=conditions,
-        provenance="legacy_baseline_record",
-        source_ref=source_ref,
-        availability="available",
-        mapping_quality="exact",
-    )
-
-
 def _render_markdown(packet: dict[str, Any]) -> str:
     lines = [
         "# ChipContext v1",
@@ -1176,45 +1134,36 @@ class ChipContextService:
             }
             current_comparison = {"stage": normalized_stage, **conditions}
             shared_metric_ids = sorted(set(baseline_metrics) & set(current_metrics))
-            required_condition_keys = {
-                "stage", "part", "clock_period_ns", "tool_fingerprint",
-                "reference_fingerprint",
+            baseline_measurements = {
+                metric_id: _baseline_measurement(
+                    baseline, metric_id, refs["baseline"].ref_id,
+                    baseline_conditions,
+                )
+                for metric_id in shared_metric_ids
             }
-            conditions_complete = all(
-                baseline_conditions.get(key) is not None
-                and current_comparison.get(key) is not None
-                for key in required_condition_keys
+            eligibility_reason = None
+            if working_state.state != "evaluated_current":
+                eligibility_reason = "working_source_not_evaluated"
+            elif not baseline_bound:
+                eligibility_reason = "baseline_binding_not_verified"
+            elif not qualification_bound:
+                eligibility_reason = "qualification_binding_not_verified"
+            metric_comparisons = compare_metric_sets(
+                baseline_measurements,
+                current_metrics,
+                metric_ids=shared_metric_ids,
+                reference_conditions=baseline_conditions,
+                current_conditions=current_comparison,
+                ineligibility_reason=eligibility_reason,
             )
             comparable = (
-                working_state.state == "evaluated_current"
-                and baseline_bound
-                and qualification_bound
-                and baseline_conditions == current_comparison
-                and bool(shared_metric_ids)
-                and conditions_complete
+                bool(shared_metric_ids)
+                and all(
+                    value["status"] == "comparable"
+                    for value in metric_comparisons
+                )
             )
-            deltas = []
-            if comparable:
-                for metric_id in shared_metric_ids:
-                    current = current_metrics[metric_id]
-                    base = _baseline_measurement(
-                        baseline, metric_id, refs["baseline"].ref_id,
-                        baseline_conditions,
-                    )
-                    if (
-                        current.definition_revision != base.definition_revision
-                        or current.unit != base.unit
-                    ):
-                        comparable = False
-                        break
-                    deltas.append({
-                        "metric_id": metric_id,
-                        "definition_revision": base.definition_revision,
-                        "unit": base.unit,
-                        "baseline": base.value,
-                        "current": current.value,
-                        "delta": current.value - base.value,
-                    })
+            deltas = legacy_delta_rows(metric_comparisons) if comparable else []
             if not comparable:
                 deltas = []
                 missing.append({
