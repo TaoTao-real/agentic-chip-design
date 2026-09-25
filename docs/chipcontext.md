@@ -190,5 +190,14 @@ QueryCost 明确区分请求校验、store 解析、证据查询和首次渲染�
 - 当前字节预算只防止序列化溢出，不表示已经找到最优 token 预算；
 - 尚未声称 ChipContext 提高了优化成功率、速度、token 效率或 QoR。
 
-下一批 CC-02c 将冻结工程问题集并进行系统级成本验收；它仍不接入搜索 runtime
-或 Agent。
+## CC-02c：独立黑盒验收（C1）
+
+CC-02c 首批已冻结六个公开安全问题，并提供只调用现有 API/CLI 的验收 runner。
+expected 由原始 fixture 的 hash、JSON pointer 或行范围人工核对，生产 parser 和
+查询输出不能生成 oracle。当前 oracle review 仍待 PR 维护者批准，因此本批运行
+只能形成开发证据，不能提前标记正式验收完成。
+
+协议、复测命令和输出边界见
+[`implementation/chipcontext-cc02c.md`](implementation/chipcontext-cc02c.md)。
+后续 C2/C3 才扩展到 32 例、完整分页/变形测试、成本矩阵、受控留出校准和
+CC-03 readiness；这些工作仍不接入搜索 runtime 或 Agent。

@@ -1,0 +1,10 @@
+{
+  "approved_at": null,
+  "approved_by": null,
+  "corpus_id": "cc02c-c1-public-v1",
+  "corpus_sha256": "d156ca67382efa1b907717324d019d19781f2cb92776e1eda592436270532050",
+  "review_method": "Compare every expected fact with the cited raw hash and span/pointer; do not use production query output as the oracle.",
+  "reviewer_role": "pr_maintainer",
+  "schema_version": "chipcontext.oracle-review.v1",
+  "status": "pending"
+}
