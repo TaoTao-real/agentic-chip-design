@@ -1,6 +1,6 @@
 # ChipContext：确定性证据准备
 
-状态：**CC-00／CC-01 已实现离线切片；Agent/runtime 接入和效果消融尚未实现。**
+状态：**CC-00／CC-01、CC-02a 与 CC-02b 查询基础已实现；Agent/runtime 接入和效果消融尚未实现。**
 
 首批实现位于
 [`experiments/boom-v2/harness/chia_boom/chipcontext/`](../experiments/boom-v2/harness/chia_boom/chipcontext/)，
@@ -131,10 +131,23 @@ stage 或数值不一致时记录 conflict，该指标不产生 delta。既有 B
 字段来源、公开样例、复测命令、受控校准边界和当前限制见
 [`implementation/chipcontext-cc02.md`](implementation/chipcontext-cc02.md)。
 
+## CC-02b：显式范围的查询基础
+
+查询基础用明确的 store、snapshot、候选和 attempt 定位封存证据，并回答候选
+检查状态、登记产物和有界原文读取。每个确定性答案保留适用源码版本、缺失、
+冲突、证据条件和内容引用；当前工作源码变化时只显示 `historical`，不会把历史
+PPA 当作当前结果。
+
+store 路径和权限来自可信注册表，查询内容与分页 cursor 不能扩大权限。解析器会
+核对 snapshot 到 manifest、candidate、contract、attempt、extraction 和 artifact
+的归属及内容身份。答案不返回机器路径或 artifact 存储位置。公开纵向样例与
+当前 API 边界见
+[`implementation/chipcontext-cc02.md`](implementation/chipcontext-cc02.md)。
+
 ## 当前没有实现
 
 - 没有把 packet 交给 Agent，也没有新增 `feedback_mode`；
-- 没有 DesignIndex、源码到 RTL 的实体映射或 CC-02b 完整领域查询；
+- 没有 DesignIndex、源码到 RTL 的实体映射或 CC-02b 的失败、指标比较和时序路径查询；
 - 没有 CC-03 runtime bridge、CC-04 Agent 消融、CC-05 留出模块；
 - 没有 CC-06 AI workload 或软硬件协同设计；
 - 当前字节预算只防止序列化溢出，不表示已经找到最优 token 预算；

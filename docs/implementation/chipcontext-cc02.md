@@ -104,9 +104,65 @@ the frozen single-slot qualification profile. The prior 10,000-cycle
 baseline-vs-baseline smoke was hash-checked and remained passing; it was not
 rerun because CC-02a has a zero-new-EDA budget.
 
+## CC-02b PR-B1: scoped query foundation
+
+PR-B1 adds a standard-library, read-only query foundation over sealed stores:
+
+- `EvidenceHandle` names one trusted store and one content-addressed snapshot;
+- `QueryScope` can require the complete candidate identity, attempt and trusted
+  working-source hash;
+- `EvidenceResolver` verifies snapshot, manifest, candidate, contract, attempt,
+  extraction and artifact ownership without consulting top-level aliases;
+- `ChipContextQueryService` answers candidate status, lists registered
+  artifacts and performs bounded source reads;
+- `chipcontext.query-answer.v1` keeps deterministic facts separate from future
+  runtime cost records.
+
+Working-source applicability is `selected_evaluation` when no working hash was
+provided, `current` when it equals the evaluated source, and `historical` when
+it differs. Historical evidence remains queryable but is not represented as a
+measurement of the current edit. Status reports preserve every `CheckRecord`
+and explicitly state that passing recorded checks is not final chip acceptance.
+
+The trusted in-process registry follows `chipcontext.store-registry.v1`. Store
+paths and access levels do not come from a query. A query authorizes its entire
+required artifact closure before returning facts or counts, and every page
+rechecks source hashes and permissions. Answers expose content references,
+logical kinds, conservative stages, sizes and media types; they do not expose
+host paths, root IDs or registered relative locations.
+
+Artifact stages use `artifact-stage-map-v1`. The evaluation record uses the
+manifest's normalized stage. Only explicit elaboration, differential,
+post-synth, post-route and regression kind prefixes get a fixed mapping; other
+artifacts remain `unknown`. The implementation does not infer a stage from a
+filename.
+
+Run the synthetic public vertical example from the harness directory:
+
+```bash
+QUERY_OUTPUT=$(mktemp -d /tmp/chipcontext-query-foundation.XXXXXX)
+PYTHONPATH=. python examples/chipcontext_query_foundation.py \
+  --request chia_boom/chipcontext/fixtures/success/request.json \
+  --output "$QUERY_OUTPUT"
+```
+
+The script performs `snapshot handle → candidate status → artifact list →
+bounded source read`. Its inputs contain no BOOM solution. The same chain and
+negative identity, authorization, cursor and tamper cases are executable in
+`chia_boom.tests.test_chipcontext_queries`; its fixed answer hashes are stored
+in `chipcontext/fixtures/query-foundation/expected.json`.
+
+The frozen Linux Python 3.12 environment passed all 159 harness tests plus
+compileall, both CLI help checks and shell syntax checks. The public example's
+complete JSON SHA-256 was
+`a75d7bd121e9902b7730138f5f5e8bdd733f57a5c18d6a3c849931d55747d4de`.
+The run explicitly removed `DEEPSEEK_API_KEY` and made zero model, EDA and
+simulator calls.
+
 ## Current boundary
 
-CC-02a does not add the public query CLI, arbitrary report paths, regex queries,
-Agent integration, Ray, model SDKs or EDA execution. The complete scoped query
-service belongs to CC-02b; the frozen question set and cost protocol belong to
-CC-02c.
+PR-B1 does not add the public `query` CLI, JSON/Markdown query renderer,
+failure/metric/timing-path domain queries, arbitrary report paths, regex
+queries, Agent integration, Ray, model SDKs or EDA execution. Those interfaces
+remain in Issue #11 PR-B2/PR-B3. The frozen question set and system-level cost
+protocol belong to CC-02c.

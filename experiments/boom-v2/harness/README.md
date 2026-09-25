@@ -14,7 +14,7 @@ store and must not be copied into a blind Agent workspace.
 | Target component | Implementation in this harness | Status |
 |---|---|---|
 | Design Core | frozen BOOM Chisel source plus generated RTL | implemented legacy adapter |
-| ChipContext | raw inspection tools plus deterministic legacy evidence adapter | CC-01 offline slice implemented; no DesignIndex/runtime delivery yet |
+| ChipContext | deterministic legacy/raw evidence plus scoped query foundation | CC-02b PR-B1 implemented; no DesignIndex/runtime delivery yet |
 | Loop Engine | `campaign.py`, `interactive.py`, `qualification.py`, `finalize.py` | implemented through CHIA 1.0.1 and Ray |
 | EvidenceStore | immutable campaign directories, hashes and JSON artifacts | implemented as files |
 | KnowledgeStore | `knowledge.py` and generic Design Episodes | implemented with access modes |
@@ -90,7 +90,9 @@ artifacts. It does not require a model credential, start Ray, run EDA, or change
 the existing campaign behavior. See [`docs/chipcontext.md`](../../../docs/chipcontext.md).
 Registered raw Vivado and differential artifacts can additionally produce
 content-addressed CC-02a extraction sidecars with exact source spans; the
-public query CLI remains a CC-02b deliverable.
+scoped Python API can query status, artifacts and bounded source spans. The
+public query CLI and domain failure/PPA/timing queries remain later Issue #11
+deliverables.
 
 ## What the published tests establish
 
@@ -99,8 +101,9 @@ failure classification, validity transitions, CHIA decoration, knowledge
 access and the B/C report gates. The ChipContext slice additionally tests stable
 hashes and immutable aliases, candidate/source/attempt binding, sealed baseline
 and qualification binding, producer check semantics, strict comparability,
-bounded reads, path escape resistance and final-record byte budgets. It does not run Chipyard,
-Verilator or Vivado.
+bounded reads, path escape resistance, final-record byte budgets, scoped
+candidate/attempt resolution, authorization closure and cursor binding. It does
+not run Chipyard, Verilator or Vivado.
 Physical results in the parent experiment README remain reported evidence from
 the controlled environment, not a CI reproduction.
 
