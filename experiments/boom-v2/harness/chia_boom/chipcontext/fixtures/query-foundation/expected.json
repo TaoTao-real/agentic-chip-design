@@ -1,6 +1,6 @@
 {
-  "artifacts": "4f09752bdfba48d1e6d762d9756eec9567f569601bba56df3b67c325c9973679",
-  "schema_version": "chipcontext.query-foundation-expected.v1",
-  "source": "9ab1c32db406f3b40e28bcc1b3b122b4793ffb83a907e895307a5866c80f81f1",
-  "status": "b10f06d31fc1b84789ae532a394fd606b8702f4ff65fddf2c634ff5fc9ad3d97"
+  "artifacts": "a37e7ea8c608f2e0c3a8d0fe80727305baf9ca2f90a5af8a4fff7c02fe7a0dda",
+  "schema_version": "chipcontext.query-foundation-expected.v2",
+  "source": "33a16120ba1d302c2a37d412c56d75a8f271d49a8a2ebc2a5ca7dfaee0030cfc",
+  "status": "792b74e1215a40b4ac500dcb1797ebbe52ee74843d6f359b9aef3f469480b1b5"
 }

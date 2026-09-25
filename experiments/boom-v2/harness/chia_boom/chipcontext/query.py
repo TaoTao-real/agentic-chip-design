@@ -18,11 +18,11 @@ from .schema import (
     hashed_record,
     require_sha256,
 )
-from .store import DEFAULT_LIMIT_BYTES, EvidenceStore
+from .store import DEFAULT_LIMIT_BYTES, MAX_LIMIT_BYTES, EvidenceStore
 
 
 QUERY_ANSWER_SCHEMA = "chipcontext.query-answer.v1"
-QUERY_REVISION = "chipcontext-query-foundation-v1"
+QUERY_REVISION = "chipcontext-query-foundation-v2"
 QUERY_CURSOR_SCHEMA = "chipcontext.query-cursor.v1"
 ARTIFACT_STAGE_MAP_REVISION = "artifact-stage-map-v1"
 STORE_REGISTRY_SCHEMA = "chipcontext.store-registry.v1"
@@ -164,7 +164,23 @@ class ResolvedEvidence:
             "working_source_sha256": working,
         }
 
-    def authorize(self, refs: Iterable[str]) -> None:
+    def _artifact_dependencies(self, refs: Iterable[str]) -> set[str]:
+        """Expand artifact/extraction sources to their authorized raw bytes."""
+        dependencies: set[str] = set()
+        for ref_id in set(refs):
+            if ref_id in self.artifacts:
+                dependencies.add(ref_id)
+                continue
+            extraction = self.extractions.get(ref_id)
+            if extraction is None:
+                raise QueryError(
+                    "integrity_error", "required evidence source is not in the snapshot"
+                )
+            for item in extraction["inputs"]:
+                dependencies.add(item["artifact_ref"])
+        return dependencies
+
+    def authorize_artifacts(self, refs: Iterable[str]) -> None:
         unique = sorted(set(refs))
         for ref_id in unique:
             ref = self.artifacts.get(ref_id)
@@ -185,6 +201,38 @@ class ResolvedEvidence:
                 raise QueryError(
                     "integrity_error", "required artifact failed integrity validation"
                 ) from exc
+
+    def authorize_sources(self, refs: Iterable[str]) -> set[str]:
+        dependencies = self._artifact_dependencies(refs)
+        self.authorize_artifacts(dependencies)
+        return dependencies
+
+    def authorize_envelope(self) -> set[str]:
+        """Authorize every dependency required to reveal the query envelope."""
+        return self.authorize_sources([
+            *self.snapshot.get("source_refs", []),
+            *self.snapshot.get("extraction_refs", []),
+        ])
+
+    def describe_sources(self, refs: Iterable[str]) -> list[dict[str, Any]]:
+        values: list[dict[str, Any]] = []
+        for ref_id in sorted(set(refs)):
+            if ref_id in self.artifacts:
+                values.append({"type": "artifact", "ref": ref_id})
+            elif ref_id in self.extractions:
+                values.append({
+                    "type": "extraction",
+                    "ref": ref_id,
+                    "artifact_dependencies": sorted(
+                        item["artifact_ref"]
+                        for item in self.extractions[ref_id]["inputs"]
+                    ),
+                })
+            else:
+                raise QueryError(
+                    "integrity_error", "required evidence source is not in the snapshot"
+                )
+        return values
 
 
 def _candidate_from_value(value: CandidateRef | Mapping[str, Any]) -> CandidateRef:
@@ -278,6 +326,110 @@ def _decode_cursor(cursor: str, binding: str) -> int:
     return offset
 
 
+def _read_utf8_artifact_page(
+    resolved: ResolvedEvidence,
+    artifact_ref: str,
+    *,
+    start_line: int | None,
+    line_count: int | None,
+    cursor: int | None,
+    limit_bytes: int,
+) -> dict[str, Any]:
+    """Read an exact UTF-8 page without replacing or splitting code points."""
+    if (
+        not isinstance(limit_bytes, int)
+        or isinstance(limit_bytes, bool)
+        or not 1 <= limit_bytes <= MAX_LIMIT_BYTES
+    ):
+        raise SchemaError(f"limit_bytes must be between 1 and {MAX_LIMIT_BYTES}")
+    if cursor is not None and start_line is not None:
+        raise SchemaError("cursor and line selection are mutually exclusive")
+    if line_count is not None and start_line is None:
+        raise SchemaError("line_count requires start_line")
+    if cursor is not None and cursor < 0:
+        raise SchemaError("cursor cannot be negative")
+    try:
+        _, artifact_data = resolved.store.verified_artifact_bytes(
+            artifact_ref, allowed_access=set(resolved.allowed_access)
+        )
+    except PermissionError as exc:
+        raise QueryError(
+            "permission_denied", "required evidence is not authorized"
+        ) from exc
+    except (FileNotFoundError, KeyError, RuntimeError, SchemaError) as exc:
+        raise QueryError(
+            "integrity_error", "artifact failed integrity validation"
+        ) from exc
+    try:
+        artifact_data.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise QueryError(
+            "invalid_text_encoding", "artifact is not valid UTF-8 text"
+        ) from exc
+
+    actual_start_line: int | None = None
+    actual_end_line: int | None = None
+    if start_line is not None:
+        if (
+            not isinstance(start_line, int)
+            or isinstance(start_line, bool)
+            or not isinstance(line_count, int)
+            or isinstance(line_count, bool)
+            or start_line < 1
+            or line_count < 1
+        ):
+            raise SchemaError("line queries require positive start_line/line_count")
+        lines = artifact_data.splitlines(keepends=True)
+        prefix = lines[: start_line - 1]
+        selected = lines[start_line - 1 : start_line - 1 + line_count]
+        start_byte = sum(len(line) for line in prefix)
+        selection_end = start_byte + sum(len(line) for line in selected)
+        if selected:
+            actual_start_line = start_line
+    else:
+        start_byte = cursor or 0
+        selection_end = len(artifact_data)
+
+    if start_byte > len(artifact_data):
+        raise SchemaError("cursor exceeds artifact length")
+    if start_byte < len(artifact_data) and artifact_data[start_byte] & 0xC0 == 0x80:
+        raise SchemaError("cursor is not on a UTF-8 character boundary")
+
+    end_byte = min(start_byte + limit_bytes, selection_end)
+    while (
+        end_byte > start_byte
+        and end_byte < len(artifact_data)
+        and artifact_data[end_byte] & 0xC0 == 0x80
+    ):
+        end_byte -= 1
+    if end_byte == start_byte and start_byte < selection_end:
+        raise QueryError(
+            "text_page_too_small",
+            "limit_bytes cannot contain the next UTF-8 character",
+        )
+
+    data = artifact_data[start_byte:end_byte]
+    if actual_start_line is not None and data:
+        complete_lines = len(data.splitlines(keepends=True))
+        if data.endswith((b"\n", b"\r")) or end_byte == selection_end:
+            actual_end_line = actual_start_line + complete_lines - 1
+        elif complete_lines > 1:
+            actual_end_line = actual_start_line + complete_lines - 2
+    truncated = end_byte < selection_end
+    return {
+        "schema_version": "chipcontext.bounded-artifact.v1",
+        "content": data.decode("utf-8", errors="strict"),
+        "span": {
+            "start_byte": start_byte,
+            "end_byte": end_byte,
+            "start_line": actual_start_line,
+            "end_line": actual_end_line,
+        },
+        "truncated": truncated,
+        "next_cursor": end_byte if end_byte < len(artifact_data) else None,
+    }
+
+
 class EvidenceResolver:
     """Resolve one explicit immutable evidence handle without alias inference."""
 
@@ -366,15 +518,6 @@ class EvidenceResolver:
             raise QueryError("integrity_error", "snapshot source references are invalid")
         if len(source_refs) != len(set(source_refs)) or not set(source_refs).issubset(artifacts):
             raise QueryError("integrity_error", "snapshot source closure is invalid")
-        for collection in (snapshot.get("checks", []), snapshot.get("measurements", [])):
-            if not isinstance(collection, list):
-                raise QueryError("integrity_error", "snapshot fact collection is invalid")
-            for row in collection:
-                if not isinstance(row, dict):
-                    raise QueryError("integrity_error", "snapshot fact is invalid")
-                source_ref = row.get("source_ref")
-                if source_ref is not None and source_ref not in source_refs:
-                    raise QueryError("integrity_error", "snapshot fact source is outside its closure")
         try:
             working_state = WorkingState(**snapshot["working_state"])
         except (KeyError, TypeError, SchemaError) as exc:
@@ -429,6 +572,22 @@ class EvidenceResolver:
                 ):
                     raise QueryError("integrity_error", "extraction input binding is invalid")
             extractions[extraction_ref] = record
+
+        # Facts can be grounded directly in a registered artifact or in a
+        # versioned extraction.  Extraction records remain safe because their
+        # owner/attempt and every raw input were validated above.
+        fact_sources = set(source_refs) | set(extractions)
+        for collection in (snapshot.get("checks", []), snapshot.get("measurements", [])):
+            if not isinstance(collection, list):
+                raise QueryError("integrity_error", "snapshot fact collection is invalid")
+            for row in collection:
+                if not isinstance(row, dict):
+                    raise QueryError("integrity_error", "snapshot fact is invalid")
+                source_ref = row.get("source_ref")
+                if source_ref is not None and source_ref not in fact_sources:
+                    raise QueryError(
+                        "integrity_error", "snapshot fact source is outside its closure"
+                    )
 
         return ResolvedEvidence(
             store=store,
@@ -492,6 +651,7 @@ class ChipContextQueryService:
 
     def candidate_status(self, scope: QueryScope) -> dict[str, Any]:
         resolved = self.resolver.resolve(scope)
+        resolved.authorize_envelope()
         checks = resolved.snapshot.get("checks")
         if not isinstance(checks, list):
             raise QueryError("integrity_error", "snapshot checks are invalid")
@@ -509,11 +669,9 @@ class ChipContextQueryService:
         # checks.  Conservatively require the complete snapshot source closure
         # so a derived JSON record cannot downgrade a controlled dependency.
         required_refs.update(resolved.snapshot.get("source_refs", []))
-        resolved.authorize(required_refs)
-        sources = [
-            {"type": "artifact", "ref": ref_id}
-            for ref_id in sorted(required_refs)
-        ]
+        required_refs.update(resolved.snapshot.get("extraction_refs", []))
+        resolved.authorize_sources(required_refs)
+        sources = resolved.describe_sources(required_refs)
         return self._answer(
             resolved,
             operation="candidate_status",
@@ -578,6 +736,9 @@ class ChipContextQueryService:
         if any(not isinstance(kind, str) or not kind for kind in normalized_kinds):
             raise SchemaError("artifact kinds must be non-empty strings")
         resolved = self.resolver.resolve(scope)
+        # The answer envelope itself reveals candidate identity and evaluation
+        # metadata, so it is authorized before filters can produce an empty set.
+        resolved.authorize_envelope()
         rows = []
         for ref in resolved.artifacts.values():
             stage_info = _artifact_stage(ref, resolved.manifest)
@@ -589,7 +750,7 @@ class ChipContextQueryService:
         rows.sort(key=lambda item: item[:3])
         # Filtering defines this operation's dependency closure.  Authorize the
         # entire matching set before returning counts or the first page.
-        resolved.authorize(row[3].ref_id for row in rows)
+        resolved.authorize_artifacts(row[3].ref_id for row in rows)
         binding_payload = {
             "operation": "candidate_artifacts",
             "revision": QUERY_REVISION,
@@ -676,6 +837,9 @@ class ChipContextQueryService:
     ) -> dict[str, Any]:
         require_sha256("artifact_ref", artifact_ref)
         resolved = self.resolver.resolve(scope)
+        # Fail closed on the common metadata envelope before revealing whether
+        # the requested reference is part of the selected attempt.
+        resolved.authorize_envelope()
         ref = resolved.artifacts.get(artifact_ref)
         if ref is None:
             raise QueryError("scope_mismatch", "artifact is outside the selected attempt")
@@ -694,20 +858,15 @@ class ChipContextQueryService:
         }
         binding = content_hash(binding_payload)
         raw_cursor = _decode_cursor(cursor, binding) if cursor is not None else None
-        resolved.authorize([artifact_ref])
-        try:
-            page = resolved.store.read_artifact(
-                artifact_ref,
-                start_line=start_line,
-                line_count=line_count,
-                cursor=raw_cursor,
-                limit_bytes=limit_bytes,
-                allowed_access=set(resolved.allowed_access),
-            )
-        except PermissionError as exc:
-            raise QueryError("permission_denied", "required evidence is not authorized") from exc
-        except (FileNotFoundError, KeyError, RuntimeError) as exc:
-            raise QueryError("integrity_error", "artifact failed integrity validation") from exc
+        resolved.authorize_artifacts([artifact_ref])
+        page = _read_utf8_artifact_page(
+            resolved,
+            artifact_ref,
+            start_line=start_line,
+            line_count=line_count,
+            cursor=raw_cursor,
+            limit_bytes=limit_bytes,
+        )
         next_cursor = (
             _encode_cursor(binding, page["next_cursor"])
             if start_line is None and page.get("next_cursor") is not None

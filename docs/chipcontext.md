@@ -140,7 +140,10 @@ PPA 当作当前结果。
 
 store 路径和权限来自可信注册表，查询内容与分页 cursor 不能扩大权限。解析器会
 核对 snapshot 到 manifest、candidate、contract、attempt、extraction 和 artifact
-的归属及内容身份。答案不返回机器路径或 artifact 存储位置。公开纵向样例与
+的归属及内容身份。artifact 和 extraction 都可以成为事实来源；extraction 会展开
+到原始 artifact 做权限与哈希校验。所有查询在筛选前授权候选公共 envelope，空
+结果不会泄露受控候选身份；原文分页保持 UTF-8 字符完整，非法文本明确拒绝。
+答案不返回机器路径或 artifact 存储位置。公开纵向样例与
 当前 API 边界见
 [`implementation/chipcontext-cc02.md`](implementation/chipcontext-cc02.md)。
 

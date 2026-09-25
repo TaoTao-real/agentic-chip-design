@@ -125,11 +125,22 @@ measurement of the current edit. Status reports preserve every `CheckRecord`
 and explicitly state that passing recorded checks is not final chip acceptance.
 
 The trusted in-process registry follows `chipcontext.store-registry.v1`. Store
-paths and access levels do not come from a query. A query authorizes its entire
-required artifact closure before returning facts or counts, and every page
-rechecks source hashes and permissions. Answers expose content references,
-logical kinds, conservative stages, sizes and media types; they do not expose
-host paths, root IDs or registered relative locations.
+paths and access levels do not come from a query. Query revision
+`chipcontext-query-foundation-v2` treats both artifacts and versioned
+extractions as evidence sources. An extraction source is accepted only after
+its owner, attempt and input bindings are verified, then authorization expands
+to every underlying artifact. Every operation authorizes the common candidate
+envelope before filtering, so an empty result cannot disclose controlled
+candidate metadata. Every page rechecks source hashes and permissions.
+Answers expose content references, logical kinds, conservative stages, sizes
+and media types; they do not expose host paths, root IDs or registered relative
+locations.
+
+Scoped source reads use strict UTF-8 pagination. Page ends move back to a code
+point boundary, so concatenating pages reproduces valid input exactly. Invalid
+UTF-8 returns `invalid_text_encoding`; a limit too small for the next code point
+returns `text_page_too_small`. The pre-existing `EvidenceStore.read_artifact`
+API is unchanged for CC-01 compatibility.
 
 Artifact stages use `artifact-stage-map-v1`. The evaluation record uses the
 manifest's normalized stage. Only explicit elaboration, differential,
@@ -148,14 +159,16 @@ PYTHONPATH=. python examples/chipcontext_query_foundation.py \
 
 The script performs `snapshot handle → candidate status → artifact list →
 bounded source read`. Its inputs contain no BOOM solution. The same chain and
-negative identity, authorization, cursor and tamper cases are executable in
+negative identity, extraction-source, envelope authorization, lossless UTF-8,
+cursor and tamper cases are executable in
 `chia_boom.tests.test_chipcontext_queries`; its fixed answer hashes are stored
 in `chipcontext/fixtures/query-foundation/expected.json`.
 
-The frozen Linux Python 3.12 environment passed all 159 harness tests plus
+The frozen Linux Python 3.12 environment passed all 159 pre-review harness tests plus
 compileall, both CLI help checks and shell syntax checks. The public example's
 complete JSON SHA-256 was
-`a75d7bd121e9902b7730138f5f5e8bdd733f57a5c18d6a3c849931d55747d4de`.
+`04cf47fd806c4f19f978b5e03115754b13fd67fa608e14357736a5f6d17fc502` after
+the v2 query-contract fixes.
 The run explicitly removed `DEEPSEEK_API_KEY` and made zero model, EDA and
 simulator calls.
 
