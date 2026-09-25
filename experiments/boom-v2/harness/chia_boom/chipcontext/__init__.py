@@ -24,7 +24,7 @@ from .query import (
     RegisteredStore,
     TrustedStoreRegistry,
 )
-from .store import EvidenceStore
+from .store import EvidenceMeter, EvidenceStore
 
 __all__ = [
     "ArtifactRef",
@@ -33,6 +33,7 @@ __all__ = [
     "ChipContextService",
     "ChipContextQueryService",
     "EvidenceHandle",
+    "EvidenceMeter",
     "EvidenceResolver",
     "EvidenceStore",
     "ExtractionService",

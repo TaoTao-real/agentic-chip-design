@@ -1,0 +1,118 @@
+{
+  "base_sha": "885e6b96b6c4d6f51f6c068a4b5132b3728afc7e",
+  "environment_review": {
+    "cli_calibration_completed": true,
+    "doctor_passed": true,
+    "doctor_sha256": "cd3c26a2ca30870be87c0d1cb94f3f5d2ab60ed6efef89fc00552daff45d0824",
+    "frozen_smoke_expected_sha256": "6821977ae1645eba6302feedb18cf07e057f2c9e308d8367b7d5c095fc41f52c",
+    "frozen_smoke_hash_matches": true,
+    "frozen_smoke_sha256": "6821977ae1645eba6302feedb18cf07e057f2c9e308d8367b7d5c095fc41f52c",
+    "full_harness_tests_passed": 205,
+    "model_credential_present_during_review": false,
+    "qualification_profile": "single-slot-low-resource"
+  },
+  "failure_chain": {
+    "actual_available": false,
+    "conflict_count": 0,
+    "expected_available": false,
+    "first_mismatch_grounded": true,
+    "missing_count": 13,
+    "query_answer_hash": "5d94f641cdf3b1cd3100b051cafe1923db6f081a67a1a2075bd5aebe5cf54fec",
+    "source_artifact_sha256": "af47369aa7755f14a4e4b32a2d424074568a4ef463f8352b8200a7352bdea510",
+    "source_span": {
+      "end": 1,
+      "start": 1
+    },
+    "span_answer_hash": "2135f6e33bf44be6be84fd2f2d8040291d8f8c754ae9ec60ca0833b902ac9247",
+    "span_content_sha256": "9280a2106f2b99470fc7da7f698c1e6959df3b44fe460d295d1543ab50577b08"
+  },
+  "json_markdown_checks": {
+    "failure": {
+      "answer_hash": "5d94f641cdf3b1cd3100b051cafe1923db6f081a67a1a2075bd5aebe5cf54fec",
+      "answer_leaf_fields": 118,
+      "json_cli_wall_time_ns": 90689625,
+      "json_markdown_identity_fields_checked": 4,
+      "logical_reads": {
+        "artifact_metadata_read_bytes": 10037,
+        "artifact_scan_bytes": 249971,
+        "hash_bytes": 279059,
+        "parse_bytes": 36096,
+        "record_read_bytes": 24620,
+        "return_bytes": 7667
+      },
+      "markdown_cli_wall_time_ns": 92537106
+    },
+    "metrics": {
+      "answer_hash": "e6b8fa62a6ee067e4c3ecc939e92e917492e58447a166fc0f329f469719f2b06",
+      "answer_leaf_fields": 118,
+      "json_cli_wall_time_ns": 91357159,
+      "json_markdown_identity_fields_checked": 4,
+      "logical_reads": {
+        "artifact_metadata_read_bytes": 11092,
+        "artifact_scan_bytes": 387135,
+        "hash_bytes": 428251,
+        "parse_bytes": 57256,
+        "record_read_bytes": 44109,
+        "return_bytes": 7657
+      },
+      "markdown_cli_wall_time_ns": 89772536
+    },
+    "timing": {
+      "answer_hash": "3d961404c47b871d2efacbe814411cfc1bd63d1bbaca718161cb95a42661a07e",
+      "answer_leaf_fields": 129,
+      "json_cli_wall_time_ns": 90152917,
+      "json_markdown_identity_fields_checked": 4,
+      "logical_reads": {
+        "artifact_metadata_read_bytes": 11289,
+        "artifact_scan_bytes": 729157,
+        "hash_bytes": 770470,
+        "parse_bytes": 56844,
+        "record_read_bytes": 44109,
+        "return_bytes": 8415
+      },
+      "markdown_cli_wall_time_ns": 90804110
+    }
+  },
+  "model_calls": 0,
+  "new_eda_calls": 0,
+  "new_simulator_calls": 0,
+  "performance_chain": {
+    "comparison_statuses": [
+      "comparable",
+      "comparable"
+    ],
+    "conflict_count": 0,
+    "current_source_count": 2,
+    "delta_direction": "current_minus_reference",
+    "metric_ids": [
+      "critical_delay_ns",
+      "slice_luts"
+    ],
+    "missing_count": 0,
+    "query_answer_hash": "e6b8fa62a6ee067e4c3ecc939e92e917492e58447a166fc0f329f469719f2b06",
+    "reference_source_count": 2
+  },
+  "public_safe": true,
+  "schema_version": "chipcontext.cc02b-controlled-calibration-summary.v1",
+  "source_type": "controlled_real",
+  "stores": {
+    "failure_snapshot": "4432ae0bf3e6634f84c79a5995933ee5cf7e8c71afc76c169fff1493f7535c34",
+    "success_snapshot": "8ba4b40a8fae71f7f236bbf12ea55fd76f7c068b095635e0163f8ce0d4fc56e8"
+  },
+  "timing_path_chain": {
+    "conflict_count": 0,
+    "missing_count": 0,
+    "parsed_path_count": 20,
+    "producer_rank": 1,
+    "query_answer_hash": "3d961404c47b871d2efacbe814411cfc1bd63d1bbaca718161cb95a42661a07e",
+    "reported_path_count": 20,
+    "requested_top_k": 20,
+    "source_artifact_sha256": "b402c8faaf15c2c23d40e73e4c06a0538976b7712d26663140e8bcac01f42516",
+    "source_span": {
+      "end": 105,
+      "start": 15
+    },
+    "span_answer_hash": "0afecd36e35319e946039466a2a9da6b0c88ffd267bd680861678ac4b3866972",
+    "span_content_sha256": "1991903bd08936f53bf93d48f5541bae1cb38dfb8e41fcef23bd84ca147503d4"
+  }
+}

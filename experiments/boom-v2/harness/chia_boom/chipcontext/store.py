@@ -5,12 +5,14 @@ import json
 import os
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .schema import (
     ArtifactRef,
     SchemaError,
+    canonical_json,
     content_hash,
     hashed_record,
 )
@@ -20,13 +22,47 @@ DEFAULT_LIMIT_BYTES = 8 * 1024
 MAX_LIMIT_BYTES = 64 * 1024
 
 
-def _sha256_file(path: Path) -> str:
-    import hashlib
+@dataclass
+class EvidenceMeter:
+    """Logical read and verification work performed by one query."""
 
+    configuration_read_count: int = 0
+    configuration_read_bytes: int = 0
+    store_metadata_read_count: int = 0
+    store_metadata_read_bytes: int = 0
+    record_read_count: int = 0
+    record_read_bytes: int = 0
+    artifact_metadata_read_count: int = 0
+    artifact_metadata_read_bytes: int = 0
+    artifact_read_count: int = 0
+    artifact_scan_bytes: int = 0
+    hash_bytes: int = 0
+    parse_bytes: int = 0
+
+    def snapshot(self) -> dict[str, int]:
+        return {
+            "configuration_read_count": self.configuration_read_count,
+            "configuration_read_bytes": self.configuration_read_bytes,
+            "store_metadata_read_count": self.store_metadata_read_count,
+            "store_metadata_read_bytes": self.store_metadata_read_bytes,
+            "record_read_count": self.record_read_count,
+            "record_read_bytes": self.record_read_bytes,
+            "artifact_metadata_read_count": self.artifact_metadata_read_count,
+            "artifact_metadata_read_bytes": self.artifact_metadata_read_bytes,
+            "artifact_read_count": self.artifact_read_count,
+            "artifact_scan_bytes": self.artifact_scan_bytes,
+            "hash_bytes": self.hash_bytes,
+            "parse_bytes": self.parse_bytes,
+        }
+
+
+def _sha256_file(path: Path, meter: EvidenceMeter | None = None) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
+            if meter is not None:
+                meter.hash_bytes += len(chunk)
     return digest.hexdigest()
 
 
@@ -57,9 +93,26 @@ def _publish(path: Path, text: str) -> None:
 class EvidenceStore:
     """File-backed immutable sidecars over controlled external artifacts."""
 
-    def __init__(self, root: Path, artifact_roots: dict[str, Path] | None = None):
+    def __init__(
+        self,
+        root: Path,
+        artifact_roots: dict[str, Path] | None = None,
+        *,
+        read_only: bool = False,
+        meter: EvidenceMeter | None = None,
+    ):
+        if read_only and root.is_symlink():
+            raise SchemaError("read-only evidence store may not be a symlink")
         self.root = root.resolve()
-        self.root.mkdir(parents=True, exist_ok=True)
+        self.read_only = read_only
+        self.meter = meter
+        if read_only:
+            if artifact_roots is not None:
+                raise SchemaError("read-only stores cannot publish artifact roots")
+            if not self.root.is_dir() or self.root.is_symlink():
+                raise FileNotFoundError("evidence store is unavailable")
+        else:
+            self.root.mkdir(parents=True, exist_ok=True)
         roots_path = self.root / "ROOTS.json"
         if artifact_roots is not None:
             normalized = {}
@@ -72,15 +125,25 @@ class EvidenceStore:
                 normalized[name] = str(resolved)
             text = json.dumps(normalized, indent=2, sort_keys=True) + "\n"
             _publish(roots_path, text)
-        if not roots_path.is_file():
-            raise FileNotFoundError(f"evidence root registry is missing: {roots_path}")
+        if not roots_path.is_file() or roots_path.is_symlink():
+            raise FileNotFoundError("evidence root registry is missing")
+        roots_data = roots_path.read_bytes()
+        if self.meter is not None:
+            self.meter.store_metadata_read_count += 1
+            self.meter.store_metadata_read_bytes += len(roots_data)
+            self.meter.parse_bytes += len(roots_data)
         self.artifact_roots = {
-            key: Path(value) for key, value in json.loads(roots_path.read_text()).items()
+            key: Path(value) for key, value in json.loads(roots_data).items()
         }
+
+    def _require_writable(self) -> None:
+        if self.read_only:
+            raise RuntimeError("evidence store is read-only")
 
     def write_record(
         self, kind: str, schema_version: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
+        self._require_writable()
         record = hashed_record(schema_version, payload)
         path = self.root / "records" / kind / f"{record['content_hash']}.json"
         _publish(path, json.dumps(record, indent=2, sort_keys=True) + "\n")
@@ -93,20 +156,28 @@ class EvidenceStore:
         path = self.root / "records" / kind / f"{record_hash}.json"
         if not path.is_file() or path.is_symlink():
             raise KeyError(f"unknown {kind} record: {record_hash}")
+        data = path.read_bytes()
+        if self.meter is not None:
+            self.meter.record_read_count += 1
+            self.meter.record_read_bytes += len(data)
+            self.meter.parse_bytes += len(data)
         try:
-            record = json.loads(path.read_text())
+            record = json.loads(data)
         except json.JSONDecodeError as exc:
             raise RuntimeError("record is not valid JSON") from exc
         if not isinstance(record, dict):
             raise RuntimeError("record must be a JSON object")
         embedded = record.get("content_hash")
         unsigned = {key: value for key, value in record.items() if key != "content_hash"}
+        if self.meter is not None:
+            self.meter.hash_bytes += len(canonical_json(unsigned).encode("utf-8"))
         actual = content_hash(unsigned)
         if embedded != record_hash or actual != record_hash:
             raise RuntimeError("record failed its content hash")
         return record
 
     def publish_alias(self, name: str, record: dict[str, Any] | str) -> None:
+        self._require_writable()
         if "/" in name or name.startswith("."):
             raise SchemaError("alias must be a top-level filename")
         text = (
@@ -117,6 +188,7 @@ class EvidenceStore:
         _publish(self.root / name, text)
 
     def append_event(self, event: dict[str, Any]) -> Path:
+        self._require_writable()
         payload = {
             "schema_version": "chipcontext.event.v1",
             "recorded_unix_ns": time.time_ns(),
@@ -138,6 +210,7 @@ class EvidenceStore:
         access: str = "public",
         media_type: str = "text/plain",
     ) -> ArtifactRef:
+        self._require_writable()
         if root_id not in self.artifact_roots:
             raise SchemaError(f"unknown artifact root: {root_id}")
         root = self.artifact_roots[root_id]
@@ -156,7 +229,7 @@ class EvidenceStore:
                 raise SchemaError("artifact path traverses a symlink")
         if not resolved.is_file():
             raise SchemaError("artifact is not a regular file")
-        digest = _sha256_file(resolved)
+        digest = _sha256_file(resolved, self.meter)
         payload = {
             "sha256": digest,
             "kind": kind,
@@ -177,11 +250,18 @@ class EvidenceStore:
 
     def artifact(self, ref_id: str) -> ArtifactRef:
         path = self.root / "artifacts" / f"{ref_id}.json"
-        if not path.is_file():
+        if not path.is_file() or path.is_symlink():
             raise KeyError(f"unknown artifact reference: {ref_id}")
-        payload = json.loads(path.read_text())
+        data = path.read_bytes()
+        if self.meter is not None:
+            self.meter.artifact_metadata_read_count += 1
+            self.meter.artifact_metadata_read_bytes += len(data)
+            self.meter.parse_bytes += len(data)
+        payload = json.loads(data)
         ref = ArtifactRef(**payload)
         unsigned = {key: value for key, value in payload.items() if key != "ref_id"}
+        if self.meter is not None:
+            self.meter.hash_bytes += len(canonical_json(unsigned).encode("utf-8"))
         if content_hash(unsigned) != ref.ref_id or ref.ref_id != ref_id:
             raise RuntimeError("artifact reference metadata failed its content hash")
         return ref
@@ -206,7 +286,7 @@ class EvidenceStore:
             resolved.relative_to(root)
         except ValueError as exc:
             raise SchemaError("artifact escaped its registered root") from exc
-        if verify_hash and _sha256_file(resolved) != ref.sha256:
+        if verify_hash and _sha256_file(resolved, self.meter) != ref.sha256:
             raise RuntimeError("artifact content hash changed after registration")
         return resolved
 
@@ -251,6 +331,10 @@ class EvidenceStore:
         ):
             raise RuntimeError("artifact changed while it was being read")
         data = b"".join(chunks)
+        if self.meter is not None:
+            self.meter.artifact_read_count += 1
+            self.meter.artifact_scan_bytes += len(data)
+            self.meter.hash_bytes += len(data)
         if len(data) != ref.size_bytes or hashlib.sha256(data).hexdigest() != ref.sha256:
             raise RuntimeError("artifact content hash changed after registration")
         return ref, data

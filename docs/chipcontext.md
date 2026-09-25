@@ -1,6 +1,6 @@
 # ChipContext：确定性证据准备
 
-状态：**CC-00／CC-01、CC-02a 与 CC-02b 领域查询已实现；查询 CLI、Agent/runtime 接入和效果消融尚未实现。**
+状态：**CC-00／CC-01、CC-02a 与 CC-02b 离线查询层已实现；Agent/runtime 接入和效果消融尚未实现。**
 
 首批实现位于
 [`experiments/boom-v2/harness/chia_boom/chipcontext/`](../experiments/boom-v2/harness/chia_boom/chipcontext/)，
@@ -150,14 +150,40 @@ coverage，不把过滤结果称为全局最差路径。公开纵向样例与
 当前 API 边界见
 [`implementation/chipcontext-cc02.md`](implementation/chipcontext-cc02.md)。
 
+### 统一离线查询命令
+
+`chia-chipcontext query` 从受信 registry 选择封存 store，并严格校验
+`chipcontext.query-request.v1`。请求只能选择六类已冻结操作：候选状态、产物、
+失败、指标比较、时序路径和原文读取；请求本身不能携带路径、权限、正则、shell
+或 `latest/best` 别名。
+
+```bash
+chia-chipcontext query \
+  --registry trusted-stores.json \
+  --request requests/candidate-status.json \
+  --format json \
+  --max-output-bytes 16384
+```
+
+默认只授权 `public`。只有受信 registry 已允许 `controlled` 且调用方显式使用
+`--allow-controlled` 时，查询才会读取受控证据。store 以只读方式打开，查询不会
+创建 alias、事件或缓存。JSON 与 Markdown 由同一个确定性 QueryAnswer 渲染；
+动态耗时和读取成本位于独立 QueryCost，不影响 answer hash。
+
+结构化输出默认上限 16 KiB，硬上限 64 KiB，按最终 UTF-8 字节计算。放不下时
+返回 `budget_exceeded`，不会删去冲突、来源或范围信息。scoped 原文读取支持在
+固定行范围内用 cursor 续页，每页重新检查权限和内容哈希，并保持 UTF-8 字符
+完整。接口、示例、错误语义、计量口径与受控校准见
+[`implementation/chipcontext-cc02b.md`](implementation/chipcontext-cc02b.md)。
+
 ## 当前没有实现
 
 - 没有把 packet 交给 Agent，也没有新增 `feedback_mode`；
-- 没有 DesignIndex、源码到 RTL 的实体映射或公共 query CLI；
+- 没有 DesignIndex、源码到 RTL 的实体映射；
 - 没有 CC-03 runtime bridge、CC-04 Agent 消融、CC-05 留出模块；
 - 没有 CC-06 AI workload 或软硬件协同设计；
 - 当前字节预算只防止序列化溢出，不表示已经找到最优 token 预算；
 - 尚未声称 ChipContext 提高了优化成功率、速度、token 效率或 QoR。
 
-下一批 CC-02b 将加入 query CLI、JSON/Markdown 渲染、最终输出预算、行范围续页
-和成本计量；它仍不接入搜索 runtime 或 Agent。
+下一批 CC-02c 将冻结工程问题集并进行系统级成本验收；它仍不接入搜索 runtime
+或 Agent。
