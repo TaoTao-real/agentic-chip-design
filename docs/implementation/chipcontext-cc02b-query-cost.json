@@ -1,0 +1,1682 @@
+{
+  "environment": {
+    "architecture": "x86_64",
+    "os": "Linux",
+    "python": "3.12.3"
+  },
+  "measurement": {
+    "eda_calls": 0,
+    "logical_bytes_are_not_physical_io": true,
+    "model_calls": 0,
+    "peak_memory_measured": false,
+    "performance_threshold": null,
+    "phase_times_are_disjoint": true,
+    "physical_io_measured": false,
+    "response_cost_boundary": "through_first_complete_render",
+    "simulator_calls": 0
+  },
+  "public_safe": true,
+  "scenarios": {
+    "one_mib_report": {
+      "benchmark": {
+        "measurement": {
+          "clock": "time.monotonic_ns",
+          "logical_bytes_are_not_physical_io": true,
+          "performance_threshold": null,
+          "phase_times_are_disjoint": true,
+          "quartiles": "statistics.quantiles(n=4, method=inclusive)",
+          "response_cost_boundary": "through_first_complete_render"
+        },
+        "operations": {
+          "candidate_artifacts": {
+            "cli_process_wall_time_ns": {
+              "count": 5,
+              "iqr": 25176236.0,
+              "max": 119152179,
+              "median": 117361802,
+              "min": 91814950,
+              "q1": 93192602.0,
+              "q3": 118368838.0
+            },
+            "in_process_wall_time_ns": {
+              "count": 10,
+              "iqr": 5972973.5,
+              "max": 20855856,
+              "median": 10831225.5,
+              "min": 8898162,
+              "q1": 9016026.25,
+              "q3": 14988999.75
+            },
+            "logical_work": {
+              "artifact_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 10893,
+                "median": 10893.0,
+                "min": 10893,
+                "q1": 10893.0,
+                "q3": 10893.0
+              },
+              "artifact_scan_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 2104264,
+                "median": 2104264.0,
+                "min": 2104264,
+                "q1": 2104264.0,
+                "q3": 2104264.0
+              },
+              "configuration_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 1321,
+                "median": 1321.0,
+                "min": 1321,
+                "q1": 1321.0,
+                "q3": 1321.0
+              },
+              "hash_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 2124247,
+                "median": 2124247.0,
+                "min": 2124247,
+                "q1": 2124247.0,
+                "q3": 2124247.0
+              },
+              "parse_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 27253,
+                "median": 27253.0,
+                "min": 27253,
+                "q1": 27253.0,
+                "q3": 27253.0
+              },
+              "record_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 14900,
+                "median": 14900.0,
+                "min": 14900,
+                "q1": 14900.0,
+                "q3": 14900.0
+              },
+              "return_bytes": {
+                "count": 10,
+                "iqr": 3.75,
+                "max": 6121,
+                "median": 6119.0,
+                "min": 6117,
+                "q1": 6117.0,
+                "q3": 6120.75
+              },
+              "store_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 139,
+                "median": 139.0,
+                "min": 139,
+                "q1": 139.0,
+                "q3": 139.0
+              }
+            },
+            "response_phase_time_ns": {
+              "evidence_query_ns": {
+                "count": 10,
+                "iqr": 5077572.75,
+                "max": 17596162,
+                "median": 9139015.0,
+                "min": 7585665,
+                "q1": 7693659.5,
+                "q3": 12771232.25
+              },
+              "first_render_ns": {
+                "count": 10,
+                "iqr": 80328.0,
+                "max": 412605,
+                "median": 211252.5,
+                "min": 175053,
+                "q1": 177552.75,
+                "q3": 257880.75
+              },
+              "request_validation_ns": {
+                "count": 10,
+                "iqr": 96528.0,
+                "max": 413156,
+                "median": 119927.5,
+                "min": 86585,
+                "q1": 88333.25,
+                "q3": 184861.25
+              },
+              "store_resolution_ns": {
+                "count": 10,
+                "iqr": 551749.25,
+                "max": 1289454,
+                "median": 723531.5,
+                "min": 526923,
+                "q1": 538322.5,
+                "q3": 1090071.75
+              }
+            }
+          },
+          "candidate_status": {
+            "cli_process_wall_time_ns": {
+              "count": 5,
+              "iqr": 22731967.0,
+              "max": 117002061,
+              "median": 93450595,
+              "min": 92682060,
+              "q1": 92888212.0,
+              "q3": 115620179.0
+            },
+            "in_process_wall_time_ns": {
+              "count": 10,
+              "iqr": 269561.0,
+              "max": 10139343,
+              "median": 9324353.0,
+              "min": 9275070,
+              "q1": 9308231.75,
+              "q3": 9577792.75
+            },
+            "logical_work": {
+              "artifact_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 10893,
+                "median": 10893.0,
+                "min": 10893,
+                "q1": 10893.0,
+                "q3": 10893.0
+              },
+              "artifact_scan_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 2104264,
+                "median": 2104264.0,
+                "min": 2104264,
+                "q1": 2104264.0,
+                "q3": 2104264.0
+              },
+              "configuration_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 1299,
+                "median": 1299.0,
+                "min": 1299,
+                "q1": 1299.0,
+                "q3": 1299.0
+              },
+              "hash_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 2124247,
+                "median": 2124247.0,
+                "min": 2124247,
+                "q1": 2124247.0,
+                "q3": 2124247.0
+              },
+              "parse_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 27231,
+                "median": 27231.0,
+                "min": 27231,
+                "q1": 27231.0,
+                "q3": 27231.0
+              },
+              "record_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 14900,
+                "median": 14900.0,
+                "min": 14900,
+                "q1": 14900.0,
+                "q3": 14900.0
+              },
+              "return_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 7351,
+                "median": 7350.0,
+                "min": 7350,
+                "q1": 7350.0,
+                "q3": 7350.0
+              },
+              "store_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 139,
+                "median": 139.0,
+                "min": 139,
+                "q1": 139.0,
+                "q3": 139.0
+              }
+            },
+            "response_phase_time_ns": {
+              "evidence_query_ns": {
+                "count": 10,
+                "iqr": 193092.0,
+                "max": 8359006,
+                "median": 7829599.0,
+                "min": 7740850,
+                "q1": 7796947.0,
+                "q3": 7990039.0
+              },
+              "first_render_ns": {
+                "count": 10,
+                "iqr": 21208.25,
+                "max": 258492,
+                "median": 223966.0,
+                "min": 220279,
+                "q1": 221561.25,
+                "q3": 242769.5
+              },
+              "request_validation_ns": {
+                "count": 10,
+                "iqr": 10294.75,
+                "max": 148322,
+                "median": 90898.0,
+                "min": 84711,
+                "q1": 87686.5,
+                "q3": 97981.25
+              },
+              "store_resolution_ns": {
+                "count": 10,
+                "iqr": 34586.25,
+                "max": 708649,
+                "median": 560576.5,
+                "min": 537523,
+                "q1": 552586.5,
+                "q3": 587172.75
+              }
+            }
+          },
+          "compare_metrics": {
+            "cli_process_wall_time_ns": {
+              "count": 5,
+              "iqr": 26057172.0,
+              "max": 115532526,
+              "median": 113151388,
+              "min": 88815639,
+              "q1": 88994792.0,
+              "q3": 115051964.0
+            },
+            "in_process_wall_time_ns": {
+              "count": 10,
+              "iqr": 7089919.0,
+              "max": 16664349,
+              "median": 9961485.5,
+              "min": 7112705,
+              "q1": 7456926.25,
+              "q3": 14546845.25
+            },
+            "logical_work": {
+              "artifact_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 11806,
+                "median": 11806.0,
+                "min": 11806,
+                "q1": 11806.0,
+                "q3": 11806.0
+              },
+              "artifact_scan_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 9589,
+                "median": 9589.0,
+                "min": 9589,
+                "q1": 9589.0,
+                "q3": 9589.0
+              },
+              "configuration_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 1434,
+                "median": 1434.0,
+                "min": 1434,
+                "q1": 1434.0,
+                "q3": 1434.0
+              },
+              "hash_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 40823,
+                "median": 40823.0,
+                "min": 40823,
+                "q1": 40823.0,
+                "q3": 40823.0
+              },
+              "parse_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 43144,
+                "median": 43144.0,
+                "min": 43144,
+                "q1": 43144.0,
+                "q3": 43144.0
+              },
+              "record_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 29548,
+                "median": 29548.0,
+                "min": 29548,
+                "q1": 29548.0,
+                "q3": 29548.0
+              },
+              "return_bytes": {
+                "count": 10,
+                "iqr": 3.25,
+                "max": 9983,
+                "median": 9980.0,
+                "min": 9979,
+                "q1": 9979.25,
+                "q3": 9982.5
+              },
+              "store_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 138,
+                "median": 138.0,
+                "min": 138,
+                "q1": 138.0,
+                "q3": 138.0
+              }
+            },
+            "response_phase_time_ns": {
+              "evidence_query_ns": {
+                "count": 10,
+                "iqr": 5377575.75,
+                "max": 12920535,
+                "median": 7676166.5,
+                "min": 5479035,
+                "q1": 5775484.25,
+                "q3": 11153060.0
+              },
+              "first_render_ns": {
+                "count": 10,
+                "iqr": 264568.0,
+                "max": 604270,
+                "median": 364398.5,
+                "min": 257009,
+                "q1": 260034.5,
+                "q3": 524602.5
+              },
+              "request_validation_ns": {
+                "count": 10,
+                "iqr": 97532.25,
+                "max": 286806,
+                "median": 121596.0,
+                "min": 87456,
+                "q1": 96476.25,
+                "q3": 194008.5
+              },
+              "store_resolution_ns": {
+                "count": 10,
+                "iqr": 602193.0,
+                "max": 1233167,
+                "median": 752522.0,
+                "min": 524668,
+                "q1": 592004.0,
+                "q3": 1194197.0
+              }
+            }
+          },
+          "failure": {
+            "cli_process_wall_time_ns": {
+              "count": 5,
+              "iqr": 307445.0,
+              "max": 112541697,
+              "median": 112358148,
+              "min": 88529827,
+              "q1": 112206199.0,
+              "q3": 112513644.0
+            },
+            "in_process_wall_time_ns": {
+              "count": 10,
+              "iqr": 4687094.5,
+              "max": 14081084,
+              "median": 7959746.0,
+              "min": 5653087,
+              "q1": 7738306.75,
+              "q3": 12425401.25
+            },
+            "logical_work": {
+              "artifact_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 9520,
+                "median": 9520.0,
+                "min": 9520,
+                "q1": 9520.0,
+                "q3": 9520.0
+              },
+              "artifact_scan_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 5490,
+                "median": 5490.0,
+                "min": 5490,
+                "q1": 5490.0,
+                "q3": 5490.0
+              },
+              "configuration_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 1423,
+                "median": 1423.0,
+                "min": 1423,
+                "q1": 1423.0,
+                "q3": 1423.0
+              },
+              "hash_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 25583,
+                "median": 25583.0,
+                "min": 25583,
+                "q1": 25583.0,
+                "q3": 25583.0
+              },
+              "parse_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 27493,
+                "median": 27493.0,
+                "min": 27493,
+                "q1": 27493.0,
+                "q3": 27493.0
+              },
+              "record_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 16411,
+                "median": 16411.0,
+                "min": 16411,
+                "q1": 16411.0,
+                "q3": 16411.0
+              },
+              "return_bytes": {
+                "count": 10,
+                "iqr": 2.0,
+                "max": 7679,
+                "median": 7676.0,
+                "min": 7675,
+                "q1": 7676.0,
+                "q3": 7678.0
+              },
+              "store_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 139,
+                "median": 139.0,
+                "min": 139,
+                "q1": 139.0,
+                "q3": 139.0
+              }
+            },
+            "response_phase_time_ns": {
+              "evidence_query_ns": {
+                "count": 10,
+                "iqr": 3534002.25,
+                "max": 10750947,
+                "median": 5814128.5,
+                "min": 4158453,
+                "q1": 5740222.75,
+                "q3": 9274225.0
+              },
+              "first_render_ns": {
+                "count": 10,
+                "iqr": 197599.25,
+                "max": 521673,
+                "median": 309965.0,
+                "min": 219207,
+                "q1": 301818.75,
+                "q3": 499418.0
+              },
+              "request_validation_ns": {
+                "count": 10,
+                "iqr": 80607.75,
+                "max": 304409,
+                "median": 116592.0,
+                "min": 83960,
+                "q1": 115061.5,
+                "q3": 195669.25
+              },
+              "store_resolution_ns": {
+                "count": 10,
+                "iqr": 472531.5,
+                "max": 1300194,
+                "median": 817546.0,
+                "min": 541611,
+                "q1": 741431.25,
+                "q3": 1213962.75
+              }
+            }
+          },
+          "read_artifact": {
+            "cli_process_wall_time_ns": {
+              "count": 5,
+              "iqr": 22390465.0,
+              "max": 120563936,
+              "median": 96105257,
+              "min": 92480000,
+              "q1": 93316230.0,
+              "q3": 115706695.0
+            },
+            "in_process_wall_time_ns": {
+              "count": 10,
+              "iqr": 5778954.75,
+              "max": 21726371,
+              "median": 11196239.0,
+              "min": 9418883,
+              "q1": 9497511.75,
+              "q3": 15276466.5
+            },
+            "logical_work": {
+              "artifact_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 8158,
+                "median": 8158.0,
+                "min": 8158,
+                "q1": 8158.0,
+                "q3": 8158.0
+              },
+              "artifact_scan_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 3149284,
+                "median": 3149284.0,
+                "min": 3149284,
+                "q1": 3149284.0,
+                "q3": 3149284.0
+              },
+              "configuration_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 1411,
+                "median": 1411.0,
+                "min": 1411,
+                "q1": 1411.0,
+                "q3": 1411.0
+              },
+              "hash_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 3167240,
+                "median": 3167240.0,
+                "min": 3167240,
+                "q1": 3167240.0,
+                "q3": 3167240.0
+              },
+              "parse_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 24608,
+                "median": 24608.0,
+                "min": 24608,
+                "q1": 24608.0,
+                "q3": 24608.0
+              },
+              "record_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 14900,
+                "median": 14900.0,
+                "min": 14900,
+                "q1": 14900.0,
+                "q3": 14900.0
+              },
+              "return_bytes": {
+                "count": 10,
+                "iqr": 3.75,
+                "max": 12000,
+                "median": 11997.5,
+                "min": 11996,
+                "q1": 11996.0,
+                "q3": 11999.75
+              },
+              "store_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 139,
+                "median": 139.0,
+                "min": 139,
+                "q1": 139.0,
+                "q3": 139.0
+              }
+            },
+            "response_phase_time_ns": {
+              "evidence_query_ns": {
+                "count": 10,
+                "iqr": 4919779.25,
+                "max": 18940470,
+                "median": 9801150.0,
+                "min": 8207277,
+                "q1": 8279571.5,
+                "q3": 13199350.75
+              },
+              "first_render_ns": {
+                "count": 10,
+                "iqr": 56269.5,
+                "max": 334346,
+                "median": 154193.5,
+                "min": 148052,
+                "q1": 149301.5,
+                "q3": 205571.0
+              },
+              "request_validation_ns": {
+                "count": 10,
+                "iqr": 110318.0,
+                "max": 260175,
+                "median": 112965.0,
+                "min": 89280,
+                "q1": 90722.25,
+                "q3": 201040.25
+              },
+              "store_resolution_ns": {
+                "count": 10,
+                "iqr": 547474.75,
+                "max": 1226103,
+                "median": 681922.5,
+                "min": 531962,
+                "q1": 546411.75,
+                "q3": 1093886.5
+              }
+            }
+          },
+          "timing_paths": {
+            "cli_process_wall_time_ns": {
+              "count": 5,
+              "iqr": 23885549.0,
+              "max": 112273624,
+              "median": 111503849,
+              "min": 87804074,
+              "q1": 88074108.0,
+              "q3": 111959657.0
+            },
+            "in_process_wall_time_ns": {
+              "count": 10,
+              "iqr": 6528869.75,
+              "max": 14767470,
+              "median": 9091820.0,
+              "min": 6527120,
+              "q1": 7318478.25,
+              "q3": 13847348.0
+            },
+            "logical_work": {
+              "artifact_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 10443,
+                "median": 10443.0,
+                "min": 10443,
+                "q1": 10443.0,
+                "q3": 10443.0
+              },
+              "artifact_scan_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 7442,
+                "median": 7442.0,
+                "min": 7442,
+                "q1": 7442.0,
+                "q3": 7442.0
+              },
+              "configuration_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 1430,
+                "median": 1430.0,
+                "min": 1430,
+                "q1": 1430.0,
+                "q3": 1430.0
+              },
+              "hash_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 37667,
+                "median": 37667.0,
+                "min": 37667,
+                "q1": 37667.0,
+                "q3": 37667.0
+              },
+              "parse_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 41559,
+                "median": 41559.0,
+                "min": 41559,
+                "q1": 41559.0,
+                "q3": 41559.0
+              },
+              "record_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 29548,
+                "median": 29548.0,
+                "min": 29548,
+                "q1": 29548.0,
+                "q3": 29548.0
+              },
+              "return_bytes": {
+                "count": 10,
+                "iqr": 3.5,
+                "max": 9767,
+                "median": 9764.0,
+                "min": 9763,
+                "q1": 9763.25,
+                "q3": 9766.75
+              },
+              "store_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 138,
+                "median": 138.0,
+                "min": 138,
+                "q1": 138.0,
+                "q3": 138.0
+              }
+            },
+            "response_phase_time_ns": {
+              "evidence_query_ns": {
+                "count": 10,
+                "iqr": 4782437.0,
+                "max": 10699319,
+                "median": 6673298.0,
+                "min": 4737324,
+                "q1": 5356688.25,
+                "q3": 10139125.25
+              },
+              "first_render_ns": {
+                "count": 10,
+                "iqr": 252202.25,
+                "max": 671638,
+                "median": 413131.0,
+                "min": 293238,
+                "q1": 338176.5,
+                "q3": 590378.75
+              },
+              "request_validation_ns": {
+                "count": 10,
+                "iqr": 94973.25,
+                "max": 266036,
+                "median": 121130.5,
+                "min": 87637,
+                "q1": 99273.75,
+                "q3": 194247.0
+              },
+              "store_resolution_ns": {
+                "count": 10,
+                "iqr": 592536.25,
+                "max": 1245460,
+                "median": 752266.0,
+                "min": 532904,
+                "q1": 596826.25,
+                "q3": 1189362.5
+              }
+            }
+          }
+        },
+        "schema_version": "chipcontext.query-benchmark.v1",
+        "suite": {
+          "cli_repeats": 5,
+          "in_process_repeats": 10,
+          "large_report_bytes": 1048576,
+          "operation_count": 6
+        }
+      },
+      "suite": {
+        "large_report_bytes": 1048576,
+        "operations": [
+          "candidate_artifacts",
+          "candidate_status",
+          "compare_metrics",
+          "failure",
+          "read_artifact",
+          "timing_paths"
+        ],
+        "schema_version": "chipcontext.public-query-suite.v1",
+        "stores": {
+          "domain": "0d50f2cb516274d8a48275c71ef02977facdad7717408e163685f2c83825cf36",
+          "failure": "a4408a70942f03beb4a44df6446807bd0b0100e7807ada3757ba6c8f38927268",
+          "success": "6a9d6152dff45af69a88a17422070c8bda5dc62f37879edd08f36afa64a11b7d"
+        }
+      }
+    },
+    "small_fixture": {
+      "benchmark": {
+        "measurement": {
+          "clock": "time.monotonic_ns",
+          "logical_bytes_are_not_physical_io": true,
+          "performance_threshold": null,
+          "phase_times_are_disjoint": true,
+          "quartiles": "statistics.quantiles(n=4, method=inclusive)",
+          "response_cost_boundary": "through_first_complete_render"
+        },
+        "operations": {
+          "candidate_artifacts": {
+            "cli_process_wall_time_ns": {
+              "count": 5,
+              "iqr": 11606837.0,
+              "max": 107291641,
+              "median": 89410845,
+              "min": 84576325,
+              "q1": 88657842.0,
+              "q3": 100264679.0
+            },
+            "in_process_wall_time_ns": {
+              "count": 10,
+              "iqr": 4807566.75,
+              "max": 13179400,
+              "median": 7832575.5,
+              "min": 5474989,
+              "q1": 7542477.5,
+              "q3": 12350044.25
+            },
+            "logical_work": {
+              "artifact_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 9549,
+                "median": 9549.0,
+                "min": 9549,
+                "q1": 9549.0,
+                "q3": 9549.0
+              },
+              "artifact_scan_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 7112,
+                "median": 7112.0,
+                "min": 7112,
+                "q1": 7112.0,
+                "q3": 7112.0
+              },
+              "configuration_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 1321,
+                "median": 1321.0,
+                "min": 1321,
+                "q1": 1321.0,
+                "q3": 1321.0
+              },
+              "hash_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 25631,
+                "median": 25631.0,
+                "min": 25631,
+                "q1": 25631.0,
+                "q3": 25631.0
+              },
+              "parse_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 25340,
+                "median": 25340.0,
+                "min": 25340,
+                "q1": 25340.0,
+                "q3": 25340.0
+              },
+              "record_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 14331,
+                "median": 14331.0,
+                "min": 14331,
+                "q1": 14331.0,
+                "q3": 14331.0
+              },
+              "return_bytes": {
+                "count": 10,
+                "iqr": 2.0,
+                "max": 5688,
+                "median": 5685.5,
+                "min": 5684,
+                "q1": 5685.0,
+                "q3": 5687.0
+              },
+              "store_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 139,
+                "median": 139.0,
+                "min": 139,
+                "q1": 139.0,
+                "q3": 139.0
+              }
+            },
+            "response_phase_time_ns": {
+              "evidence_query_ns": {
+                "count": 10,
+                "iqr": 3683817.0,
+                "max": 10081435,
+                "median": 5862511.0,
+                "min": 4213007,
+                "q1": 5783012.5,
+                "q3": 9466829.5
+              },
+              "first_render_ns": {
+                "count": 10,
+                "iqr": 141939.5,
+                "max": 385374,
+                "median": 243343.0,
+                "min": 165756,
+                "q1": 228520.0,
+                "q3": 370459.5
+              },
+              "request_validation_ns": {
+                "count": 10,
+                "iqr": 73660.5,
+                "max": 346089,
+                "median": 150311.0,
+                "min": 83078,
+                "q1": 114685.0,
+                "q3": 188345.5
+              },
+              "store_resolution_ns": {
+                "count": 10,
+                "iqr": 447579.75,
+                "max": 1304913,
+                "median": 917566.5,
+                "min": 534918,
+                "q1": 730667.75,
+                "q3": 1178247.5
+              }
+            }
+          },
+          "candidate_status": {
+            "cli_process_wall_time_ns": {
+              "count": 5,
+              "iqr": 23189336.0,
+              "max": 115694963,
+              "median": 89578095,
+              "min": 88836473,
+              "q1": 89046003.0,
+              "q3": 112235339.0
+            },
+            "in_process_wall_time_ns": {
+              "count": 10,
+              "iqr": 138362.0,
+              "max": 6483357,
+              "median": 5808177.5,
+              "min": 5741526,
+              "q1": 5762963.5,
+              "q3": 5901325.5
+            },
+            "logical_work": {
+              "artifact_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 9549,
+                "median": 9549.0,
+                "min": 9549,
+                "q1": 9549.0,
+                "q3": 9549.0
+              },
+              "artifact_scan_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 7112,
+                "median": 7112.0,
+                "min": 7112,
+                "q1": 7112.0,
+                "q3": 7112.0
+              },
+              "configuration_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 1299,
+                "median": 1299.0,
+                "min": 1299,
+                "q1": 1299.0,
+                "q3": 1299.0
+              },
+              "hash_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 25631,
+                "median": 25631.0,
+                "min": 25631,
+                "q1": 25631.0,
+                "q3": 25631.0
+              },
+              "parse_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 25318,
+                "median": 25318.0,
+                "min": 25318,
+                "q1": 25318.0,
+                "q3": 25318.0
+              },
+              "record_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 14331,
+                "median": 14331.0,
+                "min": 14331,
+                "q1": 14331.0,
+                "q3": 14331.0
+              },
+              "return_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 7218,
+                "median": 7217.0,
+                "min": 7217,
+                "q1": 7217.0,
+                "q3": 7217.0
+              },
+              "store_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 139,
+                "median": 139.0,
+                "min": 139,
+                "q1": 139.0,
+                "q3": 139.0
+              }
+            },
+            "response_phase_time_ns": {
+              "evidence_query_ns": {
+                "count": 10,
+                "iqr": 80781.75,
+                "max": 4740170,
+                "median": 4309220.5,
+                "min": 4271539,
+                "q1": 4291909.75,
+                "q3": 4372691.5
+              },
+              "first_render_ns": {
+                "count": 10,
+                "iqr": 9803.5,
+                "max": 250737,
+                "median": 216712.5,
+                "min": 215190,
+                "q1": 215585.25,
+                "q3": 225388.75
+              },
+              "request_validation_ns": {
+                "count": 10,
+                "iqr": 6276.75,
+                "max": 141700,
+                "median": 84866.5,
+                "min": 83018,
+                "q1": 83792.5,
+                "q3": 90069.25
+              },
+              "store_resolution_ns": {
+                "count": 10,
+                "iqr": 15216.5,
+                "max": 709400,
+                "median": 538259.5,
+                "min": 525039,
+                "q1": 535013.0,
+                "q3": 550229.5
+              }
+            }
+          },
+          "compare_metrics": {
+            "cli_process_wall_time_ns": {
+              "count": 5,
+              "iqr": 1671020.0,
+              "max": 118794006,
+              "median": 90119461,
+              "min": 89176616,
+              "q1": 89829449.0,
+              "q3": 91500469.0
+            },
+            "in_process_wall_time_ns": {
+              "count": 10,
+              "iqr": 7230031.0,
+              "max": 16230866,
+              "median": 10265905.0,
+              "min": 7074412,
+              "q1": 7362430.25,
+              "q3": 14592461.25
+            },
+            "logical_work": {
+              "artifact_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 11806,
+                "median": 11806.0,
+                "min": 11806,
+                "q1": 11806.0,
+                "q3": 11806.0
+              },
+              "artifact_scan_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 9589,
+                "median": 9589.0,
+                "min": 9589,
+                "q1": 9589.0,
+                "q3": 9589.0
+              },
+              "configuration_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 1434,
+                "median": 1434.0,
+                "min": 1434,
+                "q1": 1434.0,
+                "q3": 1434.0
+              },
+              "hash_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 40823,
+                "median": 40823.0,
+                "min": 40823,
+                "q1": 40823.0,
+                "q3": 40823.0
+              },
+              "parse_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 43144,
+                "median": 43144.0,
+                "min": 43144,
+                "q1": 43144.0,
+                "q3": 43144.0
+              },
+              "record_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 29548,
+                "median": 29548.0,
+                "min": 29548,
+                "q1": 29548.0,
+                "q3": 29548.0
+              },
+              "return_bytes": {
+                "count": 10,
+                "iqr": 3.25,
+                "max": 9983,
+                "median": 9980.0,
+                "min": 9979,
+                "q1": 9979.25,
+                "q3": 9982.5
+              },
+              "store_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 138,
+                "median": 138.0,
+                "min": 138,
+                "q1": 138.0,
+                "q3": 138.0
+              }
+            },
+            "response_phase_time_ns": {
+              "evidence_query_ns": {
+                "count": 10,
+                "iqr": 5456994.75,
+                "max": 12538460,
+                "median": 7879564.0,
+                "min": 5476151,
+                "q1": 5702145.25,
+                "q3": 11159140.0
+              },
+              "first_render_ns": {
+                "count": 10,
+                "iqr": 265192.0,
+                "max": 575976,
+                "median": 352971.5,
+                "min": 254484,
+                "q1": 258710.0,
+                "q3": 523902.0
+              },
+              "request_validation_ns": {
+                "count": 10,
+                "iqr": 92095.25,
+                "max": 280583,
+                "median": 125954.5,
+                "min": 86204,
+                "q1": 102106.75,
+                "q3": 194202.0
+              },
+              "store_resolution_ns": {
+                "count": 10,
+                "iqr": 619153.5,
+                "max": 1250690,
+                "median": 803694.5,
+                "min": 522664,
+                "q1": 573376.5,
+                "q3": 1192530.0
+              }
+            }
+          },
+          "failure": {
+            "cli_process_wall_time_ns": {
+              "count": 5,
+              "iqr": 2303543.0,
+              "max": 113372650,
+              "median": 88190562,
+              "min": 85526560,
+              "q1": 86867333.0,
+              "q3": 89170876.0
+            },
+            "in_process_wall_time_ns": {
+              "count": 10,
+              "iqr": 4988911.0,
+              "max": 13618455,
+              "median": 8259131.5,
+              "min": 5576622,
+              "q1": 7572535.0,
+              "q3": 12561446.0
+            },
+            "logical_work": {
+              "artifact_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 9520,
+                "median": 9520.0,
+                "min": 9520,
+                "q1": 9520.0,
+                "q3": 9520.0
+              },
+              "artifact_scan_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 5490,
+                "median": 5490.0,
+                "min": 5490,
+                "q1": 5490.0,
+                "q3": 5490.0
+              },
+              "configuration_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 1423,
+                "median": 1423.0,
+                "min": 1423,
+                "q1": 1423.0,
+                "q3": 1423.0
+              },
+              "hash_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 25583,
+                "median": 25583.0,
+                "min": 25583,
+                "q1": 25583.0,
+                "q3": 25583.0
+              },
+              "parse_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 27493,
+                "median": 27493.0,
+                "min": 27493,
+                "q1": 27493.0,
+                "q3": 27493.0
+              },
+              "record_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 16411,
+                "median": 16411.0,
+                "min": 16411,
+                "q1": 16411.0,
+                "q3": 16411.0
+              },
+              "return_bytes": {
+                "count": 10,
+                "iqr": 2.0,
+                "max": 7679,
+                "median": 7676.0,
+                "min": 7675,
+                "q1": 7676.0,
+                "q3": 7678.0
+              },
+              "store_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 139,
+                "median": 139.0,
+                "min": 139,
+                "q1": 139.0,
+                "q3": 139.0
+              }
+            },
+            "response_phase_time_ns": {
+              "evidence_query_ns": {
+                "count": 10,
+                "iqr": 3600873.25,
+                "max": 10363511,
+                "median": 6095910.0,
+                "min": 4102737,
+                "q1": 5649905.75,
+                "q3": 9250779.0
+              },
+              "first_render_ns": {
+                "count": 10,
+                "iqr": 245821.0,
+                "max": 559164,
+                "median": 346700.0,
+                "min": 219919,
+                "q1": 249572.0,
+                "q3": 495393.0
+              },
+              "request_validation_ns": {
+                "count": 10,
+                "iqr": 67847.0,
+                "max": 256408,
+                "median": 144469.5,
+                "min": 83218,
+                "q1": 120183.75,
+                "q3": 188030.75
+              },
+              "store_resolution_ns": {
+                "count": 10,
+                "iqr": 437583.25,
+                "max": 1213138,
+                "median": 842603.5,
+                "min": 524628,
+                "q1": 732806.75,
+                "q3": 1170390.0
+              }
+            }
+          },
+          "read_artifact": {
+            "cli_process_wall_time_ns": {
+              "count": 5,
+              "iqr": 1092789.0,
+              "max": 89734666,
+              "median": 88662424,
+              "min": 85841028,
+              "q1": 88339892.0,
+              "q3": 89432681.0
+            },
+            "in_process_wall_time_ns": {
+              "count": 10,
+              "iqr": 3683379.0,
+              "max": 9771174,
+              "median": 8279800.5,
+              "min": 5841546,
+              "q1": 5917127.25,
+              "q3": 9600506.25
+            },
+            "logical_work": {
+              "artifact_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 7264,
+                "median": 7264.0,
+                "min": 7264,
+                "q1": 7264.0,
+                "q3": 7264.0
+              },
+              "artifact_scan_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 6978,
+                "median": 6978.0,
+                "min": 6978,
+                "q1": 6978.0,
+                "q3": 6978.0
+              },
+              "configuration_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 1411,
+                "median": 1411.0,
+                "min": 1411,
+                "q1": 1411.0,
+                "q3": 1411.0
+              },
+              "hash_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 23802,
+                "median": 23802.0,
+                "min": 23802,
+                "q1": 23802.0,
+                "q3": 23802.0
+              },
+              "parse_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 23145,
+                "median": 23145.0,
+                "min": 23145,
+                "q1": 23145.0,
+                "q3": 23145.0
+              },
+              "record_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 14331,
+                "median": 14331.0,
+                "min": 14331,
+                "q1": 14331.0,
+                "q3": 14331.0
+              },
+              "return_bytes": {
+                "count": 10,
+                "iqr": 1.0,
+                "max": 5318,
+                "median": 5318.0,
+                "min": 5317,
+                "q1": 5317.0,
+                "q3": 5318.0
+              },
+              "store_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 139,
+                "median": 139.0,
+                "min": 139,
+                "q1": 139.0,
+                "q3": 139.0
+              }
+            },
+            "response_phase_time_ns": {
+              "evidence_query_ns": {
+                "count": 10,
+                "iqr": 2609453.75,
+                "max": 7285464,
+                "median": 6047016.5,
+                "min": 4340951,
+                "q1": 4415582.25,
+                "q3": 7025036.0
+              },
+              "first_render_ns": {
+                "count": 10,
+                "iqr": 124729.5,
+                "max": 323445,
+                "median": 228976.0,
+                "min": 173661,
+                "q1": 175714.25,
+                "q3": 300443.75
+              },
+              "request_validation_ns": {
+                "count": 10,
+                "iqr": 67786.5,
+                "max": 279512,
+                "median": 185989.0,
+                "min": 114978,
+                "q1": 121290.5,
+                "q3": 189077.0
+              },
+              "store_resolution_ns": {
+                "count": 10,
+                "iqr": 482493.0,
+                "max": 1247083,
+                "median": 1166715.0,
+                "min": 714449,
+                "q1": 726329.25,
+                "q3": 1208822.25
+              }
+            }
+          },
+          "timing_paths": {
+            "cli_process_wall_time_ns": {
+              "count": 5,
+              "iqr": 795665.0,
+              "max": 113720699,
+              "median": 89821291,
+              "min": 85959813,
+              "q1": 89633223.0,
+              "q3": 90428888.0
+            },
+            "in_process_wall_time_ns": {
+              "count": 10,
+              "iqr": 6724699.5,
+              "max": 14849688,
+              "median": 8950376.5,
+              "min": 6438101,
+              "q1": 7133734.75,
+              "q3": 13858434.25
+            },
+            "logical_work": {
+              "artifact_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 10443,
+                "median": 10443.0,
+                "min": 10443,
+                "q1": 10443.0,
+                "q3": 10443.0
+              },
+              "artifact_scan_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 7442,
+                "median": 7442.0,
+                "min": 7442,
+                "q1": 7442.0,
+                "q3": 7442.0
+              },
+              "configuration_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 1430,
+                "median": 1430.0,
+                "min": 1430,
+                "q1": 1430.0,
+                "q3": 1430.0
+              },
+              "hash_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 37667,
+                "median": 37667.0,
+                "min": 37667,
+                "q1": 37667.0,
+                "q3": 37667.0
+              },
+              "parse_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 41559,
+                "median": 41559.0,
+                "min": 41559,
+                "q1": 41559.0,
+                "q3": 41559.0
+              },
+              "record_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 29548,
+                "median": 29548.0,
+                "min": 29548,
+                "q1": 29548.0,
+                "q3": 29548.0
+              },
+              "return_bytes": {
+                "count": 10,
+                "iqr": 3.5,
+                "max": 9767,
+                "median": 9764.0,
+                "min": 9763,
+                "q1": 9763.25,
+                "q3": 9766.75
+              },
+              "store_metadata_read_bytes": {
+                "count": 10,
+                "iqr": 0.0,
+                "max": 138,
+                "median": 138.0,
+                "min": 138,
+                "q1": 138.0,
+                "q3": 138.0
+              }
+            },
+            "response_phase_time_ns": {
+              "evidence_query_ns": {
+                "count": 10,
+                "iqr": 4874203.25,
+                "max": 10739446,
+                "median": 6544964.5,
+                "min": 4663344,
+                "q1": 5178340.75,
+                "q3": 10052544.0
+              },
+              "first_render_ns": {
+                "count": 10,
+                "iqr": 277638.25,
+                "max": 689582,
+                "median": 403533.0,
+                "min": 292897,
+                "q1": 321617.0,
+                "q3": 599255.25
+              },
+              "request_validation_ns": {
+                "count": 10,
+                "iqr": 105222.75,
+                "max": 307716,
+                "median": 127944.0,
+                "min": 86114,
+                "q1": 96012.5,
+                "q3": 201235.25
+              },
+              "store_resolution_ns": {
+                "count": 10,
+                "iqr": 589110.75,
+                "max": 1190776,
+                "median": 720987.0,
+                "min": 534727,
+                "q1": 592612.5,
+                "q3": 1181723.25
+              }
+            }
+          }
+        },
+        "schema_version": "chipcontext.query-benchmark.v1",
+        "suite": {
+          "cli_repeats": 5,
+          "in_process_repeats": 10,
+          "large_report_bytes": 0,
+          "operation_count": 6
+        }
+      },
+      "suite": {
+        "large_report_bytes": 0,
+        "operations": [
+          "candidate_artifacts",
+          "candidate_status",
+          "compare_metrics",
+          "failure",
+          "read_artifact",
+          "timing_paths"
+        ],
+        "schema_version": "chipcontext.public-query-suite.v1",
+        "stores": {
+          "domain": "0d50f2cb516274d8a48275c71ef02977facdad7717408e163685f2c83825cf36",
+          "failure": "a4408a70942f03beb4a44df6446807bd0b0100e7807ada3757ba6c8f38927268",
+          "success": "e5dca66a45f76d074d872cf55efd3f4ccf4007ff95d01865a84169c0ed365508"
+        }
+      }
+    }
+  },
+  "schema_version": "chipcontext.query-cost-calibration.v1"
+}

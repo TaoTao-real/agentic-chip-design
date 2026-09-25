@@ -86,7 +86,7 @@ chia-boom --help
 chia-chipcontext --help
 ```
 
-### 3.1 只复测 ChipContext CC-01
+### 3.1 复测 ChipContext 离线证据与查询
 
 CC-01 的公开样例只使用 Python 标准库，不要求 Chipyard、Ray、Vivado、
 Verilator 或 DeepSeek key。仍建议在上面的 Python 3.12 环境中执行：
@@ -99,6 +99,28 @@ chia-chipcontext prepare \
   --output "$OUT"
 cat "$OUT/context.md"
 ```
+
+生成公开安全的六类查询样例并运行统一 CLI：
+
+```bash
+QUERY_SUITE=/tmp/chipcontext-query-suite
+python examples/chipcontext_query_suite.py --output "$QUERY_SUITE"
+chia-chipcontext query \
+  --registry "$QUERY_SUITE/trusted-stores.json" \
+  --request "$QUERY_SUITE/requests/candidate_status.json" \
+  --format json \
+  --max-output-bytes 16384
+```
+
+registry 是运维方提供的受信配置；相对 store root 以 registry 文件所在目录为
+基准。query request 只能引用 registry 中的逻辑 store ID 和内容哈希。默认只读
+`public`，受控证据还要求 registry 允许且调用命令显式增加
+`--allow-controlled`。查询以只读方式打开 store，不写 alias、事件或缓存。
+
+JSON 和 Markdown 使用同一个确定性答案。业务状态 `partial`、`inconclusive`
+和 `not_comparable` 表示查询成功，退出码为 0；无效请求、越权、完整性错误、
+未知引用和预算超限返回脱敏错误并使用退出码 2。结构化输出默认 16 KiB、硬
+上限 64 KiB，超限时不截断结果。
 
 success 和 failure fixture 内的 `expected.json`、`expected-context.md` 是固定
 预期；测试会分别从三个空输出目录重建并核对内容哈希。它们是 synthetic 数据，

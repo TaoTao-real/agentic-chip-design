@@ -35,6 +35,7 @@ from .store import DEFAULT_LIMIT_BYTES, MAX_LIMIT_BYTES, EvidenceStore
 QUERY_ANSWER_SCHEMA = "chipcontext.query-answer.v1"
 QUERY_REVISION = "chipcontext-query-foundation-v2"
 DOMAIN_QUERY_REVISION = "chipcontext-query-domain-v2"
+SOURCE_READ_QUERY_REVISION = "chipcontext-query-foundation-v3"
 QUERY_CURSOR_SCHEMA = "chipcontext.query-cursor.v1"
 ARTIFACT_STAGE_MAP_REVISION = "artifact-stage-map-v1"
 STORE_REGISTRY_SCHEMA = "chipcontext.store-registry.v1"
@@ -354,8 +355,6 @@ def _read_utf8_artifact_page(
         or not 1 <= limit_bytes <= MAX_LIMIT_BYTES
     ):
         raise SchemaError(f"limit_bytes must be between 1 and {MAX_LIMIT_BYTES}")
-    if cursor is not None and start_line is not None:
-        raise SchemaError("cursor and line selection are mutually exclusive")
     if line_count is not None and start_line is None:
         raise SchemaError("line_count requires start_line")
     if cursor is not None and cursor < 0:
@@ -394,10 +393,18 @@ def _read_utf8_artifact_page(
         lines = artifact_data.splitlines(keepends=True)
         prefix = lines[: start_line - 1]
         selected = lines[start_line - 1 : start_line - 1 + line_count]
-        start_byte = sum(len(line) for line in prefix)
-        selection_end = start_byte + sum(len(line) for line in selected)
-        if selected:
-            actual_start_line = start_line
+        selection_start = sum(len(line) for line in prefix)
+        selection_end = selection_start + sum(len(line) for line in selected)
+        start_byte = selection_start if cursor is None else cursor
+        if start_byte < selection_start or start_byte > selection_end:
+            raise SchemaError("cursor exceeds the selected line range")
+        if selected and start_byte < selection_end:
+            offset = selection_start
+            for index, line in enumerate(selected):
+                if start_byte < offset + len(line):
+                    actual_start_line = start_line + index
+                    break
+                offset += len(line)
     else:
         start_byte = cursor or 0
         selection_end = len(artifact_data)
@@ -438,7 +445,7 @@ def _read_utf8_artifact_page(
             "end_line": actual_end_line,
         },
         "truncated": truncated,
-        "next_cursor": end_byte if end_byte < len(artifact_data) else None,
+        "next_cursor": end_byte if end_byte < selection_end else None,
     }
 
 
@@ -1321,6 +1328,8 @@ class ChipContextQueryService:
                     baseline_ref.ref_id,
                     allowed_access=set(current.allowed_access),
                 )
+                if current.store.meter is not None:
+                    current.store.meter.parse_bytes += len(data)
                 baseline = json.loads(data)
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise QueryError("integrity_error", "baseline record is invalid") from exc
@@ -1685,7 +1694,7 @@ class ChipContextQueryService:
             raise QueryError("scope_mismatch", "artifact is outside the selected attempt")
         binding_payload = {
             "operation": "read_artifact",
-            "revision": QUERY_REVISION,
+            "revision": SOURCE_READ_QUERY_REVISION,
             "scope": {
                 "handle": scope.handle.to_dict(),
                 "expectations": scope.normalized_expectations(),
@@ -1709,7 +1718,7 @@ class ChipContextQueryService:
         )
         next_cursor = (
             _encode_cursor(binding, page["next_cursor"])
-            if start_line is None and page.get("next_cursor") is not None
+            if page.get("next_cursor") is not None
             else None
         )
         stage_info = _artifact_stage(ref, resolved.manifest)
@@ -1728,6 +1737,7 @@ class ChipContextQueryService:
         return self._answer(
             resolved,
             operation="read_artifact",
+            revision=SOURCE_READ_QUERY_REVISION,
             parameters={
                 "artifact_ref": artifact_ref,
                 "start_line": start_line,
@@ -1759,5 +1769,6 @@ __all__ = [
     "QueryError",
     "QueryScope",
     "RegisteredStore",
+    "SOURCE_READ_QUERY_REVISION",
     "TrustedStoreRegistry",
 ]

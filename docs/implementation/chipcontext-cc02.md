@@ -237,10 +237,139 @@ there is no parent/latest/best shorthand.  A historical scope is still
 queryable, but its applicability remains `historical` and does not claim that
 the current working edit was measured.
 
+## CC-02b PR-B3/B4: query CLI, output contract and calibration
+
+The public entry point is now:
+
+```text
+chia-chipcontext query \
+  --registry <trusted-stores.json> \
+  --request <query.json> \
+  --format json|markdown \
+  --max-output-bytes <n> \
+  [--allow-controlled]
+```
+
+Minimal trusted registry and request shapes are:
+
+```json
+{
+  "schema_version": "chipcontext.store-registry.v1",
+  "stores": [
+    {
+      "store_id": "primary",
+      "root": "../evidence-store",
+      "allowed_access": ["public"]
+    }
+  ]
+}
+```
+
+```json
+{
+  "schema_version": "chipcontext.query-request.v1",
+  "operation": "candidate_status",
+  "scope": {
+    "handle": {
+      "store_id": "primary",
+      "snapshot_ref": "<64-lowercase-hex>"
+    },
+    "expected_candidate": null,
+    "expected_attempt_id": "evaluation-attempt-01",
+    "working_source_sha256": null
+  },
+  "parameters": {}
+}
+```
+
+The trusted registry is `chipcontext.store-registry.v1`. Every entry contains a
+unique logical store ID, a root relative to the registry file and the access
+levels the operator permits. The request is `chipcontext.query-request.v1` and
+contains only an operation, explicit QueryScope and that operation's parameter
+allowlist. Unknown fields at every parsed level are rejected. Requests cannot
+provide paths, permissions, regular expressions, shell fragments or implicit
+`latest`/`best` selection.
+
+The six operations are `candidate_status`, `candidate_artifacts`, `failure`,
+`compare_metrics`, `timing_paths` and `read_artifact`. Stores are opened
+read-only. Query execution cannot create a store, alias, event or persistent
+cache. Public access is the CLI default; `--allow-controlled` only enables the
+intersection with the registry's trusted policy.
+
+A successful JSON response is `chipcontext.query-response.v1`, containing the
+unchanged deterministic `chipcontext.query-answer.v1` and a separate dynamic
+`chipcontext.query-cost.v1`. The cost reports wall time, configuration/store/
+record/artifact metadata reads, complete artifact scan bytes, hash bytes, JSON
+parse bytes and returned bytes, plus disjoint validation, store-resolution,
+evidence-query and first-render phase timings. Its wall-time boundary is the
+first complete render; fixed-point byte accounting and stdout writing are
+outside that response field. `physical_io_bytes` and `peak_memory_bytes` remain
+null because this implementation does not measure them, and `cache_status` is
+`not_configured`. Markdown renders the same QueryAnswer and
+retains the full result, applicability, conditions, coverage, missing,
+conflicts, source references and pagination. Raw text is indented so tool output
+cannot alter the Markdown structure.
+
+An operator may add `--audit-output <new-file>` to collect the trusted
+`chipcontext.query-attempt.v1` record for either success or rejection. The
+attempt record measures through serialization or rejection, retains work done
+before integrity and budget failures, and uses disjoint phase values. Detailed
+rejected-query counts do not appear on public stderr and the query JSON cannot
+select the audit destination.
+
+The final encoded output has a 16 KiB default and 64 KiB hard maximum. The
+response includes its own `return_bytes`; serialization iterates until that
+value equals the final UTF-8 length. Overflow fails with `budget_exceeded`; no
+identity, conflict, coverage or source facts are removed. Domain states such as
+`partial`, `inconclusive` and `not_comparable` are successful query results and
+return status 0. Invalid input, permission denial, unknown content, integrity
+failure and budget overflow return a path-free `chipcontext.error.v1` and
+status 2. Corrupt ROOTS, record and artifact metadata encoding or shape are
+normalized to that integrity boundary rather than leaking decoder tracebacks.
+
+Scoped source reads use `chipcontext-query-foundation-v3`. The first page and
+every continuation repeat the same `start_line`, `line_count` and byte limit.
+The cursor binds those values plus scope, artifact and query revision. It cannot
+cross the selected line range or split a UTF-8 code point, and every page
+reauthorizes the complete evidence dependency closure and rechecks the artifact
+hash. B1 status/artifact hashes, B2 domain hashes and CC-01 legacy fixture hashes
+remain unchanged; only the scoped source-read revision changed.
+
+### Public cost evidence
+
+`examples/chipcontext_query_suite.py` constructs public-safe stores and requests
+for all six operations. `examples/chipcontext_query_benchmark.py` measures each
+operation ten times in process and five times as an independent CLI process,
+using inclusive quartiles and a monotonic clock. The committed report covers the
+small fixture and a deterministic 1 MiB diagnostic report. It sets no timing
+threshold and labels scan/hash/parse counters as logical work rather than
+physical disk I/O:
+
+[`chipcontext-cc02b-query-cost.json`](chipcontext-cc02b-query-cost.json).
+
+### Controlled calibration
+
+The qualified server read only previously sealed evidence and created new
+content-addressed query records. It made zero model, EDA and simulator calls.
+The failure chain preserved a grounded first mismatch and drilled down to its
+registered line span while keeping expected/actual absent. The performance
+chain produced comparable `critical_delay_ns` and `slice_luts` deltas with both
+sides' sources. The timing chain retained producer rank 1, all 20 collected
+paths, top-k coverage and the original report span. JSON and Markdown were
+generated through the public CLI from the same answers. All 205 harness tests
+passed, low-resource qualification doctor passed, and the existing 10,000-cycle
+smoke matched frozen hash `6821977a…` without rerunning it.
+
+The public-safe hashes, field counts, missing/conflict counts, logical reads and
+query timings are in
+[`chipcontext-cc02b-controlled-calibration.json`](chipcontext-cc02b-controlled-calibration.json).
+No source, RTL, full log, host path, address or credential is included.
+The operator-facing interface reference is
+[`chipcontext-cc02b.md`](chipcontext-cc02b.md).
+
 ## Current boundary
 
-PR-B2 does not add the public `query` CLI, JSON/Markdown query renderer, final
-serialized-output budget, line-range continuation, query-cost meter, arbitrary
-report paths, regex queries, Agent integration, Ray, model SDKs or EDA
-execution. Those interfaces remain in Issue #11 PR-B3/B4. The frozen question
-set and system-level cost protocol belong to CC-02c.
+CC-02b does not support arbitrary report paths, regular-expression queries,
+Agent integration, Ray, model SDKs, persistent query caches or EDA execution.
+The frozen question set and wider system cost protocol belong to CC-02c. No
+optimization-effect claim is made from these query calibration results.

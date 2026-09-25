@@ -1,0 +1,220 @@
+{
+  "answer": {
+    "applicability": {
+      "evaluated_source_sha256": "269090e03b8406b4a8ad6f7be9dd3293d788654cead6085464e9d81b7fd8d275",
+      "status": "current",
+      "working_source_sha256": "269090e03b8406b4a8ad6f7be9dd3293d788654cead6085464e9d81b7fd8d275"
+    },
+    "conditions": [
+      {
+        "contract_sha256": "8bbdcbd14501595736fd91667f330cd20f3a4acb13a88d3ccd5a604c8640e76e",
+        "kind": "evidence_contract",
+        "parser_revision": "legacy-evaluation-v4"
+      }
+    ],
+    "conflicts": [],
+    "content_hash": "df063fbcce4a24967f6a9052a1e09cbdc75dabab89f01c54f00ed9e54bead557",
+    "coverage": {
+      "check_count": 8,
+      "executed_count": 4
+    },
+    "missing": [
+      {
+        "detail": "legacy evidence does not establish execution",
+        "field": "checks.lint",
+        "reason": "not_run"
+      },
+      {
+        "detail": "legacy evidence does not establish execution",
+        "field": "checks.post_route",
+        "reason": "not_run"
+      },
+      {
+        "detail": "legacy evidence does not establish execution",
+        "field": "checks.processor_regression",
+        "reason": "not_run"
+      },
+      {
+        "detail": "legacy evidence does not establish execution",
+        "field": "checks.formal_equivalence",
+        "reason": "not_run"
+      }
+    ],
+    "pagination": {
+      "next_cursor": null,
+      "truncated": false
+    },
+    "query": {
+      "name": "candidate_status",
+      "parameters": {},
+      "revision": "chipcontext-query-foundation-v2"
+    },
+    "resolved_scope": {
+      "attempt_id": "evaluation-attempt-01",
+      "candidate_ref": {
+        "candidate_id": "neutral-success-candidate-01",
+        "contract_sha256": "8bbdcbd14501595736fd91667f330cd20f3a4acb13a88d3ccd5a604c8640e76e",
+        "experiment_id": "synthetic-success-campaign",
+        "parent_ref": null,
+        "ref_id": "611dfd0b7b1f9539552b58f353219b7377188a01b66ed72f36e0dfb79cf559c5",
+        "source_sha256": "269090e03b8406b4a8ad6f7be9dd3293d788654cead6085464e9d81b7fd8d275"
+      },
+      "manifest_ref": "89d965009b888099846460f863266d83a3d24f82d715a4b056fb0b11e2e01840",
+      "snapshot_ref": "e5dca66a45f76d074d872cf55efd3f4ccf4007ff95d01865a84169c0ed365508",
+      "store_id": "success"
+    },
+    "result": {
+      "acceptance_note": "Passing recorded checks does not establish final chip acceptance.",
+      "acceptance_scope": "recorded_checks_only",
+      "binding_status": {
+        "baseline": "verified",
+        "candidate_evaluation": "verified",
+        "qualification": "verified"
+      },
+      "checks": [
+        {
+          "check_id": "elaboration",
+          "executed": true,
+          "outcome": "pass",
+          "scope": {
+            "legacy_field_mapping": "legacy-evaluation-v4"
+          },
+          "source_ref": "7bd66024d6e7cd1a3897a3b1adb259ca0340be40ffce2da5bcfe3c36b25588d3"
+        },
+        {
+          "check_id": "lint",
+          "executed": false,
+          "outcome": null,
+          "scope": {
+            "legacy_field_mapping": "legacy-evaluation-v4"
+          },
+          "source_ref": null
+        },
+        {
+          "check_id": "interface_signature",
+          "executed": true,
+          "outcome": "pass",
+          "scope": {
+            "legacy_field_mapping": "legacy-evaluation-v4"
+          },
+          "source_ref": "7bd66024d6e7cd1a3897a3b1adb259ca0340be40ffce2da5bcfe3c36b25588d3"
+        },
+        {
+          "check_id": "differential_correctness",
+          "executed": true,
+          "outcome": "pass",
+          "scope": {
+            "legacy_field_mapping": "legacy-evaluation-v4"
+          },
+          "source_ref": "7bd66024d6e7cd1a3897a3b1adb259ca0340be40ffce2da5bcfe3c36b25588d3"
+        },
+        {
+          "check_id": "post_synth",
+          "executed": true,
+          "outcome": "pass",
+          "scope": {
+            "legacy_field_mapping": "legacy-evaluation-v4"
+          },
+          "source_ref": "7bd66024d6e7cd1a3897a3b1adb259ca0340be40ffce2da5bcfe3c36b25588d3"
+        },
+        {
+          "check_id": "post_route",
+          "executed": false,
+          "outcome": null,
+          "scope": {
+            "legacy_field_mapping": "legacy-evaluation-v4"
+          },
+          "source_ref": null
+        },
+        {
+          "check_id": "processor_regression",
+          "executed": false,
+          "outcome": null,
+          "scope": {
+            "legacy_field_mapping": "legacy-evaluation-v4"
+          },
+          "source_ref": null
+        },
+        {
+          "check_id": "formal_equivalence",
+          "executed": false,
+          "outcome": null,
+          "scope": {
+            "legacy_field_mapping": "legacy-evaluation-v4"
+          },
+          "source_ref": null
+        }
+      ],
+      "completion_status": "complete",
+      "final_chip_acceptance": "not_assessed",
+      "normalized_stage": "post_synth",
+      "raw_stage": "synthesis",
+      "recorded_working_state": {
+        "last_evaluated_ref": "611dfd0b7b1f9539552b58f353219b7377188a01b66ed72f36e0dfb79cf559c5",
+        "last_evaluated_source_sha256": "269090e03b8406b4a8ad6f7be9dd3293d788654cead6085464e9d81b7fd8d275",
+        "state": "evaluated_current",
+        "working_source_sha256": "269090e03b8406b4a8ad6f7be9dd3293d788654cead6085464e9d81b7fd8d275"
+      }
+    },
+    "schema_version": "chipcontext.query-answer.v1",
+    "source_refs": [
+      {
+        "ref": "2b5ea2a5871a1570e4801dfca6fb3240b7337fed4a09fa5a41b2b4d7094b8ffd",
+        "type": "artifact"
+      },
+      {
+        "ref": "51035da7c7f59c1c89a303b09998ce418c127c88e8f68ad021c3f54e3794b3f9",
+        "type": "artifact"
+      },
+      {
+        "ref": "6834ac617f2df108248e1d88a39bc2434f912cec7ed617bc90336d14c55d1d80",
+        "type": "artifact"
+      },
+      {
+        "ref": "7bd66024d6e7cd1a3897a3b1adb259ca0340be40ffce2da5bcfe3c36b25588d3",
+        "type": "artifact"
+      },
+      {
+        "ref": "9ae5c8818c73670ebfb1bc8c6df1217d3c7827b663be60ee94f44688eeaf98ee",
+        "type": "artifact"
+      },
+      {
+        "ref": "e012d7869d3f64801fc3daf67c591331adbd7cf89630b6dbc27dfa83252846ab",
+        "type": "artifact"
+      },
+      {
+        "ref": "e59f409cae62ce2f4135050fc104d230e6307dcb00446095b2823634ea06068b",
+        "type": "artifact"
+      }
+    ]
+  },
+  "cost": {
+    "artifact_metadata_read_bytes": 0,
+    "artifact_metadata_read_count": 0,
+    "artifact_read_count": 0,
+    "artifact_scan_bytes": 0,
+    "cache_status": "not_configured",
+    "configuration_read_bytes": 0,
+    "configuration_read_count": 0,
+    "hash_bytes": 0,
+    "measurement_boundary": "through_first_complete_render",
+    "parse_bytes": 0,
+    "peak_memory_bytes": null,
+    "phase_time_ns": {
+      "evidence_query_ns": 0,
+      "first_render_ns": 0,
+      "request_validation_ns": 0,
+      "store_resolution_ns": 0
+    },
+    "physical_io_bytes": null,
+    "record_read_bytes": 0,
+    "record_read_count": 0,
+    "return_bytes": 0,
+    "schema_version": "chipcontext.query-cost.v1",
+    "status": "success",
+    "store_metadata_read_bytes": 0,
+    "store_metadata_read_count": 0,
+    "wall_time_ns": 0
+  },
+  "schema_version": "chipcontext.query-response.v1"
+}
