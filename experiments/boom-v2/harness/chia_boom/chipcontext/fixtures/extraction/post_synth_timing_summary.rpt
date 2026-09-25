@@ -1,0 +1,11 @@
+| Tool Version : Vivado v.2024.1 (lin64)
+| Command      : report_timing_summary -delay_type max -max_paths 2 -file synthetic.rpt
+| Design       : NeutralQueue
+| Design State : Synthesized
+
+| Design Timing Summary
+| ---------------------
+
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints
+    -------      -------  ---------------------  -------------------
+     -1.250       -3.750                      3                   42

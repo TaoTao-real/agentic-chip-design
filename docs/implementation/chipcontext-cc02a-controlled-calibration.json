@@ -1,0 +1,65 @@
+{
+  "differential_failure": {
+    "actual_available": false,
+    "check_outcome": "fail",
+    "conflict_count": 0,
+    "expected_available": false,
+    "extraction_hash": "6b6a4f44845a1286e61e8a7cf941b9eb7ce03880c331456343b4407c25c153d5",
+    "extractor_revision": "verilator-differential-v1",
+    "first_mismatch_grounded": true,
+    "input_hashes": {
+      "differential_result": "87810cfabe09dc19042ae6cd3913c1b984ba88f84127f8f3fc6aea0cfc5a3fa8",
+      "differential_stdout": "c023023bf466e303f01735c77a1443277510340e5fac5396351148f264390752"
+    },
+    "missing_count": 2,
+    "prepare_milliseconds": 1.698
+  },
+  "eda_calls": 0,
+  "environment_review": {
+    "doctor_passed": true,
+    "doctor_sha256": "fea1b6ac030eab22b578bd091509f663b5441bfc4bc5fef3ca876b686af37135",
+    "frozen_smoke": {
+      "cycles": 10000,
+      "passed": true,
+      "seed": 20260925,
+      "sha256": "6821977ae1645eba6302feedb18cf07e057f2c9e308d8367b7d5c095fc41f52c"
+    },
+    "new_smoke_runs": 0,
+    "qualification_profile": "single-slot-low-resource",
+    "verify_environment_passed": true,
+    "verify_environment_sha256": "ff16aa2d4098a87d136823c6a3c1e976e70d977f186b0225ff02e46e19f5eebc"
+  },
+  "execution_environment": "qualified_server",
+  "model_calls": 0,
+  "public_safe": true,
+  "schema_version": "chipcontext.cc02a-controlled-calibration-summary.v1",
+  "source_type": "controlled_real",
+  "vivado": {
+    "conflict_count": 0,
+    "extraction_hash": "ec7357f9304265360e1d5932fe8084b07029ea1b6d8ce59804676e862224acad",
+    "extractor_revision": "vivado-2024.1-v1",
+    "input_hashes": {
+      "post_synth_timing_paths": "30fe9dacda7a272603254de8d8c277583abda9b9e32db3bee33cdddd90b9214c",
+      "post_synth_timing_summary": "29caa76965dfa11b9b37cb67cb97ef70c46334814b03a92aae4653ea02ff3f40",
+      "post_synth_utilization": "feca84605d02ebf32a56261f62b65d77e8c1d65d141118e14eaf5faf7c3af74b"
+    },
+    "metric_count": 8,
+    "missing_count": 0,
+    "prepare_milliseconds": 22.088,
+    "scoring_parser_compatibility": "exact",
+    "timing_path_count": 20,
+    "worst_path_query": {
+      "artifact_sha256": "30fe9dacda7a272603254de8d8c277583abda9b9e32db3bee33cdddd90b9214c",
+      "available": true,
+      "bytes_returned": 8192,
+      "query_milliseconds": 2.054,
+      "query_truncated": true,
+      "span": {
+        "end_byte": 9384,
+        "end_line": 107,
+        "start_byte": 1192,
+        "start_line": 15
+      }
+    }
+  }
+}

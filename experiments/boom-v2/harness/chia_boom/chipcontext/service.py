@@ -18,6 +18,7 @@ from .schema import (
     hashed_record,
     require_sha256,
 )
+from .extraction import ExtractionService
 from .store import EvidenceStore
 
 
@@ -43,6 +44,170 @@ STAGE_MAP = {
     "post_route": "post_route",
     "regression": "regression",
 }
+
+
+def _artifact_for(
+    refs: dict[str, Any], labels: tuple[str, ...]
+) -> Any | None:
+    for label in labels:
+        if label in refs:
+            return refs[label]
+    for ref in refs.values():
+        if ref.kind in labels:
+            return ref
+    return None
+
+
+def _raw_extractions(
+    *,
+    store: EvidenceStore,
+    refs: dict[str, Any],
+    stage: str,
+    clock_period_ns: Any,
+) -> list[dict[str, Any]]:
+    """Extract facts only when a request explicitly registers raw tool roles."""
+    extraction = ExtractionService(
+        store, allowed_access={"public", "controlled"}
+    )
+    records: list[dict[str, Any]] = []
+    prefix = stage if stage in {"post_synth", "post_route"} else "post_synth"
+    summary = _artifact_for(refs, (
+        f"{prefix}_timing_summary", "vivado_timing_summary"
+    ))
+    utilization = _artifact_for(refs, (
+        f"{prefix}_utilization", "vivado_utilization"
+    ))
+    timing_paths = _artifact_for(refs, (
+        f"{prefix}_timing_paths", "vivado_timing_paths"
+    ))
+    if summary is not None or utilization is not None or timing_paths is not None:
+        if summary is None or utilization is None:
+            raise SchemaError(
+                "raw Vivado extraction requires timing summary and utilization"
+            )
+        if not isinstance(clock_period_ns, (int, float)):
+            raise SchemaError("raw Vivado extraction requires a clock period")
+        records.append(extraction.vivado(
+            timing_summary_ref=summary.ref_id,
+            utilization_ref=utilization.ref_id,
+            timing_paths_ref=timing_paths.ref_id if timing_paths else None,
+            period_ns=float(clock_period_ns),
+            stage=prefix,
+        ))
+    differential_result = _artifact_for(refs, (
+        "differential_result", "verilator_differential_result"
+    ))
+    differential_stdout = _artifact_for(refs, (
+        "differential_stdout", "verilator_differential_stdout"
+    ))
+    if differential_result is not None:
+        records.append(extraction.differential(
+            result_ref=differential_result.ref_id,
+            stdout_ref=(
+                differential_stdout.ref_id if differential_stdout is not None else None
+            ),
+        ))
+    return records
+
+
+def _reconcile_extractions(
+    *,
+    checks: list[CheckRecord],
+    measurements: list[Measurement],
+    records: list[dict[str, Any]],
+    conditions: dict[str, Any],
+    conflicts: list[dict[str, Any]],
+    missing: list[dict[str, str]],
+) -> tuple[list[CheckRecord], list[Measurement], dict[str, list[str]], set[str]]:
+    """Merge compatible raw/legacy facts and surface every disagreement."""
+    check_index = {value.check_id: index for index, value in enumerate(checks)}
+    metric_index = {value.metric_id: value for value in measurements}
+    sources: dict[str, list[str]] = {
+        value.metric_id: [value.source_ref] for value in measurements
+    }
+    conflict_metrics: set[str] = set()
+    for record in records:
+        extraction_ref = record["content_hash"]
+        missing.extend(record.get("missing", []))
+        conflicts.extend(record.get("conflicts", []))
+        facts = record.get("facts", {})
+        for raw in facts.get("metrics", []):
+            metric_id = raw.get("metric_id")
+            if not isinstance(metric_id, str):
+                continue
+            legacy = metric_index.get(metric_id)
+            if legacy is None:
+                scope = {"stage": raw.get("stage"), **conditions}
+                value = Measurement(
+                    metric_id=metric_id,
+                    definition_revision=str(raw.get("definition_revision")),
+                    value=raw.get("value"),
+                    unit=str(raw.get("unit")),
+                    scope=scope,
+                    provenance="verified_raw_tool_report",
+                    source_ref=extraction_ref,
+                    availability="available",
+                    mapping_quality="exact",
+                )
+                measurements.append(value)
+                metric_index[metric_id] = value
+                sources[metric_id] = [extraction_ref]
+                continue
+            same = (
+                legacy.definition_revision == raw.get("definition_revision")
+                and legacy.unit == raw.get("unit")
+                and legacy.scope.get("stage") == raw.get("stage")
+                and float(legacy.value) == float(raw.get("value"))
+            )
+            if same:
+                sources.setdefault(metric_id, [legacy.source_ref]).append(extraction_ref)
+            else:
+                conflict_metrics.add(metric_id)
+                conflicts.append({
+                    "field": f"measurements.{metric_id}",
+                    "reason": "conflicting_sources",
+                    "detail": (
+                        "raw and legacy metric differ in value, unit, definition, "
+                        "or stage"
+                    ),
+                    "source_refs": [legacy.source_ref, extraction_ref],
+                })
+        raw_check = facts.get("check")
+        if isinstance(raw_check, dict):
+            check_id = raw_check.get("check_id")
+            index = check_index.get(check_id)
+            if index is not None:
+                legacy = checks[index]
+                raw_outcome = raw_check.get("outcome")
+                if not legacy.executed and raw_outcome in {
+                    "pass", "fail", "inconclusive"
+                }:
+                    checks[index] = CheckRecord(
+                        check_id=legacy.check_id,
+                        executed=True,
+                        outcome=raw_outcome,
+                        scope={"raw_extractor": record["extractor"]["revision"]},
+                        source_ref=extraction_ref,
+                    )
+                elif legacy.executed and legacy.outcome != raw_outcome:
+                    conflicts.append({
+                        "field": f"checks.{check_id}",
+                        "reason": "conflicting_sources",
+                        "detail": (
+                            f"legacy={legacy.outcome}, raw={raw_outcome}"
+                        ),
+                        "source_refs": [legacy.source_ref, extraction_ref],
+                    })
+                    checks[index] = CheckRecord(
+                        check_id=legacy.check_id,
+                        executed=True,
+                        outcome="inconclusive",
+                        scope=legacy.scope,
+                        source_ref=legacy.source_ref,
+                    )
+    for values in sources.values():
+        values[:] = sorted(set(values))
+    return checks, measurements, sources, conflict_metrics
 
 
 @dataclass(frozen=True)
@@ -732,6 +897,25 @@ class ChipContextService:
             conditions,
             missing,
         )
+        extraction_records = _raw_extractions(
+            store=self.store,
+            refs=refs,
+            stage=normalized_stage,
+            clock_period_ns=conditions["clock_period_ns"],
+        )
+        metric_sources: dict[str, list[str]] = {}
+        metric_conflicts: set[str] = set()
+        if extraction_records:
+            checks, measurements, metric_sources, metric_conflicts = (
+                _reconcile_extractions(
+                    checks=checks,
+                    measurements=measurements,
+                    records=extraction_records,
+                    conditions=conditions,
+                    conflicts=conflicts,
+                    missing=missing,
+                )
+            )
         for check in checks:
             if not check.executed:
                 missing.append({
@@ -757,6 +941,10 @@ class ChipContextService:
                 "qualification": "verified" if qualification_bound else "unverified",
             },
         }
+        if extraction_records:
+            manifest_payload["extraction_refs"] = [
+                value["content_hash"] for value in extraction_records
+            ]
         evaluation_manifest = self.store.write_record(
             "manifests", "chipcontext.evaluation-manifest.v1", manifest_payload
         )
@@ -787,6 +975,11 @@ class ChipContextService:
                 "conflict_count": len(conflicts),
             },
         }
+        if extraction_records:
+            snapshot_payload["extraction_refs"] = [
+                value["content_hash"] for value in extraction_records
+            ]
+            snapshot_payload["measurement_sources"] = metric_sources
         snapshot = self.store.write_record(
             "snapshots", "chipcontext.evidence-snapshot.v1", snapshot_payload
         )
@@ -854,6 +1047,7 @@ class ChipContextService:
             current_metrics = {
                 value.metric_id: value for value in measurements
                 if value.availability == "available"
+                and value.metric_id not in metric_conflicts
             }
             baseline_stage_raw = baseline.get("stage")
             baseline_stage = (

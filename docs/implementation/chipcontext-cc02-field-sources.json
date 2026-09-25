@@ -1,0 +1,176 @@
+{
+  "schema_version": "chipcontext.field-source-registry.v1",
+  "extractors": {
+    "verilator-differential-v1": {
+      "fields": {
+        "check.outcome": {
+          "format": "JSON boolean plus return code; reconciled with stdout markers",
+          "missing": "parse_failed or inconclusive",
+          "producer": "BoomDifferentialNode",
+          "source": "result.json#/passed and #/returncode",
+          "stages": ["correctness"],
+          "unit": null
+        },
+        "cycles": {
+          "format": "JSON integer",
+          "missing": "parse_failed",
+          "producer": "BoomDifferentialNode",
+          "source": "result.json#/cycles",
+          "stages": ["correctness"],
+          "unit": "cycles"
+        },
+        "directed_phases": {
+          "format": "JSON string array",
+          "missing": "parse_failed",
+          "producer": "BoomDifferentialNode",
+          "source": "result.json#/directed_phases",
+          "stages": ["correctness"],
+          "unit": null
+        },
+        "first_mismatch.cycle": {
+          "format": "first grounded MISMATCH marker in stdout",
+          "missing": "not_collected",
+          "producer": "Verilator differential testbench",
+          "source": "stdout byte and line span",
+          "stages": ["correctness"],
+          "unit": "cycles"
+        },
+        "first_mismatch.expected_actual": {
+          "format": "optional expected= and actual= values on the mismatch marker",
+          "missing": "not_collected",
+          "producer": "Verilator differential testbench",
+          "source": "stdout byte and line span",
+          "stages": ["correctness"],
+          "unit": null
+        },
+        "first_mismatch.signal": {
+          "format": "port= or signal= token on first grounded mismatch marker",
+          "missing": "not_collected",
+          "producer": "Verilator differential testbench",
+          "source": "stdout byte and line span",
+          "stages": ["correctness"],
+          "unit": null
+        },
+        "passed": {
+          "format": "JSON boolean",
+          "missing": "parse_failed",
+          "producer": "BoomDifferentialNode",
+          "source": "result.json#/passed",
+          "stages": ["correctness"],
+          "unit": null
+        },
+        "return_code": {
+          "format": "JSON integer",
+          "missing": "parse_failed",
+          "producer": "BoomDifferentialNode",
+          "source": "result.json#/returncode",
+          "stages": ["correctness"],
+          "unit": null
+        },
+        "scenario": {
+          "format": "JSON string",
+          "missing": "parse_failed",
+          "producer": "BoomDifferentialNode",
+          "source": "result.json#/scenario",
+          "stages": ["correctness"],
+          "unit": null
+        },
+        "seed": {
+          "format": "JSON integer",
+          "missing": "parse_failed",
+          "producer": "BoomDifferentialNode",
+          "source": "result.json#/seed",
+          "stages": ["correctness"],
+          "unit": null
+        }
+      }
+    },
+    "vivado-2024.1-v1": {
+      "fields": {
+        "clock_period_ns": {
+          "definition_revision": "clock-constraint-v1",
+          "format": "frozen physical contract",
+          "missing": "not_collected",
+          "producer": "FROZEN_RUN_MANIFEST physical contract",
+          "source": "extraction configuration plus timing-summary span",
+          "stages": ["post_synth", "post_route"],
+          "unit": "ns"
+        },
+        "critical_delay_ns": {
+          "definition_revision": "timing-critical-delay-v1",
+          "format": "clock_period_ns - WNS",
+          "missing": "parse_failed",
+          "producer": "derived from Vivado timing summary and frozen clock",
+          "source": "Design Timing Summary row span",
+          "stages": ["post_synth", "post_route"],
+          "unit": "ns"
+        },
+        "failing_endpoints": {
+          "definition_revision": "timing-failing-endpoints-v1",
+          "format": "Design Timing Summary integer column",
+          "missing": "parse_failed",
+          "producer": "Vivado report_timing_summary",
+          "source": "value byte and line span",
+          "stages": ["post_synth", "post_route"],
+          "unit": "count"
+        },
+        "slice_luts": {
+          "definition_revision": "vivado-slice-luts-v1",
+          "format": "Slice Logic table Used column",
+          "missing": "parse_failed",
+          "producer": "Vivado report_utilization",
+          "source": "Slice LUTs row value span",
+          "stages": ["post_synth", "post_route"],
+          "unit": "count"
+        },
+        "slice_registers": {
+          "definition_revision": "vivado-slice-registers-v1",
+          "format": "Slice Logic table Used column",
+          "missing": "parse_failed",
+          "producer": "Vivado report_utilization",
+          "source": "Slice Registers row value span",
+          "stages": ["post_synth", "post_route"],
+          "unit": "count"
+        },
+        "timing_paths": {
+          "definition_revision": "vivado-timing-path-v1",
+          "format": "ordered report_timing path blocks",
+          "missing": "not_collected or parse_failed",
+          "producer": "Vivado report_timing",
+          "source": "whole path-block byte and line span",
+          "stages": ["post_synth", "post_route"],
+          "unit": "mixed; ns and count fields are explicit",
+          "coverage": "command, max_paths, delay_type, path_type, report order and returned count"
+        },
+        "tns_ns": {
+          "definition_revision": "timing-tns-v1",
+          "format": "Design Timing Summary numeric column",
+          "missing": "parse_failed",
+          "producer": "Vivado report_timing_summary",
+          "source": "value byte and line span",
+          "stages": ["post_synth", "post_route"],
+          "unit": "ns"
+        },
+        "total_endpoints": {
+          "definition_revision": "timing-total-endpoints-v1",
+          "format": "Design Timing Summary integer column",
+          "missing": "parse_failed",
+          "producer": "Vivado report_timing_summary",
+          "source": "value byte and line span",
+          "stages": ["post_synth", "post_route"],
+          "unit": "count"
+        },
+        "wns_ns": {
+          "definition_revision": "timing-wns-v1",
+          "format": "Design Timing Summary numeric column",
+          "missing": "parse_failed",
+          "producer": "Vivado report_timing_summary",
+          "source": "value byte and line span",
+          "stages": ["post_synth", "post_route"],
+          "unit": "ns"
+        }
+      }
+    }
+  },
+  "legacy_adapter": "legacy-evaluation-v3"
+}

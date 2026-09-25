@@ -1,0 +1,3 @@
+simulation start
+MISMATCH cycle=28 signal=io_output_ready
+simulation stopped

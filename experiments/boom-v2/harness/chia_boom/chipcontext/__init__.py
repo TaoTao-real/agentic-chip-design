@@ -14,6 +14,7 @@ from .schema import (
     WorkingState,
 )
 from .service import ChipContextService, PreparationResult
+from .extraction import ExtractionService
 from .store import EvidenceStore
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "CheckRecord",
     "ChipContextService",
     "EvidenceStore",
+    "ExtractionService",
     "Measurement",
     "PreparationResult",
     "SchemaError",

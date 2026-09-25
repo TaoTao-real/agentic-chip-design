@@ -115,14 +115,30 @@ chia-chipcontext read-artifact \
 本批的实际测试、受控校准和环境门禁结果见
 [`implementation/chipcontext-cc01.md`](implementation/chipcontext-cc01.md)。
 
+## CC-02a：原始工程证据提取
+
+CC-02a 已加入 `vivado-2024.1-v1` 和
+`verilator-differential-v1`。它们只解析 EvidenceStore 已校验的同一份字节，
+把 PPA、已采集 timing path、差分检查和首个 grounded mismatch 保存为
+`chipcontext.extraction.v1` sidecar。每个事实都带 artifact hash 与 JSON pointer
+或 byte/line span；timing path 同时保存 top-k 和过滤范围，因此未出现在报告中的
+路径仍是未知。
+
+原始报告值会和 `legacy-evaluation-v3` 逐项核对。一致时合并来源，定义、单位、
+stage 或数值不一致时记录 conflict，该指标不产生 delta。既有 BOOM 评分入口也
+调用同一 Vivado 解析核心，但返回接口保持不变。
+
+字段来源、公开样例、复测命令、受控校准边界和当前限制见
+[`implementation/chipcontext-cc02.md`](implementation/chipcontext-cc02.md)。
+
 ## 当前没有实现
 
 - 没有把 packet 交给 Agent，也没有新增 `feedback_mode`；
-- 没有 DesignIndex、源码到 RTL 的实体映射或 CC-02 选择策略；
+- 没有 DesignIndex、源码到 RTL 的实体映射或 CC-02b 完整领域查询；
 - 没有 CC-03 runtime bridge、CC-04 Agent 消融、CC-05 留出模块；
 - 没有 CC-06 AI workload 或软硬件协同设计；
 - 当前字节预算只防止序列化溢出，不表示已经找到最优 token 预算；
 - 尚未声称 ChipContext 提高了优化成功率、速度、token 效率或 QoR。
 
-下一批 CC-02 应在不改变现有搜索算法的前提下，加入确定性字段选择与遗漏
-审计，并先用固定 replay 比较完整 raw evidence、ContextPacket 和按需下钻。
+下一批 CC-02b 将在已封存 extraction 上加入显式 scope 的领域查询；它仍不接入
+搜索 runtime 或 Agent。
