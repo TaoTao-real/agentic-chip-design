@@ -1,44 +1,67 @@
 {
+  "attempt_id": "evaluation-attempt-01",
   "candidate": {
-    "id": "neutral-success-candidate-01"
+    "arm": "fixture",
+    "campaign_id": "synthetic-success-campaign",
+    "diff": "synthetic fixture diff; no production design content",
+    "id": "neutral-success-candidate-01",
+    "index": 1,
+    "parent_id": null,
+    "parent_source_sha256": null,
+    "seed": 41,
+    "source": "class NeutralArithmetic extends Module {\n  val io = IO(new Bundle {})\n}\n",
+    "source_sha256": "269090e03b8406b4a8ad6f7be9dd3293d788654cead6085464e9d81b7fd8d275",
+    "target": "NeutralArithmetic"
   },
   "search_evaluation": {
-    "candidate_id": "neutral-success-candidate-01",
-    "status": "complete",
-    "stage": "synthesis",
-    "failure_class": null,
-    "retryable": false,
-    "raw_error": "",
     "build_ok": true,
-    "lint_ok": false,
-    "interface_ok": true,
-    "correctness_ok": true,
+    "candidate_id": "neutral-success-candidate-01",
     "candidate_valid": true,
-    "promotable": true,
-    "final_valid": false,
-    "valid_improvement": false,
-    "post_synth": {
-      "clock_period_ns": 5.0,
-      "wns_ns": -4.0,
-      "critical_delay_ns": 9.0,
-      "tns_ns": -12.0,
-      "failing_endpoints": 2,
-      "total_endpoints": 128,
-      "slice_luts": 102,
-      "slice_registers": 80
-    },
-    "post_route": null,
+    "correctness_ok": true,
     "differential": {
-      "passed": true,
-      "interface_ok": true,
       "cycles": 1000000,
+      "interface_ok": true,
+      "passed": true,
       "seed": 41
     },
+    "failure_class": null,
+    "final_valid": false,
+    "interface_ok": true,
+    "lint_ok": false,
+    "post_route": null,
+    "post_synth": {
+      "clock_period_ns": 5.0,
+      "critical_delay_ns": 9.0,
+      "failing_endpoints": 2,
+      "slice_luts": 102,
+      "slice_registers": 80,
+      "tns_ns": -12.0,
+      "total_endpoints": 128,
+      "wns_ns": -4.0
+    },
+    "promotable": true,
+    "raw_error": "",
     "regression": null,
+    "retryable": false,
+    "stage": "synthesis",
     "stages": [
-      {"stage": "elaboration", "success": true, "status": "complete"},
-      {"stage": "correctness", "success": true, "status": "complete"},
-      {"stage": "synthesis", "success": true, "status": "complete"}
-    ]
+      {
+        "stage": "elaboration",
+        "status": "complete",
+        "success": true
+      },
+      {
+        "stage": "correctness",
+        "status": "complete",
+        "success": true
+      },
+      {
+        "stage": "synthesis",
+        "status": "complete",
+        "success": true
+      }
+    ],
+    "status": "complete",
+    "valid_improvement": false
   }
 }

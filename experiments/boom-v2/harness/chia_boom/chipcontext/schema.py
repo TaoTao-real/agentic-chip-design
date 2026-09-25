@@ -52,7 +52,11 @@ def require_sha256(name: str, value: str) -> str:
 def hashed_record(schema_version: str, payload: dict[str, Any]) -> dict[str, Any]:
     if not schema_version.startswith("chipcontext."):
         raise SchemaError("ChipContext schema_version must use chipcontext.*")
-    record = {"schema_version": schema_version, **payload}
+    # Canonical round-tripping gives the published record its own object graph.
+    # Callers may continue assembling another record from their local lists and
+    # dictionaries without mutating an already hashed record by alias.
+    frozen_payload = json.loads(canonical_json(payload))
+    record = {"schema_version": schema_version, **frozen_payload}
     record["content_hash"] = content_hash(record)
     return record
 

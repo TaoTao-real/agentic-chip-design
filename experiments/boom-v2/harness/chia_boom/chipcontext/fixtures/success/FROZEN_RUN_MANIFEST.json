@@ -1,14 +1,13 @@
 {
-  "schema_version": "frozen-run-v1",
   "contract": {
     "base": {
       "config": "SyntheticConfig"
     },
     "physical": {
-      "tool": "Vivado",
-      "part": "synthetic-part",
       "clock_period_ns": 5.0,
-      "maximum_lut_ratio": 1.05
+      "maximum_lut_ratio": 1.05,
+      "part": "synthetic-part",
+      "tool": "Vivado"
     },
     "targets": {
       "NeutralArithmetic": {
@@ -17,7 +16,10 @@
     }
   },
   "files": {
+    "evidence/QUALIFICATION.json": "8d54709ec6eb308830b60a063e47362f7130b5809150f24f928ed964bde838b1",
+    "evidence/baseline-ppa.json": "836729281aea4a79e957eaa07f1747cd5b7133c54704e503a8d6af732096f1c7",
     "targets/NeutralArithmetic/baseline-source.scala": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
-  "fingerprint": "fe9e2e94f92a7623c767c58a22f583bb5201b25daa69d0c512158556a42e183c"
+  "fingerprint": "8bbdcbd14501595736fd91667f330cd20f3a4acb13a88d3ccd5a604c8640e76e",
+  "schema_version": "frozen-run-v1"
 }

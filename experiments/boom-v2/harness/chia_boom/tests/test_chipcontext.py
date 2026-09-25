@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import os
 import shutil
@@ -15,6 +16,7 @@ from chia_boom.chipcontext.schema import (
     Measurement,
     SchemaError,
     content_hash,
+    canonical_json,
 )
 from chia_boom.chipcontext.service import ChipContextService
 from chia_boom.chipcontext.store import MAX_LIMIT_BYTES, EvidenceStore
@@ -50,6 +52,17 @@ class ChipContextTestCase(unittest.TestCase):
     def write_json(path: Path, value: dict) -> None:
         path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
 
+    def reseal(self, fixture: Path, role: str, filename: str) -> None:
+        request = self.read_json(fixture / "request.json")
+        manifest = self.read_json(fixture / "FROZEN_RUN_MANIFEST.json")
+        logical = request["manifest_bindings"][role]
+        manifest["files"][logical] = hashlib.sha256(
+            (fixture / filename).read_bytes()
+        ).hexdigest()
+        body = {key: value for key, value in manifest.items() if key != "fingerprint"}
+        manifest["fingerprint"] = content_hash(body)
+        self.write_json(fixture / "FROZEN_RUN_MANIFEST.json", manifest)
+
 
 class FixtureVerticalSliceTests(ChipContextTestCase):
     def test_success_and_failure_fixtures_are_stable_across_fresh_runs(self) -> None:
@@ -80,7 +93,7 @@ class FixtureVerticalSliceTests(ChipContextTestCase):
         ref_id = result.bundle["facts"]["raw_error_ref"]
         page = store.read_artifact(ref_id, start_line=2, line_count=4)
         self.assertEqual(page["artifact_ref"]["ref_id"], (
-            "ca836449fa682d03ba297386bbb412d2c37e3e054c207e5e19edf2bcbe7547c2"
+            "12045edf3fa886241e42f92550b613b3ce083efdfecbada14d9dcd498dd57118"
         ))
         self.assertEqual(page["span"]["start_line"], 2)
         self.assertEqual(page["span"]["end_line"], 5)
@@ -108,6 +121,43 @@ class FixtureVerticalSliceTests(ChipContextTestCase):
         self.assertEqual(deltas["critical_delay_ns"]["delta"], -1.0)
         self.assertEqual(deltas["slice_luts"]["delta"], 2)
 
+    def test_published_records_are_deep_frozen_and_hash_consistent(self) -> None:
+        for index, fixture_name in enumerate(("failure", "success")):
+            fixture = self.copy_fixture(fixture_name, f"frozen-{fixture_name}")
+            if fixture_name == "failure":
+                value = self.read_json(fixture / "result.json")
+                value["search_evaluation"]["differential"].pop("expected")
+                value["search_evaluation"]["differential"].pop("actual")
+                self.write_json(fixture / "result.json", value)
+            else:
+                (fixture / "working-source.scala").write_text(
+                    (fixture / "working-source.scala").read_text() + "// unevaluated\n"
+                )
+            result, _, output = self.prepare(fixture, f"frozen-out-{index}")
+            for alias, kind, record in (
+                ("evaluation-manifest.json", "manifests", result.evaluation_manifest),
+                ("snapshot.json", "snapshots", result.snapshot),
+                ("bundle.json", "bundles", result.bundle),
+                ("packet.json", "packets", result.packet),
+            ):
+                unsigned = {key: value for key, value in record.items() if key != "content_hash"}
+                self.assertEqual(content_hash(unsigned), record["content_hash"])
+                self.assertEqual(self.read_json(output / alias), record)
+                canonical = output / "records" / kind / f"{record['content_hash']}.json"
+                self.assertEqual(self.read_json(canonical), record)
+            self.assertEqual(
+                result.snapshot["completeness"]["missing_count"],
+                len(result.snapshot["missing"]),
+            )
+            self.assertEqual(
+                result.packet["completeness"]["missing_count"],
+                len(result.packet["missing"]),
+            )
+            self.assertEqual(
+                result.packet["completeness"]["conflict_count"],
+                len(result.packet["conflicts"]),
+            )
+
 
 class IdentityAndStateTests(ChipContextTestCase):
     def test_candidate_id_is_namespaced_by_experiment(self) -> None:
@@ -119,6 +169,9 @@ class IdentityAndStateTests(ChipContextTestCase):
         candidate = self.read_json(fixture_b / "candidate.json")
         candidate["campaign_id"] = "another-campaign"
         self.write_json(fixture_b / "candidate.json", candidate)
+        evaluation = self.read_json(fixture_b / "result.json")
+        evaluation["candidate"]["campaign_id"] = "another-campaign"
+        self.write_json(fixture_b / "result.json", evaluation)
         result_a, _, _ = self.prepare(fixture_a, "out-a")
         result_b, _, _ = self.prepare(fixture_b, "out-b")
         self.assertNotEqual(
@@ -167,6 +220,66 @@ class IdentityAndStateTests(ChipContextTestCase):
         with self.assertRaisesRegex(SchemaError, "candidate ID"):
             self.prepare(fixture)
 
+    def test_same_id_but_different_source_is_rejected(self) -> None:
+        fixture = self.copy_fixture("success")
+        candidate = self.read_json(fixture / "candidate.json")
+        candidate["source"] += "// different revision\n"
+        self.write_json(fixture / "candidate.json", candidate)
+        with self.assertRaisesRegex(SchemaError, "evaluation source"):
+            self.prepare(fixture)
+
+    def test_missing_evaluation_candidate_id_is_rejected(self) -> None:
+        fixture = self.copy_fixture("success")
+        result = self.read_json(fixture / "result.json")
+        result["search_evaluation"].pop("candidate_id")
+        self.write_json(fixture / "result.json", result)
+        with self.assertRaisesRegex(SchemaError, "candidate ID is required"):
+            self.prepare(fixture)
+
+    def test_wrong_evaluation_attempt_is_rejected(self) -> None:
+        fixture = self.copy_fixture("success")
+        result = self.read_json(fixture / "result.json")
+        result["attempt_id"] = "evaluation-attempt-99"
+        self.write_json(fixture / "result.json", result)
+        with self.assertRaisesRegex(SchemaError, "evaluation attempt"):
+            self.prepare(fixture)
+
+    def test_embedded_evaluation_campaign_must_match(self) -> None:
+        fixture = self.copy_fixture("success")
+        result = self.read_json(fixture / "result.json")
+        result["candidate"]["campaign_id"] = "foreign-campaign"
+        self.write_json(fixture / "result.json", result)
+        with self.assertRaisesRegex(SchemaError, "campaign"):
+            self.prepare(fixture)
+
+    def test_unbound_legacy_evaluation_is_rejected(self) -> None:
+        fixture = self.copy_fixture("success")
+        result = self.read_json(fixture / "result.json")
+        result.pop("attempt_id")
+        result["candidate"] = {"id": result["candidate"]["id"]}
+        self.write_json(fixture / "result.json", result)
+        with self.assertRaisesRegex(SchemaError, "source binding"):
+            self.prepare(fixture)
+
+    def test_legacy_source_path_binds_source_and_attempt(self) -> None:
+        fixture = self.copy_fixture("success")
+        candidate = self.read_json(fixture / "candidate.json")
+        attempt_source = (
+            fixture / "evaluation-attempt-01" / "elaboration" / "candidate-source.scala"
+        )
+        attempt_source.parent.mkdir(parents=True)
+        attempt_source.write_text(candidate["source"])
+        result = self.read_json(fixture / "result.json")
+        result.pop("attempt_id")
+        result.pop("candidate")
+        result["search_evaluation"]["candidate_source_path"] = str(attempt_source)
+        self.write_json(fixture / "result.json", result)
+        prepared, _, _ = self.prepare(fixture)
+        self.assertEqual(
+            prepared.evaluation_manifest["binding_status"]["candidate_evaluation"],
+            "verified",
+        )
+
     def test_request_and_candidate_experiment_ids_must_match(self) -> None:
         fixture = self.copy_fixture("success")
         request = self.read_json(fixture / "request.json")
@@ -207,6 +320,47 @@ class SemanticsAndComparabilityTests(ChipContextTestCase):
         )
         self.assertFalse(elaboration["executed"])
         self.assertIsNone(elaboration["outcome"])
+
+    def test_infrastructure_interruption_is_inconclusive_not_functional_fail(self) -> None:
+        fixture = self.copy_fixture("failure")
+        value = self.read_json(fixture / "result.json")
+        evaluation = value["search_evaluation"]
+        evaluation["status"] = "infra_blocked"
+        evaluation["failure_class"] = "correctness_infrastructure_failure"
+        evaluation["differential"] = None
+        evaluation["interface_ok"] = False
+        evaluation["correctness_ok"] = False
+        evaluation["stages"] = [{
+            "stage": "correctness", "success": False, "status": "infra_blocked"
+        }]
+        self.write_json(fixture / "result.json", value)
+        result, _, _ = self.prepare(fixture)
+        checks = {row["check_id"]: row for row in result.snapshot["checks"]}
+        self.assertFalse(checks["interface_signature"]["executed"])
+        self.assertIsNone(checks["interface_signature"]["outcome"])
+        self.assertTrue(checks["differential_correctness"]["executed"])
+        self.assertEqual(checks["differential_correctness"]["outcome"], "inconclusive")
+
+    def test_regression_success_contract_is_normalized(self) -> None:
+        fixture = self.copy_fixture("success")
+        value = self.read_json(fixture / "result.json")
+        evaluation = value["search_evaluation"]
+        evaluation["regression"] = {
+            "success": True,
+            "returncode": 0,
+            "acceptance_rule": "chia_verilator_run_success_and_returncode_zero",
+        }
+        evaluation["stages"].append({
+            "stage": "regression", "success": True, "status": "complete"
+        })
+        self.write_json(fixture / "result.json", value)
+        result, _, _ = self.prepare(fixture)
+        regression = next(
+            row for row in result.snapshot["checks"]
+            if row["check_id"] == "processor_regression"
+        )
+        self.assertTrue(regression["executed"])
+        self.assertEqual(regression["outcome"], "pass")
 
     def test_conflicting_check_sources_are_explicitly_inconclusive(self) -> None:
         fixture = self.copy_fixture("success")
@@ -253,6 +407,7 @@ class SemanticsAndComparabilityTests(ChipContextTestCase):
         baseline = self.read_json(stage_fixture / "baseline-ppa.json")
         baseline["stage"] = "post_route"
         self.write_json(stage_fixture / "baseline-ppa.json", baseline)
+        self.reseal(stage_fixture, "baseline", "baseline-ppa.json")
         stage_result, _, _ = self.prepare(stage_fixture, "stage-out")
         self.assertFalse(stage_result.bundle["facts"]["comparable"])
         self.assertEqual(stage_result.bundle["facts"]["deltas"], [])
@@ -265,6 +420,7 @@ class SemanticsAndComparabilityTests(ChipContextTestCase):
             "definition_revision": "timing-critical-delay-v1",
         }
         self.write_json(unit_fixture / "baseline-ppa.json", baseline)
+        self.reseal(unit_fixture, "baseline", "baseline-ppa.json")
         unit_result, _, _ = self.prepare(unit_fixture, "unit-out")
         self.assertFalse(unit_result.bundle["facts"]["comparable"])
         self.assertEqual(unit_result.bundle["facts"]["deltas"], [])
@@ -312,8 +468,37 @@ class SemanticsAndComparabilityTests(ChipContextTestCase):
             "definition_revision": "timing-critical-delay-v1",
         }
         self.write_json(fixture / "baseline-ppa.json", baseline)
+        self.reseal(fixture, "baseline", "baseline-ppa.json")
         with self.assertRaisesRegex(SchemaError, "unknown measurement unit"):
             self.prepare(fixture, "bad-unit-out")
+
+    def test_changed_bound_baseline_is_not_comparable(self) -> None:
+        fixture = self.copy_fixture("success")
+        baseline = self.read_json(fixture / "baseline-ppa.json")
+        baseline["critical_delay_ns"] = 100.0
+        self.write_json(fixture / "baseline-ppa.json", baseline)
+        result, _, _ = self.prepare(fixture)
+        self.assertFalse(result.bundle["facts"]["comparable"])
+        self.assertTrue(any(
+            row["field"] == "bindings.baseline"
+            and row["reason"] == "not_comparable"
+            for row in result.packet["missing"]
+        ))
+
+    def test_foreign_qualification_and_missing_binding_prevent_delta(self) -> None:
+        foreign = self.copy_fixture("success", "foreign-qualification")
+        qualification = self.read_json(foreign / "QUALIFICATION.json")
+        qualification["tool_versions"]["vivado"] = "foreign"
+        self.write_json(foreign / "QUALIFICATION.json", qualification)
+        result, _, _ = self.prepare(foreign, "foreign-out")
+        self.assertFalse(result.bundle["facts"]["comparable"])
+
+        missing = self.copy_fixture("success", "missing-binding")
+        request = self.read_json(missing / "request.json")
+        request["manifest_bindings"].pop("baseline")
+        self.write_json(missing / "request.json", request)
+        result, _, _ = self.prepare(missing, "missing-binding-out")
+        self.assertFalse(result.bundle["facts"]["comparable"])
 
     def test_partial_json_is_rejected_as_parse_failure(self) -> None:
         fixture = self.copy_fixture("failure")
@@ -436,6 +621,39 @@ class StoreAndBudgetTests(ChipContextTestCase):
         self.write_json(fixture / "request.json", request)
         with self.assertRaisesRegex(SchemaError, "required_evidence_overflow"):
             self.prepare(fixture)
+
+    def test_packet_budget_covers_final_record_at_exact_boundary(self) -> None:
+        fixture = self.copy_fixture("success")
+        first, _, _ = self.prepare(fixture, "budget-probe")
+        exact = first.packet["budget"]["required"]
+        accepted = first
+        for index in range(4):
+            request = self.read_json(fixture / "request.json")
+            request["policy"]["max_payload_bytes"] = exact
+            self.write_json(fixture / "request.json", request)
+            accepted, _, _ = self.prepare(fixture, f"budget-exact-{index}")
+            new_exact = accepted.packet["budget"]["required"]
+            if new_exact == exact:
+                break
+            exact = new_exact
+        self.assertEqual(accepted.packet["budget"]["maximum"], exact)
+        self.assertEqual(accepted.packet["budget"]["required"], exact)
+        self.assertEqual(
+            accepted.packet["budget"]["required"],
+            len(canonical_json(accepted.packet).encode()),
+        )
+        self.assertLessEqual(
+            accepted.packet["budget"]["required"],
+            accepted.packet["budget"]["maximum"],
+        )
+
+        request = self.read_json(fixture / "request.json")
+        request["policy"]["max_payload_bytes"] = (
+            accepted.packet["budget"]["required"] - 1
+        )
+        self.write_json(fixture / "request.json", request)
+        with self.assertRaisesRegex(SchemaError, "required_evidence_overflow"):
+            self.prepare(fixture, "budget-one-short")
 
     def test_model_credentials_are_not_needed_or_serialized(self) -> None:
         fixture = self.copy_fixture("success")

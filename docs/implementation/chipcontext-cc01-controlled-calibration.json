@@ -1,6 +1,11 @@
 {
   "cases": {
     "failure": {
+      "binding_status": {
+        "baseline": "verified",
+        "candidate_evaluation": "verified",
+        "qualification": "verified"
+      },
       "conflict_count": 0,
       "field_checked_count": 8,
       "field_consistent_count": 8,
@@ -10,31 +15,37 @@
         "differential_stdout": "af47369aa7755f14a4e4b32a2d424074568a4ef463f8352b8200a7352bdea510",
         "evaluation": "75df07f52f5575b72086606624ecf784d127865ca3410005585a6a0e9635daac",
         "qualification": "fc90e0ee9e6db30505a98ae869f0c762ab3d75c3e8957ffa974aa75bb13a6051",
-        "sealed_manifest": "320ddf52d4d7435df4bfdbec0b5b1029a348b3ed5c7ed23500cda8c24d89574f",
+        "sealed_manifest": "8ff02267cbc805ebc071229ce44d5e53c5bd313e071577a8c0070878e7745fe6",
         "working_source": "bfebf7980a88036c59fbe2d191a5e15a481b80548c87e83297053d8384396906"
       },
       "missing_count": 9,
       "output_hashes": {
-        "bundle": "1559feb2db7e9f96609f11e52389e2dbc81bea184ac66349f0fc412648f9dcf7",
-        "evaluation_manifest": "ad39c4b6d50b72d559507b2825200337aa6743793f10e289f9e0e127b4292d54",
-        "packet": "5b3c913b8f63d8ed55cc7649de3328001de31eab447b87280f1c26c10a07dfa6",
-        "packet_bytes": 2167,
+        "bundle": "b1e434ec6bde6ec1aeca3a3412be52fe1be2291893f8de872ed09f35c890d99b",
+        "evaluation_manifest": "557388aab5f73f52cacac9e3072de38ddeca8e544cb8c514333dde2856dc525b",
+        "packet": "a56f812ddff91fbc021c24e46ec8c73128a3205e2134b9b089183dc45bd07491",
+        "packet_bytes": 3789,
         "schema_version": "chipcontext.preparation-result.v1",
-        "snapshot": "83a870cc7c9fc1c6f84b291cf1db04f4924595f7d7083e33fa6bc2c5306d052b"
+        "snapshot": "ace2278fd1e4972e2a25f2b5d295672ea4f8e65aa5e8574be2d86d69df14aa60"
       },
-      "prepare_milliseconds": 22.4,
+      "packet_actual_bytes": 3789,
+      "packet_required_bytes": 3789,
+      "prepare_milliseconds": 144.687,
       "query_artifact_sha256": "af47369aa7755f14a4e4b32a2d424074568a4ef463f8352b8200a7352bdea510",
-      "query_bytes": 316,
-      "query_milliseconds": 0.422,
+      "query_bytes": 328,
       "query_span": {
-        "end_byte": 316,
-        "end_line": 3,
+        "end_byte": 328,
+        "end_line": 4,
         "start_byte": 0,
         "start_line": 1
       },
       "query_truncated": false
     },
     "success": {
+      "binding_status": {
+        "baseline": "verified",
+        "candidate_evaluation": "verified",
+        "qualification": "verified"
+      },
       "conflict_count": 0,
       "field_checked_count": 15,
       "field_consistent_count": 15,
@@ -43,26 +54,27 @@
         "candidate": "8791df1cb2d32102cf250ae4bb3c630d8b2513a4b14c471243f469f1c399dbf6",
         "evaluation": "5998f502322058ed2ac35cf97128d292c244cd4dd05fea27ecd5c7579947e87d",
         "qualification": "fc90e0ee9e6db30505a98ae869f0c762ab3d75c3e8957ffa974aa75bb13a6051",
-        "sealed_manifest": "320ddf52d4d7435df4bfdbec0b5b1029a348b3ed5c7ed23500cda8c24d89574f",
+        "sealed_manifest": "8ff02267cbc805ebc071229ce44d5e53c5bd313e071577a8c0070878e7745fe6",
         "timing_report": "dbf713ce115cb94377374a332a91ee3fd4a601b05b0659aa3020ea8391d50f3d",
         "working_source": "9310379c5bf3e12c88acbc31e86ce204acdc1642688d3d24545ea1265179915c"
       },
       "missing_count": 5,
       "output_hashes": {
-        "bundle": "716192d37e0a94beabe911d80989b71059354400ae1228d87f839e02b9cf8d98",
-        "evaluation_manifest": "d7f2ee4dd732de9c3e3d2871ed75a2610a1d6208f0becd15bd83c945c9b4a474",
-        "packet": "eb9cba333c57a89cedad9db33605b4ad49c14233824b2f38c2a7497835931068",
-        "packet_bytes": 1825,
+        "bundle": "0de4bc2295a9ed4c28cfba21b127640dd0bd33c12856ecf868be3e48abcfc412",
+        "evaluation_manifest": "9279aa27f452ae8cc551cfac80442efcf160cbd3fee437b499992877f485fd9e",
+        "packet": "459d1c01281b8eacce0383248ee296cde5ce49f44ca701fe93e969ace26a1f99",
+        "packet_bytes": 3355,
         "schema_version": "chipcontext.preparation-result.v1",
-        "snapshot": "8fc9a80795051c95ac21adda577f55acded9099e4a34264680e4a9affeda30b0"
+        "snapshot": "b7c569e1374c5548522f5cb771ddd0fe9a305c46f0dfd8810f73d84b9f0702e7"
       },
-      "prepare_milliseconds": 20.719,
+      "packet_actual_bytes": 3355,
+      "packet_required_bytes": 3355,
+      "prepare_milliseconds": 136.459,
       "query_artifact_sha256": "dbf713ce115cb94377374a332a91ee3fd4a601b05b0659aa3020ea8391d50f3d",
-      "query_bytes": 475,
-      "query_milliseconds": 0.453,
+      "query_bytes": 922,
       "query_span": {
-        "end_byte": 475,
-        "end_line": 3,
+        "end_byte": 922,
+        "end_line": 8,
         "start_byte": 0,
         "start_line": 1
       },
@@ -72,7 +84,7 @@
   "environment_review": {
     "doctor_failed_required_checks": [],
     "doctor_passed": true,
-    "doctor_sha256": "26ace214781b043a513802b4777b050c21ef095b848afd61951de76bc8860db8",
+    "doctor_sha256": "a3726f25c99a86d8962d315608344f8e4ffc3cfecececb5c62c3db3e6ecd282c",
     "existing_qualification_current": true,
     "failed_smoke": {
       "cycles": 10000,
@@ -90,12 +102,12 @@
       "api_key_used": false,
       "cycles": 10000,
       "differential_result_sha256": "4ccb1f269fbd7830f67b064dd826b1d4f61a7085a2ba3ac9cc438ea82111fc83",
-      "elapsed_seconds": 17.451859642053023,
-      "frozen_run_fingerprint": "4b3a1f1f90eb9420dab79d54deead01f074b4d393b063332c7811111d447c870",
+      "elapsed_seconds": 17.61110425798688,
+      "frozen_manifest_sha256": "b2af5505e581d4285bc51154136de63da36c3877c440483b2ff3e30aca9c7212",
       "jobs": 12,
       "model_calls": 0,
       "seed": 20260925,
-      "sha256": "c63346f501ea2de54ec7ea1eb9a02b1e6edd70b092f76e496d13ffc73bc9ca1d",
+      "sha256": "6821977ae1645eba6302feedb18cf07e057f2c9e308d8367b7d5c095fc41f52c",
       "status": "passed"
     },
     "resource_thresholds": {
@@ -107,6 +119,6 @@
     "verify_environment_sha256": "36c45681cc349cb03e66834760cae2f6ca245fe95f65a0304bdb0dc09efd6fe5"
   },
   "public_safe": true,
-  "schema_version": "chipcontext.controlled-calibration-summary.v1",
+  "schema_version": "chipcontext.controlled-calibration-summary.v2",
   "source_type": "controlled_real"
 }

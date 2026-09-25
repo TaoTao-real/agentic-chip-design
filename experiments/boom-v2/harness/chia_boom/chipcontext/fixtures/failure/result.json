@@ -1,41 +1,56 @@
 {
+  "attempt_id": "evaluation-attempt-01",
   "candidate": {
-    "id": "neutral-failure-candidate-01"
+    "arm": "fixture",
+    "campaign_id": "synthetic-failure-campaign",
+    "diff": "synthetic fixture diff; no production design content",
+    "id": "neutral-failure-candidate-01",
+    "index": 1,
+    "parent_id": null,
+    "parent_source_sha256": null,
+    "seed": 43,
+    "source": "class NeutralQueue extends Module {\n  val io = IO(new Bundle {})\n}\n",
+    "source_sha256": "1f323dd9235fc23a208eb88e0d1b660ae9cddae214385449d402d1dd2697bbd9",
+    "target": "NeutralQueue"
   },
   "search_evaluation": {
-    "candidate_id": "neutral-failure-candidate-01",
-    "status": "candidate_invalid",
-    "stage": "correctness",
-    "failure_class": "candidate_correctness_failure",
-    "retryable": false,
-    "raw_error": "cycle 17: output mismatch expected=0x2a actual=0x2b",
     "build_ok": true,
-    "lint_ok": false,
-    "interface_ok": true,
-    "correctness_ok": false,
+    "candidate_id": "neutral-failure-candidate-01",
     "candidate_valid": false,
-    "promotable": false,
-    "final_valid": false,
-    "valid_improvement": false,
-    "post_synth": null,
-    "post_route": null,
+    "correctness_ok": false,
     "differential": {
-      "passed": false,
-      "interface_ok": true,
+      "actual": "0x2b",
       "cycles": 18,
-      "seed": 43,
       "expected": "0x2a",
-      "actual": "0x2b"
+      "interface_ok": true,
+      "passed": false,
+      "seed": 43
     },
+    "failure_class": "candidate_correctness_failure",
+    "final_valid": false,
+    "interface_ok": true,
+    "lint_ok": false,
+    "post_route": null,
+    "post_synth": null,
+    "promotable": false,
+    "raw_error": "cycle 17: output mismatch expected=0x2a actual=0x2b",
     "regression": null,
+    "retryable": false,
+    "stage": "correctness",
     "stages": [
-      {"stage": "elaboration", "success": true, "status": "complete"},
       {
+        "stage": "elaboration",
+        "status": "complete",
+        "success": true
+      },
+      {
+        "failure_class": "candidate_correctness_failure",
         "stage": "correctness",
-        "success": false,
         "status": "candidate_invalid",
-        "failure_class": "candidate_correctness_failure"
+        "success": false
       }
-    ]
+    ],
+    "status": "candidate_invalid",
+    "valid_improvement": false
   }
 }

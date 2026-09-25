@@ -10,7 +10,7 @@
 | OptimizationContract | objective、allowed_changes、frozen_paths、budget、final_gates、stop_policy、revision | 实验前冻结，修改产生新实验版本 |
 | DesignSnapshot | source_hash、compiler_revision、parameters、artifact_refs | 指向唯一源版本，不混入历史测量 |
 | DesignIndex | revision、entities、origins、edges、interfaces、cycle_boundaries | 编译派生只读，不是第二份设计真相 |
-| EvaluationManifest | candidate/attempt、合同、工具、参考、原始/规范 stage、artifacts、status | CC-01 已实现；先封存再发布，不依赖全局 latest |
+| EvaluationManifest | candidate/attempt、合同、工具、参考、原始/规范 stage、artifacts、status、binding status | CC-01 已实现；结果绑定实际源码/attempt，baseline 与 qualification 绑定冻结清单后才可比较 |
 | EvidenceSnapshot | manifest、checks、measurements、observations、missing、source_refs | CC-01 已实现；数值、单位、阶段、环境和候选不可分离 |
 | EvidenceBundle | recipe、facts、conditions、coverage、open_needs、drilldown | CC-01 已实现 failure/delta 两个最小配方 |
 | ContextPacket | snapshot_refs、policy_revision、selected、missing、drilldown_refs、content_hash | CC-01 已实现静态选择；可重建选择视图，不是测量权威 |
@@ -31,7 +31,9 @@
 ## 缓存和交付
 
 CC-01 的内容键绑定候选复合身份、合同、所有登记输入的内容哈希、parser revision
-和 packet policy。选择键另含策略与知识权限。runtime 交付状态尚未实现；后续应按
+和 packet policy。发布时深度冻结对象图，alias、内容寻址记录和 content hash
+必须一致；packet 字节预算覆盖带 schema/hash/budget 的最终规范记录。选择键另含
+策略与知识权限。runtime 交付状态尚未实现；后续应按
 session、branch、context generation 和 packet 隔离，并在消息持久化后记录已交付。
 
 [清单草案](../configs/evidence-policy.example.json) 仅描述建议行为。

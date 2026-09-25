@@ -8,7 +8,7 @@
 
 ## Selected evidence
 
-- **candidate_identity**: synthetic-success-campaign/neutral-success-candidate-01 source=269090e03b84 contract=fe9e2e94f92a
+- **candidate_identity**: synthetic-success-campaign/neutral-success-candidate-01 source=269090e03b84 contract=8bbdcbd14501
 - **working_state**: evaluated_current
 - **validation_status**: elaboration=pass, lint=not_run, interface_signature=pass, differential_correctness=pass, post_synth=pass, post_route=not_run, processor_regression=not_run, formal_equivalence=not_run
 - **question_bundle**: performance_delta scope=current completeness=complete
@@ -22,10 +22,10 @@
 
 ## Drilldown
 
-- `candidate_record` → `95a8195af5391278b986e270cc0030f8e841d62e30e03845b304d8a5225bb85c`
-- `evaluation_record` → `b7a13de7ec4c70a7206200d973146e96ae5ca25701261f1fa31d78e9957205cc`
-- `sealed_manifest` → `6a710ffb1ab07d1f1cc5cd78b50e9e87f30fbd8e5a3e2bab8820c68f310271ce`
-- `baseline_measurement` → `ef406ac745d1ba8c60090c5ecb7d4a0b33e0d8273937a6df78721ffc82779a24`
-- `working_source` → `6924853a1571dd858448fa0c10763b6b3afff2b77ec7336a5cbef2f8f10042cf`
-- `qualification_record` → `ab5eac0e9089159a464fe36afd148006b7ab917bbb8f6ad59535d9c9164184bf`
-- `vivado_timing_report` → `f65fce693e3ee5a94d4d022b92570c21618a8fc7ad8ac134fbb5b1d53e835cb4`
+- `candidate_record` → `51035da7c7f59c1c89a303b09998ce418c127c88e8f68ad021c3f54e3794b3f9`
+- `evaluation_record` → `7bd66024d6e7cd1a3897a3b1adb259ca0340be40ffce2da5bcfe3c36b25588d3`
+- `sealed_manifest` → `6834ac617f2df108248e1d88a39bc2434f912cec7ed617bc90336d14c55d1d80`
+- `baseline_measurement` → `e59f409cae62ce2f4135050fc104d230e6307dcb00446095b2823634ea06068b`
+- `working_source` → `e012d7869d3f64801fc3daf67c591331adbd7cf89630b6dbc27dfa83252846ab`
+- `qualification_record` → `2b5ea2a5871a1570e4801dfca6fb3240b7337fed4a09fa5a41b2b4d7094b8ffd`
+- `vivado_timing_report` → `9ae5c8818c73670ebfb1bc8c6df1217d3c7827b663be60ee94f44688eeaf98ee`

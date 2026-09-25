@@ -94,8 +94,9 @@ the existing campaign behavior. See [`docs/chipcontext.md`](../../../docs/chipco
 The unit suite checks information isolation, exact edits, candidate lineage,
 failure classification, validity transitions, CHIA decoration, knowledge
 access and the B/C report gates. The ChipContext slice additionally tests stable
-hashes, missing/evaluated state semantics, strict comparability, bounded reads,
-path escape resistance and fail-closed budgets. It does not run Chipyard,
+hashes and immutable aliases, candidate/source/attempt binding, sealed baseline
+and qualification binding, producer check semantics, strict comparability,
+bounded reads, path escape resistance and final-record byte budgets. It does not run Chipyard,
 Verilator or Vivado.
 Physical results in the parent experiment README remain reported evidence from
 the controlled environment, not a CI reproduction.

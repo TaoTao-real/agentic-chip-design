@@ -54,6 +54,12 @@ CandidateArtifact + result.json + EvaluationArtifact + frozen manifest
 缺失原因固定为 `not_run`、`not_collected`、`parse_failed`、
 `not_comparable`、`not_supported` 和 `inconclusive`。
 
+Legacy 评估只有同时绑定候选 ID、实验、源码和 attempt 才会被接纳；同 ID 的旧
+源码结果、缺失 ID 或错误 attempt 会被拒绝。baseline 与 qualification 还必须
+通过 prepare request 的 `manifest_bindings` 指向冻结清单中的逻辑文件项，并在
+读取时重新校验文件 SHA-256。没有该绑定时仍可形成部分证据，但不得产生性能
+差值。
+
 ## 配方
 
 `failure_summary_v1` 保存失败阶段、类别、检查范围、候选记录引用、原始错误
@@ -61,7 +67,9 @@ CandidateArtifact + result.json + EvaluationArtifact + frozen manifest
 
 `comparable_delta_v1` 只比较同阶段、同器件、同时钟、同工具指纹、同参考输入、
 同指标定义和同单位的结构化数值。任一条件不成立时返回 `not_comparable`，
-不产生差值；当前工作源码尚未评估时同样禁止继承旧性能。
+不产生差值；当前工作源码尚未评估时同样禁止继承旧性能。基线缺失的器件、
+时钟和工具条件只有在 baseline/qualification 均由同一冻结清单验证后才可从
+合同继承。
 
 ## 离线使用
 
@@ -81,6 +89,11 @@ chia-chipcontext read-artifact \
 查询默认上限 8 KiB，硬上限 64 KiB，返回原始内容哈希、实际 byte/line span、
 截断标志和下一页 cursor。`controlled` 产物必须显式授权。路径穿越、符号链接
 逃逸、未知引用、内容变化和引用元数据篡改均会拒绝读取。
+
+`max_payload_bytes` 约束最终 ContextPacket 的规范 JSON 记录，包含
+`schema_version`、`content_hash` 和 `budget` 本身；`budget.required` 必须等于该
+最终记录的实际字节数。达到上限允许发布，少一个字节即以
+`required_evidence_overflow` 失败。
 
 ## 公开安全样例与校准边界
 

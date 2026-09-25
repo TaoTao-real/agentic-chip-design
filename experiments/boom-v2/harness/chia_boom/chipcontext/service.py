@@ -15,12 +15,13 @@ from .schema import (
     WorkingState,
     canonical_json,
     content_hash,
+    hashed_record,
     require_sha256,
 )
 from .store import EvidenceStore
 
 
-PARSER_REVISION = "legacy-evaluation-v1"
+PARSER_REVISION = "legacy-evaluation-v2"
 POLICY_REVISION = "cc01-static-required-v1"
 METRIC_DEFINITIONS = {
     "critical_delay_ns": ("timing-critical-delay-v1", "ns"),
@@ -59,7 +60,7 @@ class PreparationResult:
             "snapshot": self.snapshot["content_hash"],
             "bundle": self.bundle["content_hash"],
             "packet": self.packet["content_hash"],
-            "packet_bytes": len(self.markdown.encode()),
+            "packet_bytes": len(canonical_json(self.packet).encode()),
         }
 
 
@@ -94,6 +95,114 @@ def _evaluation_from_result(value: dict[str, Any]) -> dict[str, Any]:
     return evaluation
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _verify_evaluation_binding(
+    *,
+    result_data: dict[str, Any],
+    evaluation: dict[str, Any],
+    candidate_path: Path,
+    candidate_id: str,
+    experiment_id: str,
+    source_sha256: str,
+    attempt_id: str,
+) -> None:
+    """Fail closed unless the legacy result identifies source and attempt.
+
+    New row-style results carry the complete CandidateArtifact plus an explicit
+    attempt ID.  Older standalone EvaluationArtifact files are accepted only
+    when their recorded candidate-source path is inside the candidate directory,
+    contains the requested attempt component, and hashes to the candidate source.
+    """
+    evaluated_id = evaluation.get("candidate_id")
+    if not isinstance(evaluated_id, str) or not evaluated_id:
+        raise SchemaError("evaluation candidate ID is required")
+    if evaluated_id != candidate_id:
+        raise SchemaError("evaluation candidate ID does not match candidate record")
+
+    embedded = result_data.get("candidate")
+    embedded_attempt = result_data.get("attempt_id")
+    if isinstance(embedded, dict) and isinstance(embedded.get("source"), str):
+        if str(embedded.get("id") or "") != candidate_id:
+            raise SchemaError("embedded evaluation candidate ID does not match")
+        if str(embedded.get("campaign_id") or "") != experiment_id:
+            raise SchemaError("embedded evaluation campaign does not match")
+        embedded_sha = _sha256_text(embedded["source"])
+        if embedded.get("source_sha256") not in (None, embedded_sha):
+            raise SchemaError("embedded evaluation source hash is invalid")
+        if embedded_sha != source_sha256:
+            raise SchemaError("evaluation source does not match candidate source")
+        if embedded_attempt is not None and embedded_attempt != attempt_id:
+            raise SchemaError("evaluation attempt does not match requested attempt")
+        if embedded_attempt == attempt_id:
+            return
+
+    raw_source_path = evaluation.get("candidate_source_path")
+    if not isinstance(raw_source_path, str) or not raw_source_path:
+        raise SchemaError("evaluation source binding is required")
+    source_path = Path(raw_source_path)
+    if not source_path.is_absolute() or source_path.is_symlink():
+        raise SchemaError("legacy evaluation source binding is invalid")
+    resolved_source = source_path.resolve(strict=True)
+    candidate_root = candidate_path.parent.resolve(strict=True)
+    try:
+        relative = resolved_source.relative_to(candidate_root)
+    except ValueError as exc:
+        raise SchemaError("legacy evaluation source escapes candidate attempt") from exc
+    if attempt_id not in relative.parts:
+        raise SchemaError("evaluation attempt does not match requested attempt")
+    cursor = candidate_root
+    for part in relative.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise SchemaError("legacy evaluation source traverses a symlink")
+    if _sha256_file(resolved_source) != source_sha256:
+        raise SchemaError("evaluation source does not match candidate source")
+
+
+def _verify_manifest_binding(
+    *,
+    role: str,
+    artifact_path: Path | None,
+    request: dict[str, Any],
+    sealed: dict[str, Any],
+    missing: list[dict[str, str]],
+) -> bool:
+    bindings = request.get("manifest_bindings")
+    logical_path = bindings.get(role) if isinstance(bindings, dict) else None
+    files = sealed.get("files")
+    expected = files.get(logical_path) if isinstance(files, dict) else None
+    if artifact_path is None or not isinstance(logical_path, str) or not logical_path:
+        missing.append({
+            "field": f"bindings.{role}",
+            "reason": "not_collected",
+            "detail": "request has no explicit sealed-manifest artifact binding",
+        })
+        return False
+    if not isinstance(expected, str):
+        missing.append({
+            "field": f"bindings.{role}",
+            "reason": "not_comparable",
+            "detail": f"sealed manifest has no file entry for {logical_path!r}",
+        })
+        return False
+    require_sha256(f"sealed manifest files[{logical_path!r}]", expected)
+    if _sha256_file(artifact_path) != expected:
+        missing.append({
+            "field": f"bindings.{role}",
+            "reason": "not_comparable",
+            "detail": "artifact bytes do not match the sealed-manifest file entry",
+        })
+        return False
+    return True
+
+
 def _stage_executed(evaluation: dict[str, Any], names: set[str]) -> bool:
     return any(
         isinstance(row, dict) and row.get("stage") in names
@@ -106,9 +215,21 @@ def _stage_outcome(evaluation: dict[str, Any], names: set[str]) -> bool | None:
         row for row in evaluation.get("stages", [])
         if isinstance(row, dict) and row.get("stage") in names
     ]
-    if not rows or "success" not in rows[-1]:
+    if (
+        not rows
+        or "success" not in rows[-1]
+        or rows[-1].get("status") == "infra_blocked"
+    ):
         return None
     return bool(rows[-1]["success"])
+
+
+def _stage_infra_blocked(evaluation: dict[str, Any], names: set[str]) -> bool:
+    rows = [
+        row for row in evaluation.get("stages", [])
+        if isinstance(row, dict) and row.get("stage") in names
+    ]
+    return bool(rows and rows[-1].get("status") == "infra_blocked")
 
 
 def _checks(
@@ -116,24 +237,30 @@ def _checks(
 ) -> tuple[list[CheckRecord], list[dict[str, Any]]]:
     conflicts: list[dict[str, Any]] = []
     differential = evaluation.get("differential")
-    build_executed = bool(evaluation.get("build_ok")) or _stage_executed(
-        evaluation, {"elaboration"}
-    )
+    build_stage = _stage_outcome(evaluation, {"elaboration"})
+    correctness_stage = _stage_outcome(evaluation, {"correctness"})
+    synth_stage = _stage_outcome(evaluation, {"synthesis", "post_synth"})
+    route_stage = _stage_outcome(evaluation, {"route", "post_route"})
+    regression_stage = _stage_outcome(evaluation, {"regression"})
+
+    # A stage entry proves that work was attempted.  It does not prove a
+    # functional pass/fail when the producer omitted success (for example an
+    # infrastructure interruption).  Dataclass default booleans are summaries,
+    # not execution evidence, and are only reconciled with concrete payloads.
+    build_executed = _stage_executed(evaluation, {"elaboration"})
     correctness_executed = isinstance(differential, dict) or _stage_executed(
         evaluation, {"correctness"}
     )
-    interface_executed = (
-        isinstance(differential, dict) and "interface_ok" in differential
-    ) or (
-        correctness_executed and "interface_ok" in evaluation
+    interface_executed = isinstance(differential, dict) and (
+        "interface_ok" in differential
     )
-    synth_executed = evaluation.get("post_synth") is not None or _stage_executed(
+    synth_executed = isinstance(evaluation.get("post_synth"), dict) or _stage_executed(
         evaluation, {"synthesis", "post_synth"}
     )
-    route_executed = evaluation.get("post_route") is not None or _stage_executed(
+    route_executed = isinstance(evaluation.get("post_route"), dict) or _stage_executed(
         evaluation, {"route", "post_route"}
     )
-    regression_executed = evaluation.get("regression") is not None or _stage_executed(
+    regression_executed = isinstance(evaluation.get("regression"), dict) or _stage_executed(
         evaluation, {"regression"}
     )
 
@@ -150,26 +277,43 @@ def _checks(
         )
 
     regression = evaluation.get("regression")
-    regression_passed = None
-    if isinstance(regression, dict):
-        regression_passed = bool(regression.get("passed"))
-    build_passed = bool(evaluation.get("build_ok")) if build_executed else None
-    if build_executed and not evaluation.get("build_ok"):
-        build_passed = _stage_outcome(evaluation, {"elaboration"})
-    correctness_passed = None
-    if correctness_executed:
-        if "correctness_ok" in evaluation:
-            correctness_passed = bool(evaluation["correctness_ok"])
-        elif isinstance(differential, dict) and "passed" in differential:
-            correctness_passed = bool(differential["passed"])
-        else:
-            correctness_passed = _stage_outcome(evaluation, {"correctness"})
-    synth_passed = _stage_outcome(evaluation, {"synthesis", "post_synth"})
-    if synth_passed is None and synth_executed:
-        synth_passed = isinstance(evaluation.get("post_synth"), dict)
-    route_passed = _stage_outcome(evaluation, {"route", "post_route"})
-    if route_passed is None and route_executed:
-        route_passed = isinstance(evaluation.get("post_route"), dict)
+    regression_passed: bool | None = None
+    if (
+        isinstance(regression, dict)
+        and not _stage_infra_blocked(evaluation, {"regression"})
+    ):
+        if isinstance(regression.get("passed"), bool):
+            regression_passed = regression["passed"]
+        elif isinstance(regression.get("success"), bool) and isinstance(
+            regression.get("returncode"), int
+        ):
+            regression_passed = bool(
+                regression["success"] and regression["returncode"] == 0
+            )
+    if regression_passed is None:
+        regression_passed = regression_stage
+
+    build_passed = build_stage
+    correctness_passed = (
+        bool(differential["passed"])
+        if isinstance(differential, dict)
+        and isinstance(differential.get("passed"), bool)
+        else correctness_stage
+    )
+    synth_passed = synth_stage
+    if (
+        synth_passed is None
+        and isinstance(evaluation.get("post_synth"), dict)
+        and not _stage_infra_blocked(evaluation, {"synthesis", "post_synth"})
+    ):
+        synth_passed = True
+    route_passed = route_stage
+    if (
+        route_passed is None
+        and isinstance(evaluation.get("post_route"), dict)
+        and not _stage_infra_blocked(evaluation, {"route", "post_route"})
+    ):
+        route_passed = True
 
     def reconcile(
         check_id: str,
@@ -190,17 +334,24 @@ def _checks(
             return None
         return current
 
+    # Only compare the summary booleans after a concrete producer payload or
+    # stage result establishes execution.  A default False on its own is not a
+    # failed check.
     build_passed = reconcile(
         "elaboration",
-        bool(evaluation["build_ok"]) if evaluation.get("build_ok") is True else None,
-        _stage_outcome(evaluation, {"elaboration"}),
+        bool(evaluation["build_ok"])
+        if build_executed and isinstance(evaluation.get("build_ok"), bool)
+        else None,
+        build_stage,
         build_passed,
     )
     correctness_passed = reconcile(
         "differential_correctness",
         bool(evaluation["correctness_ok"])
-        if "correctness_ok" in evaluation else None,
-        _stage_outcome(evaluation, {"correctness"}),
+        if isinstance(differential, dict)
+        and isinstance(evaluation.get("correctness_ok"), bool)
+        else None,
+        correctness_stage,
         correctness_passed,
     )
     checks = [
@@ -208,11 +359,7 @@ def _checks(
         # A legacy lint_ok=False does not prove lint was executed.
         record("lint", _stage_executed(evaluation, {"lint"}), None),
         record("interface_signature", interface_executed, (
-            bool(
-                differential.get("interface_ok")
-                if isinstance(differential, dict) and "interface_ok" in differential
-                else evaluation.get("interface_ok")
-            ) if interface_executed else None
+            bool(differential.get("interface_ok")) if interface_executed else None
         )),
         record("differential_correctness", correctness_executed, correctness_passed),
         record("post_synth", synth_executed, synth_passed),
@@ -332,6 +479,34 @@ def _render_markdown(packet: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _apply_packet_budget(
+    packet_payload: dict[str, Any], max_bytes: int,
+) -> tuple[dict[str, Any], int]:
+    """Return a payload whose budget covers the final canonical record bytes."""
+    if max_bytes < 1:
+        raise SchemaError("max_payload_bytes must be positive")
+    payload = json.loads(canonical_json(packet_payload))
+    required = 0
+    for _ in range(8):
+        payload["budget"] = {
+            "unit": "canonical_record_bytes",
+            "maximum": max_bytes,
+            "required": required,
+            "overflow_policy": "fail_closed",
+        }
+        record = hashed_record("chipcontext.context-packet.v1", payload)
+        actual = len(canonical_json(record).encode())
+        if actual == required:
+            if actual > max_bytes:
+                raise SchemaError(
+                    "required_evidence_overflow: "
+                    f"required={actual} max={max_bytes}"
+                )
+            return payload, actual
+        required = actual
+    raise SchemaError("context packet byte accounting did not converge")
+
+
 class ChipContextService:
     def __init__(self, store: EvidenceStore):
         self.store = store
@@ -414,9 +589,6 @@ class ChipContextService:
             raise SchemaError(
                 "request experiment ID does not match candidate campaign"
             )
-        evaluated_id = str(evaluation.get("candidate_id") or "")
-        if evaluated_id and evaluated_id != candidate_id:
-            raise SchemaError("evaluation candidate ID does not match candidate record")
         candidate = CandidateRef(
             experiment_id=experiment_id,
             candidate_id=candidate_id,
@@ -427,6 +599,15 @@ class ChipContextService:
         attempt_id = str(request.get("attempt_id") or "")
         if not attempt_id:
             raise SchemaError("attempt_id is required")
+        _verify_evaluation_binding(
+            result_data=result_data,
+            evaluation=evaluation,
+            candidate_path=candidate_path,
+            candidate_id=candidate_id,
+            experiment_id=experiment_id,
+            source_sha256=source_sha,
+            attempt_id=attempt_id,
+        )
 
         refs: dict[str, Any] = {}
         core_artifacts = {
@@ -473,9 +654,23 @@ class ChipContextService:
         working_state = WorkingState.derive(
             working_source_sha256=working_source_sha, candidate=candidate
         )
+        missing: list[dict[str, str]] = []
+        baseline_bound = _verify_manifest_binding(
+            role="baseline",
+            artifact_path=baseline_path,
+            request=request,
+            sealed=sealed,
+            missing=missing,
+        )
+        qualification_bound = _verify_manifest_binding(
+            role="qualification",
+            artifact_path=qualification_path,
+            request=request,
+            sealed=sealed,
+            missing=missing,
+        )
         raw_stage = str(evaluation.get("stage") or "unknown")
         normalized_stage = STAGE_MAP.get(raw_stage, "unknown")
-        missing: list[dict[str, str]] = []
         if normalized_stage == "unknown":
             missing.append({
                 "field": "evaluation.normalized_stage",
@@ -483,7 +678,9 @@ class ChipContextService:
                 "detail": f"legacy stage {raw_stage!r} has no v1 mapping",
             })
         physical = (sealed.get("contract") or {}).get("physical") or {}
-        tool_versions = qualification.get("tool_versions")
+        tool_versions = (
+            qualification.get("tool_versions") if qualification_bound else None
+        )
         tool_fingerprint = (
             content_hash(tool_versions) if isinstance(tool_versions, dict) else None
         )
@@ -527,6 +724,11 @@ class ChipContextService:
             "completion_status": str(evaluation.get("status") or "unknown"),
             "artifacts": artifact_refs,
             "parser_revision": PARSER_REVISION,
+            "binding_status": {
+                "candidate_evaluation": "verified",
+                "baseline": "verified" if baseline_bound else "unverified",
+                "qualification": "verified" if qualification_bound else "unverified",
+            },
         }
         evaluation_manifest = self.store.write_record(
             "manifests", "chipcontext.evaluation-manifest.v1", manifest_payload
@@ -628,15 +830,20 @@ class ChipContextService:
             }
             baseline_conditions = {
                 "stage": str(baseline.get("stage", normalized_stage)),
-                "part": baseline.get("part", conditions["part"]),
+                "part": baseline.get("part", conditions["part"])
+                if baseline_bound else baseline.get("part"),
                 "clock_period_ns": baseline.get(
-                    "clock_period_ns", conditions["clock_period_ns"]
+                    "clock_period_ns",
+                    conditions["clock_period_ns"] if baseline_bound else None,
                 ),
                 "tool_fingerprint": baseline.get(
-                    "tool_fingerprint", conditions["tool_fingerprint"]
+                    "tool_fingerprint",
+                    conditions["tool_fingerprint"]
+                    if baseline_bound and qualification_bound else None,
                 ),
                 "reference_fingerprint": baseline.get(
-                    "reference_fingerprint", conditions["reference_fingerprint"]
+                    "reference_fingerprint",
+                    conditions["reference_fingerprint"] if baseline_bound else None,
                 ),
             }
             current_comparison = {"stage": normalized_stage, **conditions}
@@ -652,6 +859,8 @@ class ChipContextService:
             )
             comparable = (
                 working_state.state == "evaluated_current"
+                and baseline_bound
+                and qualification_bound
                 and baseline_conditions == current_comparison
                 and bool(shared_metric_ids)
                 and conditions_complete
@@ -732,6 +941,11 @@ class ChipContextService:
             "bundles", "chipcontext.evidence-bundle.v1", bundle_payload
         )
 
+        bundle_scope = (
+            "current"
+            if working_state.state == "evaluated_current"
+            else "last_evaluated_candidate"
+        )
         selected = [
             {
                 "kind": "candidate_identity",
@@ -760,8 +974,7 @@ class ChipContextService:
                 "kind": "question_bundle",
                 "summary": (
                     f"{bundle_payload['kind']} "
-                    "scope="
-                    f"{'current' if working_state.state == 'evaluated_current' else 'last_evaluated_candidate'} "
+                    f"scope={bundle_scope} "
                     f"completeness={bundle_payload['completeness']}"
                 ),
             },
@@ -779,11 +992,7 @@ class ChipContextService:
             "bundle": {
                 "ref": bundle["content_hash"],
                 "kind": bundle_payload["kind"],
-                "measurement_scope": (
-                    "current"
-                    if working_state.state == "evaluated_current"
-                    else "last_evaluated_candidate"
-                ),
+                "measurement_scope": bundle_scope,
             },
             "policy_revision": str(
                 (request.get("policy") or {}).get("revision", POLICY_REVISION)
@@ -806,21 +1015,14 @@ class ChipContextService:
             },
         }
         max_bytes = int((request.get("policy") or {}).get("max_payload_bytes", 16384))
-        required_bytes = len(canonical_json(packet_payload).encode())
-        if required_bytes > max_bytes:
-            raise SchemaError(
-                "required_evidence_overflow: "
-                f"required={required_bytes} max={max_bytes}"
-            )
-        packet_payload["budget"] = {
-            "unit": "serialized_bytes",
-            "maximum": max_bytes,
-            "required": required_bytes,
-            "overflow_policy": "fail_closed",
-        }
+        packet_payload, required_bytes = _apply_packet_budget(
+            packet_payload, max_bytes
+        )
         packet = self.store.write_record(
             "packets", "chipcontext.context-packet.v1", packet_payload
         )
+        if len(canonical_json(packet).encode()) != required_bytes:
+            raise RuntimeError("context packet byte accounting changed during publish")
         markdown = _render_markdown(packet)
         self.store.publish_alias("evaluation-manifest.json", evaluation_manifest)
         self.store.publish_alias("snapshot.json", snapshot)

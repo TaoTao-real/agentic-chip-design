@@ -1,8 +1,8 @@
 {
-  "bundle": "0955f1c37b0fb1ca2dec76c01edc59b39384fdc44f1a7531ccaf71f4e40be8d5",
-  "evaluation_manifest": "4981466d84726f03c9e9aec879ca867914207a0b3b829ebe3214a67d05843080",
-  "packet": "29af6943b390015aff30c8c742d8733b8040781566e295bda1678fcaadbd2e4d",
-  "packet_bytes": 1867,
+  "bundle": "2ef8f35f9d475d1b8ff280a8b887a608301f9935cced65bfcb098578e0fc151b",
+  "evaluation_manifest": "12284fda72760b5dd99ca5cfd4486f57033a591c4d531122aec020998bf04e72",
+  "packet": "542934ab353e44dd404781c092eb8faae81f36ddbbd66bbd885dff5e89af0e27",
+  "packet_bytes": 3415,
   "schema_version": "chipcontext.preparation-result.v1",
-  "snapshot": "461039dc2b9707a9f0c440defda6f0696ee7d16f759b7bd8792c7ce2327bd33b"
+  "snapshot": "5568c3a0fca14ce7b84ef57a67842b7d0f5e622a3c6058efadea8bd43bccae3c"
 }

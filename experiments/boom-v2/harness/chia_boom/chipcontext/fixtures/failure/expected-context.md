@@ -8,7 +8,7 @@
 
 ## Selected evidence
 
-- **candidate_identity**: synthetic-failure-campaign/neutral-failure-candidate-01 source=1f323dd9235f contract=36ab4dae92ca
+- **candidate_identity**: synthetic-failure-campaign/neutral-failure-candidate-01 source=1f323dd9235f contract=41f3ee01095d
 - **working_state**: evaluated_current
 - **validation_status**: elaboration=pass, lint=not_run, interface_signature=pass, differential_correctness=fail, post_synth=not_run, post_route=not_run, processor_regression=not_run, formal_equivalence=not_run
 - **question_bundle**: failure scope=current completeness=partial
@@ -24,10 +24,10 @@
 
 ## Drilldown
 
-- `candidate_record` → `602993e65cb40d3d8a05c5f6b46233a18b9d346559dcbeaa13dfd4f90aaefd11`
-- `evaluation_record` → `7895770b419ffb1a7e0c16c0f5d66067ce337aca72795daac1bb01aae51c2fd0`
-- `sealed_manifest` → `05e6cc33e1c368a1b44e989d160bec617df1d0144253004d83e48af748d5803f`
-- `baseline_measurement` → `69fa57bd853325e017116ac1262660eaf17238ecf0f12e094a6d4c4a5005bbe2`
-- `working_source` → `73190977d2127e45485a1e698735e41afb2d4990b3437a42a2abe997d8cda1a4`
-- `qualification_record` → `0611c8722675bf3d5fb262475579a292810e5881ad3a39425c05a47dc376f066`
-- `differential_stderr` → `ca836449fa682d03ba297386bbb412d2c37e3e054c207e5e19edf2bcbe7547c2`
+- `candidate_record` → `1693716180da06152b124297b41eac4ab4d14f3df2f6867f100835bdb62216b6`
+- `evaluation_record` → `d8ca9830be63994e5423e71d8798bc3dbd386782235bfbb365848d4c7159b49b`
+- `sealed_manifest` → `554a4457221c69346d2cb9260ce6bca414b31d5c5db3b1fb808169643d25c6fc`
+- `baseline_measurement` → `0fe530efde94d04ef3c150cb3ab935f6cd7e5f0e3abcc404ef63086e1e32c43d`
+- `working_source` → `59e62609becececc29cf32ba8b3a7082b5fb6bebf5c997762bdb2b7acdc0d380`
+- `qualification_record` → `5970d03720481ad9b99f32898bc682d4c0bb59f487ea1eb26c804720fdf7729b`
+- `differential_stderr` → `12045edf3fa886241e42f92550b613b3ce083efdfecbada14d9dcd498dd57118`
