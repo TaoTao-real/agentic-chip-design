@@ -175,7 +175,7 @@ simulator calls.
 ## CC-02b PR-B2: evidence-grounded domain queries
 
 PR-B2 extends the same explicit `QueryScope` with three read-only domain
-queries.  These operations use `chipcontext-query-domain-v1`; the B1 status,
+queries.  These operations use `chipcontext-query-domain-v2`; the B1 status,
 artifact and source-read answers retain `chipcontext-query-foundation-v2`, so
 the already reviewed answer hashes do not change.
 
@@ -190,11 +190,16 @@ the already reviewed answer hashes do not change.
   deltas are always `current - reference`.  Stage, device, clock, tool,
   reference fingerprint, definition and unit must all be present and equal.
   `all_comparable` and `any_comparable` are reported separately.
+  Requested conflicts retain the original conflict record, source references,
+  evidence side, store and snapshot; unrelated metric conflicts are omitted.
 - `timing_paths(scope, extraction_ref, stage, ...)` provides exact field
   filters only.  It preserves producer ranks and distinguishes report rank 1,
   the minimum slack among the filtered collected rows and the unsupported
   claim of a global worst path.  Producer command, requested top-k,
-  reported/parsed counts and parse status remain visible.
+  reported/parsed counts and parse status remain visible.  A minimum drawn
+  from only parsed definite matches is `partial` when an unparseable or
+  possible match could change it.  Missing reports, unparseable reports,
+  possible matches and confirmed no-match results remain distinct.
 
 The comparison qualification is implemented once in `recipes.py`.  The
 legacy prepare path calls the same pure recipe and retains its fixed public

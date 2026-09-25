@@ -15,6 +15,7 @@ from .schema import (
     CheckRecord,
     SchemaError,
     WorkingState,
+    canonical_json,
     content_hash,
     hashed_record,
     require_sha256,
@@ -33,7 +34,7 @@ from .store import DEFAULT_LIMIT_BYTES, MAX_LIMIT_BYTES, EvidenceStore
 
 QUERY_ANSWER_SCHEMA = "chipcontext.query-answer.v1"
 QUERY_REVISION = "chipcontext-query-foundation-v2"
-DOMAIN_QUERY_REVISION = "chipcontext-query-domain-v1"
+DOMAIN_QUERY_REVISION = "chipcontext-query-domain-v2"
 QUERY_CURSOR_SCHEMA = "chipcontext.query-cursor.v1"
 ARTIFACT_STAGE_MAP_REVISION = "artifact-stage-map-v1"
 STORE_REGISTRY_SCHEMA = "chipcontext.store-registry.v1"
@@ -614,13 +615,12 @@ class EvidenceResolver:
 
 def _measurement_index(
     snapshot: Mapping[str, Any], *, stage: str
-) -> tuple[dict[str, Any], set[str]]:
+) -> dict[str, Any]:
     """Validate and index measurements without resolving duplicate evidence."""
     rows = snapshot.get("measurements")
     if not isinstance(rows, list):
         raise QueryError("integrity_error", "snapshot measurements are invalid")
     indexed: dict[str, Any] = {}
-    conflicts = _conflicted_metrics(snapshot)
     for raw in rows:
         try:
             measurement = measurement_from_value(raw)
@@ -629,14 +629,26 @@ def _measurement_index(
         if measurement.scope.get("stage") != stage:
             continue
         if measurement.metric_id in indexed:
-            conflicts.add(measurement.metric_id)
-            continue
+            raise QueryError(
+                "integrity_error", "snapshot contains duplicate stage metric facts"
+            )
         indexed[measurement.metric_id] = measurement
-    return indexed, conflicts
+    return indexed
 
 
-def _conflicted_metrics(snapshot: Mapping[str, Any]) -> set[str]:
-    values: set[str] = set()
+def _metric_conflict_records(
+    snapshot: Mapping[str, Any],
+    *,
+    requested: set[str],
+    side: str,
+    store_id: str,
+) -> tuple[list[dict[str, Any]], set[str], set[str]]:
+    """Select requested metric conflicts without dropping their provenance."""
+    if side not in {"current", "reference"}:
+        raise SchemaError("metric conflict side is invalid")
+    records: list[dict[str, Any]] = []
+    affected_all: set[str] = set()
+    sources: set[str] = set()
     conflicts = snapshot.get("conflicts", [])
     if not isinstance(conflicts, list):
         raise QueryError("integrity_error", "snapshot conflicts are invalid")
@@ -644,12 +656,40 @@ def _conflicted_metrics(snapshot: Mapping[str, Any]) -> set[str]:
         if not isinstance(conflict, dict):
             raise QueryError("integrity_error", "snapshot conflict is invalid")
         affected = conflict.get("affected_metrics", [])
-        if isinstance(affected, list):
-            values.update(item for item in affected if isinstance(item, str))
+        if not isinstance(affected, list) or any(
+            not isinstance(item, str) or not item for item in affected
+        ):
+            raise QueryError("integrity_error", "snapshot conflict metrics are invalid")
+        affected_metrics = set(affected)
         field = conflict.get("field")
         if isinstance(field, str) and field.startswith("measurements."):
-            values.add(field.split(".", 1)[1])
-    return values
+            affected_metrics.add(field.split(".", 1)[1])
+        selected = sorted(affected_metrics & requested)
+        if not selected:
+            continue
+        raw_sources = conflict.get("source_refs", [])
+        if not isinstance(raw_sources, list) or any(
+            not isinstance(item, str) or not item for item in raw_sources
+        ):
+            raise QueryError("integrity_error", "snapshot conflict sources are invalid")
+        affected_all.update(selected)
+        sources.update(raw_sources)
+        record = dict(conflict)
+        record.update({
+            "evidence_side": side,
+            "store_id": store_id,
+            "snapshot_ref": snapshot.get("content_hash"),
+            "affected_requested_metrics": selected,
+        })
+        records.append(record)
+    return records, affected_all, sources
+
+
+def _deduplicate_source_refs(
+    values: Iterable[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    indexed = {canonical_json(dict(value)): dict(value) for value in values}
+    return [indexed[key] for key in sorted(indexed)]
 
 
 def _validate_metric_ids(metric_ids: Iterable[str]) -> list[str]:
@@ -709,6 +749,101 @@ def _validated_timing_paths(
             raise QueryError("integrity_error", "timing path source is outside extraction")
         validated.append(value)
     return validated
+
+
+def _filter_timing_paths(
+    paths: Iterable[dict[str, Any]],
+    filters: Mapping[str, str | None],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return definite and possible matches for exact filters.
+
+    A missing filtered field is unknown, not a mismatch.  A concrete mismatch
+    on any other active field is enough to exclude the row.
+    """
+    definite: list[dict[str, Any]] = []
+    possible: list[dict[str, Any]] = []
+    active = {key: value for key, value in filters.items() if value is not None}
+    for path in paths:
+        excluded = any(
+            path.get(key) is not None and path.get(key) != expected
+            for key, expected in active.items()
+        )
+        if excluded:
+            continue
+        unknown = any(path.get(key) is None for key in active)
+        (possible if unknown else definite).append(path)
+    return definite, possible
+
+
+def _filtered_timing_minimum(
+    definite: list[dict[str, Any]],
+    possible: list[dict[str, Any]],
+    coverage: dict[str, Any] | str,
+) -> dict[str, Any]:
+    numeric = [value for value in definite if value.get("slack_ns") is not None]
+    unparseable = [value for value in definite if value.get("slack_ns") is None]
+    stats = {
+        "definite_match_count": len(definite),
+        "parsed_definite_match_count": len(numeric),
+        "unparseable_definite_match_count": len(unparseable),
+        "possible_match_count": len(possible),
+        "unparseable_definite_ranks": [value["rank"] for value in unparseable],
+        "possible_match_ranks": [value["rank"] for value in possible],
+        "scope": "collected_report_only",
+    }
+    if coverage == "not_collected":
+        return {
+            "availability": "not_collected",
+            "fact": None,
+            "confirmed_for_collected_matches": False,
+            "basis": "no_timing_path_report",
+            **stats,
+        }
+    parse_status = coverage.get("parse_status")
+    if numeric:
+        fact = min(numeric, key=lambda value: (value["slack_ns"], value["rank"]))
+        uncertain = bool(unparseable or possible)
+        return {
+            "availability": "partial" if uncertain else "available",
+            "fact": fact,
+            "confirmed_for_collected_matches": not uncertain,
+            "basis": (
+                "minimum_among_parsed_definite_matches"
+                if uncertain else "minimum_among_all_definite_matches"
+            ),
+            **stats,
+        }
+    if unparseable:
+        return {
+            "availability": "parse_failed",
+            "fact": None,
+            "confirmed_for_collected_matches": False,
+            "basis": "definite_matches_have_no_parsed_slack",
+            **stats,
+        }
+    if possible:
+        return {
+            "availability": "inconclusive",
+            "fact": None,
+            "confirmed_for_collected_matches": False,
+            "basis": "filtered_fields_missing_on_possible_matches",
+            **stats,
+        }
+    if parse_status == "parse_failed" and coverage.get("reported_block_count") == 0:
+        return {
+            "availability": "parse_failed",
+            "fact": None,
+            "confirmed_for_collected_matches": False,
+            "basis": "timing_path_report_has_no_queryable_blocks",
+            **stats,
+        }
+    return {
+        "availability": "no_match",
+        "fact": None,
+        "confirmed_for_collected_matches": True,
+        "basis": "no_exact_match_in_collected_report",
+        **stats,
+    }
 
 
 class ChipContextQueryService:
@@ -1132,26 +1267,41 @@ class ChipContextQueryService:
         if stage not in {"post_synth", "post_route"}:
             raise SchemaError("metric comparison stage must be post_synth or post_route")
         requested = _validate_metric_ids(metric_ids)
+        requested_set = set(requested)
         current = self.resolver.resolve(scope)
         current.authorize_envelope()
-        current_metrics, current_conflicts = _measurement_index(
-            current.snapshot, stage=stage
+        current_metrics = _measurement_index(current.snapshot, stage=stage)
+        (
+            current_conflict_records,
+            current_conflicted_metrics,
+            current_conflict_sources,
+        ) = _metric_conflict_records(
+            current.snapshot,
+            requested=requested_set,
+            side="current",
+            store_id=scope.handle.store_id,
         )
         current_sources = {
             value.source_ref for value in current_metrics.values()
             if value.metric_id in requested
-        }
+        } | current_conflict_sources
         current.authorize_sources(current_sources)
         current_conditions = comparison_conditions(current_metrics.values())
 
         reference_metrics: dict[str, Any]
-        reference_conflicts: set[str]
+        reference_conflict_records: list[dict[str, Any]]
+        reference_conflicted_metrics: set[str]
         reference_conditions: dict[str, Any]
         reference_sources: set[str]
         reference_scope: dict[str, Any]
         reference_ineligibility_reason: str | None = None
         source_refs = [
-            {"store_id": scope.handle.store_id, **value}
+            {
+                "store_id": scope.handle.store_id,
+                "evidence_side": "current",
+                "snapshot_ref": current.snapshot["content_hash"],
+                **value,
+            }
             for value in current.describe_sources(current_sources)
         ]
         if reference == "bound_baseline":
@@ -1212,7 +1362,8 @@ class ChipContextQueryService:
                 )
                 for metric_id in raw_metrics
             }
-            reference_conflicts = set()
+            reference_conflict_records = []
+            reference_conflicted_metrics = set()
             reference_sources = {baseline_ref.ref_id}
             reference_scope = {
                 "kind": "bound_baseline",
@@ -1223,19 +1374,31 @@ class ChipContextQueryService:
             }
             source_refs.append({
                 "store_id": scope.handle.store_id,
+                "evidence_side": "reference",
+                "snapshot_ref": current.snapshot["content_hash"],
                 "type": "artifact",
                 "ref": baseline_ref.ref_id,
             })
         elif isinstance(reference, QueryScope):
             reference_resolved = self.resolver.resolve(reference)
             reference_resolved.authorize_envelope()
-            reference_metrics, reference_conflicts = _measurement_index(
+            reference_metrics = _measurement_index(
                 reference_resolved.snapshot, stage=stage
+            )
+            (
+                reference_conflict_records,
+                reference_conflicted_metrics,
+                reference_conflict_sources,
+            ) = _metric_conflict_records(
+                reference_resolved.snapshot,
+                requested=requested_set,
+                side="reference",
+                store_id=reference.handle.store_id,
             )
             reference_sources = {
                 value.source_ref for value in reference_metrics.values()
                 if value.metric_id in requested
-            }
+            } | reference_conflict_sources
             reference_resolved.authorize_sources(reference_sources)
             reference_conditions = comparison_conditions(reference_metrics.values())
             reference_scope = {
@@ -1252,7 +1415,12 @@ class ChipContextQueryService:
             ):
                 reference_ineligibility_reason = "contract_differs"
             source_refs.extend(
-                {"store_id": reference.handle.store_id, **value}
+                {
+                    "store_id": reference.handle.store_id,
+                    "evidence_side": "reference",
+                    "snapshot_ref": reference_resolved.snapshot["content_hash"],
+                    **value,
+                }
                 for value in reference_resolved.describe_sources(reference_sources)
             )
         else:
@@ -1260,7 +1428,7 @@ class ChipContextQueryService:
                 "reference must be 'bound_baseline' or an explicit QueryScope"
             )
 
-        conflicted = current_conflicts | reference_conflicts
+        conflicted = current_conflicted_metrics | reference_conflicted_metrics
         comparisons = compare_metric_sets(
             reference_metrics,
             current_metrics,
@@ -1272,15 +1440,12 @@ class ChipContextQueryService:
         )
         statuses = [value["status"] for value in comparisons]
         missing: list[dict[str, Any]] = []
-        conflicts: list[dict[str, Any]] = []
+        conflicts: list[dict[str, Any]] = [
+            *current_conflict_records,
+            *reference_conflict_records,
+        ]
         for value in comparisons:
-            if value["status"] == "conflict":
-                conflicts.append({
-                    "field": f"measurements.{value['metric_id']}",
-                    "reason": "conflicting_sources",
-                    "detail": "at least one selected snapshot marks this metric conflicted",
-                })
-            elif value["status"] != "comparable":
+            if value["status"] not in {"comparable", "conflict"}:
                 missing.append({
                     "field": f"measurements.{value['metric_id']}",
                     "reason": (
@@ -1315,7 +1480,7 @@ class ChipContextQueryService:
             },
             missing=missing,
             conflicts=conflicts,
-            source_refs=source_refs,
+            source_refs=_deduplicate_source_refs(source_refs),
         )
 
     def timing_paths(
@@ -1406,10 +1571,7 @@ class ChipContextQueryService:
             "source": source,
             "destination": destination,
         }
-        matched = [
-            value for value in paths
-            if all(expected is None or value.get(key) == expected for key, expected in filters.items())
-        ]
+        matched, possible_matches = _filter_timing_paths(paths, filters)
         report_first = next((value for value in paths if value.get("rank") == 1), None)
         if report_first is None:
             report_first_result = {
@@ -1426,20 +1588,9 @@ class ChipContextQueryService:
                 "availability": report_first.get("availability", "available"),
                 "fact": report_first,
             }
-        numeric = [
-            value for value in matched
-            if isinstance(value.get("slack_ns"), (int, float))
-            and not isinstance(value.get("slack_ns"), bool)
-        ]
-        if numeric:
-            filtered_minimum = {
-                "availability": "available",
-                "fact": min(numeric, key=lambda value: (value["slack_ns"], value["rank"])),
-            }
-        elif matched:
-            filtered_minimum = {"availability": "parse_failed", "fact": None}
-        else:
-            filtered_minimum = {"availability": "no_match", "fact": None}
+        filtered_minimum = _filtered_timing_minimum(
+            matched, possible_matches, coverage
+        )
         binding = content_hash({
             "operation": "timing_paths",
             "revision": DOMAIN_QUERY_REVISION,
@@ -1497,6 +1648,7 @@ class ChipContextQueryService:
             },
             coverage={
                 "matching_count": len(matched),
+                "possible_match_count": len(possible_matches),
                 "returned_count": len(page),
                 "filters_are_exact": True,
                 "report": coverage,
