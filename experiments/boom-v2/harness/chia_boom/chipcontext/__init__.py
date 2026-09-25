@@ -15,6 +15,15 @@ from .schema import (
 )
 from .service import ChipContextService, PreparationResult
 from .extraction import ExtractionService
+from .query import (
+    ChipContextQueryService,
+    EvidenceHandle,
+    EvidenceResolver,
+    QueryError,
+    QueryScope,
+    RegisteredStore,
+    TrustedStoreRegistry,
+)
 from .store import EvidenceStore
 
 __all__ = [
@@ -22,10 +31,17 @@ __all__ = [
     "CandidateRef",
     "CheckRecord",
     "ChipContextService",
+    "ChipContextQueryService",
+    "EvidenceHandle",
+    "EvidenceResolver",
     "EvidenceStore",
     "ExtractionService",
     "Measurement",
     "PreparationResult",
+    "QueryError",
+    "QueryScope",
+    "RegisteredStore",
     "SchemaError",
     "WorkingState",
+    "TrustedStoreRegistry",
 ]

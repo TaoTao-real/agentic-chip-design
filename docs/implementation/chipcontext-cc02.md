@@ -104,9 +104,78 @@ the frozen single-slot qualification profile. The prior 10,000-cycle
 baseline-vs-baseline smoke was hash-checked and remained passing; it was not
 rerun because CC-02a has a zero-new-EDA budget.
 
+## CC-02b PR-B1: scoped query foundation
+
+PR-B1 adds a standard-library, read-only query foundation over sealed stores:
+
+- `EvidenceHandle` names one trusted store and one content-addressed snapshot;
+- `QueryScope` can require the complete candidate identity, attempt and trusted
+  working-source hash;
+- `EvidenceResolver` verifies snapshot, manifest, candidate, contract, attempt,
+  extraction and artifact ownership without consulting top-level aliases;
+- `ChipContextQueryService` answers candidate status, lists registered
+  artifacts and performs bounded source reads;
+- `chipcontext.query-answer.v1` keeps deterministic facts separate from future
+  runtime cost records.
+
+Working-source applicability is `selected_evaluation` when no working hash was
+provided, `current` when it equals the evaluated source, and `historical` when
+it differs. Historical evidence remains queryable but is not represented as a
+measurement of the current edit. Status reports preserve every `CheckRecord`
+and explicitly state that passing recorded checks is not final chip acceptance.
+
+The trusted in-process registry follows `chipcontext.store-registry.v1`. Store
+paths and access levels do not come from a query. Query revision
+`chipcontext-query-foundation-v2` treats both artifacts and versioned
+extractions as evidence sources. An extraction source is accepted only after
+its owner, attempt and input bindings are verified, then authorization expands
+to every underlying artifact. Every operation authorizes the common candidate
+envelope before filtering, so an empty result cannot disclose controlled
+candidate metadata. Every page rechecks source hashes and permissions.
+Answers expose content references, logical kinds, conservative stages, sizes
+and media types; they do not expose host paths, root IDs or registered relative
+locations.
+
+Scoped source reads use strict UTF-8 pagination. Page ends move back to a code
+point boundary, so concatenating pages reproduces valid input exactly. Invalid
+UTF-8 returns `invalid_text_encoding`; a limit too small for the next code point
+returns `text_page_too_small`. The pre-existing `EvidenceStore.read_artifact`
+API is unchanged for CC-01 compatibility.
+
+Artifact stages use `artifact-stage-map-v1`. The evaluation record uses the
+manifest's normalized stage. Only explicit elaboration, differential,
+post-synth, post-route and regression kind prefixes get a fixed mapping; other
+artifacts remain `unknown`. The implementation does not infer a stage from a
+filename.
+
+Run the synthetic public vertical example from the harness directory:
+
+```bash
+QUERY_OUTPUT=$(mktemp -d /tmp/chipcontext-query-foundation.XXXXXX)
+PYTHONPATH=. python examples/chipcontext_query_foundation.py \
+  --request chia_boom/chipcontext/fixtures/success/request.json \
+  --output "$QUERY_OUTPUT"
+```
+
+The script performs `snapshot handle → candidate status → artifact list →
+bounded source read`. Its inputs contain no BOOM solution. The same chain and
+negative identity, extraction-source, envelope authorization, lossless UTF-8,
+cursor and tamper cases are executable in
+`chia_boom.tests.test_chipcontext_queries`; its fixed answer hashes are stored
+in `chipcontext/fixtures/query-foundation/expected.json`.
+
+The frozen Linux Python 3.12 CI passed all 175 harness tests after the review
+fixes, plus compileall, both CLI help checks and shell syntax checks. The public example's
+complete JSON SHA-256 was
+`04cf47fd806c4f19f978b5e03115754b13fd67fa608e14357736a5f6d17fc502` after
+the v2 query-contract fixes.
+The run explicitly removed `DEEPSEEK_API_KEY` and made zero model, EDA and
+simulator calls.
+
 ## Current boundary
 
-CC-02a does not add the public query CLI, arbitrary report paths, regex queries,
-Agent integration, Ray, model SDKs or EDA execution. The complete scoped query
-service belongs to CC-02b; the frozen question set and cost protocol belong to
-CC-02c.
+PR-B1 does not add the public `query` CLI, JSON/Markdown query renderer,
+failure/metric/timing-path domain queries, arbitrary report paths, regex
+queries, Agent integration, Ray, model SDKs or EDA execution. Those interfaces
+remain in Issue #11 PR-B2/PR-B3. The frozen question set and system-level cost
+protocol belong to CC-02c.
