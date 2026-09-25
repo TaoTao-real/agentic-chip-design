@@ -1,0 +1,27 @@
+| Tool Version : Vivado v.2024.1 (lin64)
+| Command      : report_timing -delay_type max -max_paths 2 -path_type full_clock_expanded -file synthetic.rpt
+| Design       : NeutralQueue
+
+Timing Report
+
+Slack (VIOLATED) :        -1.250ns  (required time - arrival time)
+  Source:                 state_reg[3]/C
+  Destination:            grant_reg[0]/D
+  Path Group:             clock
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            5.000ns
+  Data Path Delay:        6.100ns
+  Logic Levels:           7  (LUT5=1 LUT6=6)
+
+  synthetic path detail line
+
+Slack (VIOLATED) :        -0.750ns  (required time - arrival time)
+  Source:                 state_reg[2]/C
+  Destination:            grant_reg[1]/D
+  Path Group:             clock
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            5.000ns
+  Data Path Delay:        5.600ns
+  Logic Levels:           6  (LUT6=6)
+
+  synthetic path detail line

@@ -1,0 +1,13 @@
+{
+  "cycles": 1000000,
+  "directed_phases": [
+    "idle",
+    "dispatch",
+    "backpressure",
+    "recovery"
+  ],
+  "passed": false,
+  "returncode": -6,
+  "scenario": "synthetic-neutral-queue",
+  "seed": 41
+}

@@ -1,0 +1,68 @@
+{
+  "differential_failure": {
+    "actual_available": false,
+    "check_outcome": "fail",
+    "completed_cycles_available": false,
+    "conflict_count": 0,
+    "expected_available": false,
+    "extraction_hash": "3566800862dfec358bca676145202ee92d85f31ac29271bafb0949e056c69e59",
+    "extraction_milliseconds": 1.844,
+    "extractor_revision": "verilator-differential-v3",
+    "first_mismatch_grounded": true,
+    "input_hashes": {
+      "differential_result": "87810cfabe09dc19042ae6cd3913c1b984ba88f84127f8f3fc6aea0cfc5a3fa8",
+      "differential_stdout": "c023023bf466e303f01735c77a1443277510340e5fac5396351148f264390752"
+    },
+    "missing_count": 3
+  },
+  "eda_calls": 0,
+  "environment_review": {
+    "doctor_passed": true,
+    "doctor_sha256": "945ae4814071e3f89806f4f46ed382236aacbe0729e41cad95103b29cba3db6a",
+    "frozen_smoke": {
+      "cycles": 10000,
+      "passed": true,
+      "seed": 20260925,
+      "sha256": "6821977ae1645eba6302feedb18cf07e057f2c9e308d8367b7d5c095fc41f52c"
+    },
+    "full_harness_tests_passed": 134,
+    "new_smoke_runs": 0,
+    "qualification_profile": "single-slot-low-resource",
+    "verify_environment_passed": true,
+    "verify_environment_reused": true,
+    "verify_environment_sha256": "ff16aa2d4098a87d136823c6a3c1e976e70d977f186b0225ff02e46e19f5eebc"
+  },
+  "execution_environment": "qualified_server",
+  "model_calls": 0,
+  "public_safe": true,
+  "schema_version": "chipcontext.cc02a-controlled-calibration-summary.v3",
+  "source_type": "controlled_real",
+  "vivado": {
+    "conflict_count": 0,
+    "extraction_hash": "78a38a226320f1eb3e5b071bf3033ab581203eac4e6d4f706720e0b30332c93f",
+    "extraction_milliseconds": 22.781,
+    "extractor_revision": "vivado-2024.1-v3",
+    "input_hashes": {
+      "post_synth_timing_paths": "30fe9dacda7a272603254de8d8c277583abda9b9e32db3bee33cdddd90b9214c",
+      "post_synth_timing_summary": "29caa76965dfa11b9b37cb67cb97ef70c46334814b03a92aae4653ea02ff3f40",
+      "post_synth_utilization": "feca84605d02ebf32a56261f62b65d77e8c1d65d141118e14eaf5faf7c3af74b"
+    },
+    "metric_count": 8,
+    "missing_count": 0,
+    "scoring_parser_compatibility": "frozen base golden fixture exact; contradictory duplicates intentionally rejected",
+    "timing_path_count": 20,
+    "worst_path_query": {
+      "artifact_sha256": "30fe9dacda7a272603254de8d8c277583abda9b9e32db3bee33cdddd90b9214c",
+      "availability": "available",
+      "bytes_returned": 8192,
+      "query_milliseconds": 2.247,
+      "query_truncated": true,
+      "span": {
+        "end_byte": 9384,
+        "end_line": 107,
+        "start_byte": 1192,
+        "start_line": 15
+      }
+    }
+  }
+}

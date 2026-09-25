@@ -3,7 +3,6 @@ from __future__ import annotations
 import fcntl
 import json
 import os
-import re
 import signal
 import shutil
 import subprocess
@@ -27,6 +26,7 @@ from .artifacts import (
 from .core import classify_failure, update_validity
 from .environment import chipyard_environment_command, vivado_environment_command
 from .frozen import baseline_rtl, tool_file
+from .chipcontext.extractors.vivado import parse_ppa_bytes
 
 
 def _tail(stdout: str, stderr: str, limit: int = 32_000) -> str:
@@ -189,31 +189,9 @@ class WorkspaceLease:
 
 
 def parse_vivado_ppa(timing: Path, utilization: Path, period_ns: float) -> dict[str, Any]:
-    timing_text = timing.read_text(errors="replace")
-    utilization_text = utilization.read_text(errors="replace")
-    summary = re.search(
-        r"WNS\(ns\).*?\n\s*-+.*?\n\s*(-?\d+(?:\.\d+)?)\s+"
-        r"(-?\d+(?:\.\d+)?)\s+(\d+)\s+(\d+)",
-        timing_text,
-        re.S,
-    )
-    luts = re.search(r"\|\s*Slice LUTs\*?\s*\|\s*([\d,]+)", utilization_text)
-    regs = re.search(r"\|\s*Slice Registers\s*\|\s*([\d,]+)", utilization_text)
-    if not (summary and luts and regs):
-        raise ValueError("cannot parse Vivado timing/utilization reports")
-    wns = float(summary.group(1))
-    return {
-        "clock_period_ns": period_ns,
-        "wns_ns": wns,
-        "critical_delay_ns": period_ns - wns,
-        "tns_ns": float(summary.group(2)),
-        "failing_endpoints": int(summary.group(3)),
-        "total_endpoints": int(summary.group(4)),
-        "slice_luts": int(luts.group(1).replace(",", "")),
-        "slice_registers": int(regs.group(1).replace(",", "")),
-        "timing_report_sha256": sha256_file(timing),
-        "utilization_report_sha256": sha256_file(utilization),
-    }
+    # One parser defines both the evaluator's score and ChipContext's raw facts.
+    # Reading once per file also ensures hashes describe the parsed bytes.
+    return parse_ppa_bytes(timing.read_bytes(), utilization.read_bytes(), period_ns)
 
 
 @contextmanager

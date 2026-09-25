@@ -88,6 +88,9 @@ and evaluation inputs into content-addressed manifests, snapshots, question
 bundles and context packets, then provides bounded reads of registered raw
 artifacts. It does not require a model credential, start Ray, run EDA, or change
 the existing campaign behavior. See [`docs/chipcontext.md`](../../../docs/chipcontext.md).
+Registered raw Vivado and differential artifacts can additionally produce
+content-addressed CC-02a extraction sidecars with exact source spans; the
+public query CLI remains a CC-02b deliverable.
 
 ## What the published tests establish
 

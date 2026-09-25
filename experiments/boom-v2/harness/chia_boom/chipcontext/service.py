@@ -18,10 +18,11 @@ from .schema import (
     hashed_record,
     require_sha256,
 )
+from .extraction import ExtractionService
 from .store import EvidenceStore
 
 
-PARSER_REVISION = "legacy-evaluation-v3"
+PARSER_REVISION = "legacy-evaluation-v4"
 POLICY_REVISION = "cc01-static-required-v1"
 METRIC_DEFINITIONS = {
     "critical_delay_ns": ("timing-critical-delay-v1", "ns"),
@@ -43,6 +44,215 @@ STAGE_MAP = {
     "post_route": "post_route",
     "regression": "regression",
 }
+_LEGACY_FUNCTIONAL_FAILURE_CLASSES = frozenset({
+    "functional_mismatch",
+    "differential_mismatch",
+})
+
+
+def _artifact_for(
+    refs: dict[str, Any], labels: tuple[str, ...]
+) -> Any | None:
+    for label in labels:
+        if label in refs:
+            return refs[label]
+    for ref in refs.values():
+        if ref.kind in labels:
+            return ref
+    return None
+
+
+def _raw_extractions(
+    *,
+    store: EvidenceStore,
+    refs: dict[str, Any],
+    stage: str,
+    clock_period_ns: Any,
+) -> list[dict[str, Any]]:
+    """Extract facts only when a request explicitly registers raw tool roles."""
+    extraction = ExtractionService(
+        store, allowed_access={"public", "controlled"}
+    )
+    records: list[dict[str, Any]] = []
+    prefix = stage if stage in {"post_synth", "post_route"} else "post_synth"
+    summary = _artifact_for(refs, (
+        f"{prefix}_timing_summary", "vivado_timing_summary"
+    ))
+    utilization = _artifact_for(refs, (
+        f"{prefix}_utilization", "vivado_utilization"
+    ))
+    timing_paths = _artifact_for(refs, (
+        f"{prefix}_timing_paths", "vivado_timing_paths"
+    ))
+    if summary is not None or utilization is not None or timing_paths is not None:
+        if summary is None or utilization is None:
+            raise SchemaError(
+                "raw Vivado extraction requires timing summary and utilization"
+            )
+        if not isinstance(clock_period_ns, (int, float)):
+            raise SchemaError("raw Vivado extraction requires a clock period")
+        records.append(extraction.vivado(
+            timing_summary_ref=summary.ref_id,
+            utilization_ref=utilization.ref_id,
+            timing_paths_ref=timing_paths.ref_id if timing_paths else None,
+            period_ns=float(clock_period_ns),
+            stage=prefix,
+        ))
+    differential_result = _artifact_for(refs, (
+        "differential_result", "verilator_differential_result"
+    ))
+    differential_stdout = _artifact_for(refs, (
+        "differential_stdout", "verilator_differential_stdout"
+    ))
+    if differential_result is not None:
+        records.append(extraction.differential(
+            result_ref=differential_result.ref_id,
+            stdout_ref=(
+                differential_stdout.ref_id if differential_stdout is not None else None
+            ),
+        ))
+    return records
+
+
+def _reconcile_extractions(
+    *,
+    checks: list[CheckRecord],
+    measurements: list[Measurement],
+    records: list[dict[str, Any]],
+    conditions: dict[str, Any],
+    conflicts: list[dict[str, Any]],
+    missing: list[dict[str, str]],
+) -> tuple[list[CheckRecord], list[Measurement], dict[str, list[str]], set[str]]:
+    """Merge compatible raw/legacy facts and surface every disagreement."""
+    check_index = {value.check_id: index for index, value in enumerate(checks)}
+    metric_index = {value.metric_id: value for value in measurements}
+    sources: dict[str, list[str]] = {
+        value.metric_id: [value.source_ref] for value in measurements
+    }
+    conflict_metrics: set[str] = set()
+    for record in records:
+        extraction_ref = record["content_hash"]
+        missing.extend(record.get("missing", []))
+        record_conflicts = record.get("conflicts", [])
+        conflicts.extend(record_conflicts)
+        # Extractors can reject an ambiguous fact before a raw metric exists.
+        # Preserve the affected metric identity so a matching legacy value
+        # cannot silently restore comparison eligibility.
+        for conflict in record_conflicts:
+            if not isinstance(conflict, dict):
+                continue
+            affected = conflict.get("affected_metrics", [])
+            if isinstance(affected, list):
+                conflict_metrics.update(
+                    value for value in affected if isinstance(value, str)
+                )
+        facts = record.get("facts", {})
+        for raw in facts.get("metrics", []):
+            metric_id = raw.get("metric_id")
+            if not isinstance(metric_id, str):
+                continue
+            legacy = metric_index.get(metric_id)
+            if legacy is None:
+                scope = {"stage": raw.get("stage"), **conditions}
+                value = Measurement(
+                    metric_id=metric_id,
+                    definition_revision=str(raw.get("definition_revision")),
+                    value=raw.get("value"),
+                    unit=str(raw.get("unit")),
+                    scope=scope,
+                    provenance="verified_raw_tool_report",
+                    source_ref=extraction_ref,
+                    availability="available",
+                    mapping_quality="exact",
+                )
+                measurements.append(value)
+                metric_index[metric_id] = value
+                sources[metric_id] = [extraction_ref]
+                continue
+            same = (
+                legacy.definition_revision == raw.get("definition_revision")
+                and legacy.unit == raw.get("unit")
+                and legacy.scope.get("stage") == raw.get("stage")
+                and float(legacy.value) == float(raw.get("value"))
+            )
+            if same:
+                sources.setdefault(metric_id, [legacy.source_ref]).append(extraction_ref)
+            else:
+                conflict_metrics.add(metric_id)
+                conflicts.append({
+                    "field": f"measurements.{metric_id}",
+                    "affected_metrics": [metric_id],
+                    "scope": {"stage": raw.get("stage")},
+                    "reason": "conflicting_sources",
+                    "detail": (
+                        "raw and legacy metric differ in value, unit, definition, "
+                        "or stage"
+                    ),
+                    "source_refs": [legacy.source_ref, extraction_ref],
+                })
+        raw_checks = facts.get("checks")
+        if not isinstance(raw_checks, list):
+            raw_check = facts.get("check")
+            raw_checks = [raw_check] if isinstance(raw_check, dict) else []
+        for raw_check in raw_checks:
+            if not isinstance(raw_check, dict):
+                continue
+            check_id = raw_check.get("check_id")
+            index = check_index.get(check_id)
+            if index is not None:
+                legacy = checks[index]
+                raw_executed = raw_check.get("executed") is True
+                raw_outcome = raw_check.get("outcome")
+                if not raw_executed:
+                    # A versioned raw producer can prove that a downstream
+                    # behavior check never ran (for example interface mismatch
+                    # before simulation). Do not retain a derived legacy fail.
+                    producer_proves_not_run = (
+                        check_id == "differential_correctness"
+                        and record.get("coverage", {}).get(
+                            "simulator_execution"
+                        ) == "not_run"
+                    )
+                    if legacy.executed and producer_proves_not_run:
+                        checks[index] = CheckRecord(
+                            check_id=legacy.check_id,
+                            executed=False,
+                            outcome=None,
+                            scope={
+                                "raw_extractor": record["extractor"]["revision"],
+                                "reason": "producer_reports_not_run",
+                            },
+                            source_ref=None,
+                        )
+                elif not legacy.executed and raw_outcome in {
+                    "pass", "fail", "inconclusive"
+                }:
+                    checks[index] = CheckRecord(
+                        check_id=legacy.check_id,
+                        executed=True,
+                        outcome=raw_outcome,
+                        scope={"raw_extractor": record["extractor"]["revision"]},
+                        source_ref=extraction_ref,
+                    )
+                elif legacy.executed and legacy.outcome != raw_outcome:
+                    conflicts.append({
+                        "field": f"checks.{check_id}",
+                        "reason": "conflicting_sources",
+                        "detail": (
+                            f"legacy={legacy.outcome}, raw={raw_outcome}"
+                        ),
+                        "source_refs": [legacy.source_ref, extraction_ref],
+                    })
+                    checks[index] = CheckRecord(
+                        check_id=legacy.check_id,
+                        executed=True,
+                        outcome="inconclusive",
+                        scope=legacy.scope,
+                        source_ref=legacy.source_ref,
+                    )
+    for values in sources.values():
+        values[:] = sorted(set(values))
+    return checks, measurements, sources, conflict_metrics
 
 
 @dataclass(frozen=True)
@@ -248,8 +458,44 @@ def _checks(
     # infrastructure interruption).  Dataclass default booleans are summaries,
     # not execution evidence, and are only reconciled with concrete payloads.
     build_executed = _stage_executed(evaluation, {"elaboration"})
-    correctness_executed = isinstance(differential, dict) or _stage_executed(
-        evaluation, {"correctness"}
+    legacy_run_evidence = (
+        isinstance(differential, dict)
+        and (
+            "returncode" in differential
+            or "directed_phases" in differential
+            or differential.get("passed") is True
+            or differential.get("expected") is not None
+            or differential.get("actual") is not None
+            or differential.get("failure_class")
+            in _LEGACY_FUNCTIONAL_FAILURE_CLASSES
+        )
+    )
+    interface_execution_conflict = (
+        isinstance(differential, dict)
+        and differential.get("interface_ok") is False
+        and legacy_run_evidence
+    )
+    interface_prevented_run = (
+        isinstance(differential, dict)
+        and differential.get("interface_ok") is False
+        and not legacy_run_evidence
+    )
+    if interface_execution_conflict:
+        conflicts.append({
+            "field": "checks.differential_execution",
+            "reason": "conflicting_sources",
+            "detail": (
+                "interface_ok=false conflicts with recorded simulator or "
+                "functional evidence"
+            ),
+            "source_ref": source_ref,
+        })
+    correctness_executed = (
+        False
+        if interface_prevented_run
+        else isinstance(differential, dict) or _stage_executed(
+            evaluation, {"correctness"}
+        )
     )
     interface_executed = isinstance(differential, dict) and (
         "interface_ok" in differential
@@ -316,6 +562,7 @@ def _checks(
         bool(differential["passed"])
         if isinstance(differential, dict)
         and isinstance(differential.get("passed"), bool)
+        and not interface_prevented_run
         and not _stage_infra_blocked(evaluation, {"correctness"})
         else None
     )
@@ -373,6 +620,9 @@ def _checks(
             else None,
         },
     )
+    if interface_execution_conflict:
+        correctness_passed = None
+        interface_passed = None
     synth_passed = reconcile(
         "post_synth", {"payload": synth_payload, "stage": synth_stage}
     )
@@ -732,6 +982,25 @@ class ChipContextService:
             conditions,
             missing,
         )
+        extraction_records = _raw_extractions(
+            store=self.store,
+            refs=refs,
+            stage=normalized_stage,
+            clock_period_ns=conditions["clock_period_ns"],
+        )
+        metric_sources: dict[str, list[str]] = {}
+        metric_conflicts: set[str] = set()
+        if extraction_records:
+            checks, measurements, metric_sources, metric_conflicts = (
+                _reconcile_extractions(
+                    checks=checks,
+                    measurements=measurements,
+                    records=extraction_records,
+                    conditions=conditions,
+                    conflicts=conflicts,
+                    missing=missing,
+                )
+            )
         for check in checks:
             if not check.executed:
                 missing.append({
@@ -757,6 +1026,10 @@ class ChipContextService:
                 "qualification": "verified" if qualification_bound else "unverified",
             },
         }
+        if extraction_records:
+            manifest_payload["extraction_refs"] = [
+                value["content_hash"] for value in extraction_records
+            ]
         evaluation_manifest = self.store.write_record(
             "manifests", "chipcontext.evaluation-manifest.v1", manifest_payload
         )
@@ -787,6 +1060,11 @@ class ChipContextService:
                 "conflict_count": len(conflicts),
             },
         }
+        if extraction_records:
+            snapshot_payload["extraction_refs"] = [
+                value["content_hash"] for value in extraction_records
+            ]
+            snapshot_payload["measurement_sources"] = metric_sources
         snapshot = self.store.write_record(
             "snapshots", "chipcontext.evidence-snapshot.v1", snapshot_payload
         )
@@ -854,6 +1132,7 @@ class ChipContextService:
             current_metrics = {
                 value.metric_id: value for value in measurements
                 if value.availability == "available"
+                and value.metric_id not in metric_conflicts
             }
             baseline_stage_raw = baseline.get("stage")
             baseline_stage = (

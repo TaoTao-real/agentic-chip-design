@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -10,7 +11,6 @@ from typing import Any
 from .schema import (
     ArtifactRef,
     SchemaError,
-    canonical_json,
     content_hash,
     hashed_record,
 )
@@ -84,6 +84,26 @@ class EvidenceStore:
         record = hashed_record(schema_version, payload)
         path = self.root / "records" / kind / f"{record['content_hash']}.json"
         _publish(path, json.dumps(record, indent=2, sort_keys=True) + "\n")
+        return record
+
+    def read_record(self, kind: str, record_hash: str) -> dict[str, Any]:
+        """Read a content-addressed ChipContext record and verify its hash."""
+        if "/" in kind or kind.startswith("."):
+            raise SchemaError("record kind must be a single normalized component")
+        path = self.root / "records" / kind / f"{record_hash}.json"
+        if not path.is_file() or path.is_symlink():
+            raise KeyError(f"unknown {kind} record: {record_hash}")
+        try:
+            record = json.loads(path.read_text())
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("record is not valid JSON") from exc
+        if not isinstance(record, dict):
+            raise RuntimeError("record must be a JSON object")
+        embedded = record.get("content_hash")
+        unsigned = {key: value for key, value in record.items() if key != "content_hash"}
+        actual = content_hash(unsigned)
+        if embedded != record_hash or actual != record_hash:
+            raise RuntimeError("record failed its content hash")
         return record
 
     def publish_alias(self, name: str, record: dict[str, Any] | str) -> None:
@@ -166,7 +186,13 @@ class EvidenceStore:
             raise RuntimeError("artifact reference metadata failed its content hash")
         return ref
 
-    def _artifact_path(self, ref: ArtifactRef, allowed_access: set[str]) -> Path:
+    def _artifact_path(
+        self,
+        ref: ArtifactRef,
+        allowed_access: set[str],
+        *,
+        verify_hash: bool = True,
+    ) -> Path:
         if ref.access not in allowed_access:
             raise PermissionError(f"artifact access is not authorized: {ref.access}")
         root = self.artifact_roots.get(ref.root_id)
@@ -180,9 +206,54 @@ class EvidenceStore:
             resolved.relative_to(root)
         except ValueError as exc:
             raise SchemaError("artifact escaped its registered root") from exc
-        if _sha256_file(resolved) != ref.sha256:
+        if verify_hash and _sha256_file(resolved) != ref.sha256:
             raise RuntimeError("artifact content hash changed after registration")
         return resolved
+
+    def verified_artifact_bytes(
+        self,
+        ref_id: str,
+        *,
+        allowed_access: set[str] | None = None,
+    ) -> tuple[ArtifactRef, bytes]:
+        """Return the exact bytes whose digest is checked against ArtifactRef.
+
+        The file descriptor is opened without following a final symlink and its
+        metadata is checked before and after the read. This makes mutation during
+        extraction a hard failure instead of publishing facts about mixed bytes.
+        """
+        ref = self.artifact(ref_id)
+        access = {"public"} if allowed_access is None else allowed_access
+        path = self._artifact_path(ref, access, verify_hash=False)
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        try:
+            before = os.fstat(descriptor)
+            chunks: list[bytes] = []
+            while True:
+                chunk = os.read(descriptor, 1024 * 1024)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        if (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+        ) != (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+        ):
+            raise RuntimeError("artifact changed while it was being read")
+        data = b"".join(chunks)
+        if len(data) != ref.size_bytes or hashlib.sha256(data).hexdigest() != ref.sha256:
+            raise RuntimeError("artifact content hash changed after registration")
+        return ref, data
 
     def read_artifact(
         self,
@@ -204,9 +275,10 @@ class EvidenceStore:
             raise SchemaError("line_count requires start_line")
         if cursor is not None and cursor < 0:
             raise SchemaError("cursor cannot be negative")
-        ref = self.artifact(ref_id)
         access = {"public"} if allowed_access is None else allowed_access
-        path = self._artifact_path(ref, access)
+        ref, artifact_data = self.verified_artifact_bytes(
+            ref_id, allowed_access=access
+        )
         start_byte = 0
         end_byte = 0
         actual_start_line: int | None = None
@@ -219,45 +291,40 @@ class EvidenceStore:
             chunks: list[bytes] = []
             selected_bytes = 0
             byte_offset = 0
-            with path.open("rb") as handle:
-                for number, line in enumerate(handle, 1):
-                    line_start = byte_offset
-                    byte_offset += len(line)
-                    if number < start_line:
-                        continue
-                    if actual_start_line is None:
-                        actual_start_line = number
-                        start_byte = line_start
-                    if number >= start_line + line_count:
-                        break
-                    if selected_bytes + len(line) > limit_bytes:
-                        remaining = limit_bytes - selected_bytes
-                        if remaining:
-                            chunks.append(line[:remaining])
-                            selected_bytes += remaining
-                        truncated = True
-                        next_cursor = line_start + max(0, remaining)
-                        break
-                    chunks.append(line)
-                    selected_bytes += len(line)
-                    actual_end_line = number
-                else:
-                    byte_offset = path.stat().st_size
+            for number, line in enumerate(artifact_data.splitlines(keepends=True), 1):
+                line_start = byte_offset
+                byte_offset += len(line)
+                if number < start_line:
+                    continue
+                if actual_start_line is None:
+                    actual_start_line = number
+                    start_byte = line_start
+                if number >= start_line + line_count:
+                    break
+                if selected_bytes + len(line) > limit_bytes:
+                    remaining = limit_bytes - selected_bytes
+                    if remaining:
+                        chunks.append(line[:remaining])
+                        selected_bytes += remaining
+                    truncated = True
+                    next_cursor = line_start + max(0, remaining)
+                    break
+                chunks.append(line)
+                selected_bytes += len(line)
+                actual_end_line = number
             data = b"".join(chunks)
             end_byte = start_byte + len(data)
-            if not truncated and end_byte < path.stat().st_size:
+            if not truncated and end_byte < len(artifact_data):
                 next_cursor = end_byte
         else:
             start_byte = cursor or 0
-            if start_byte > path.stat().st_size:
+            if start_byte > len(artifact_data):
                 raise SchemaError("cursor exceeds artifact length")
-            with path.open("rb") as handle:
-                handle.seek(start_byte)
-                data = handle.read(limit_bytes + 1)
+            data = artifact_data[start_byte:start_byte + limit_bytes + 1]
             truncated = len(data) > limit_bytes
             data = data[:limit_bytes]
             end_byte = start_byte + len(data)
-            next_cursor = end_byte if end_byte < path.stat().st_size else None
+            next_cursor = end_byte if end_byte < len(artifact_data) else None
         return {
             "schema_version": "chipcontext.bounded-artifact.v1",
             "artifact_ref": ref.to_dict(),

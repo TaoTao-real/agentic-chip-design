@@ -1,0 +1,10 @@
+| Tool Version : Vivado v.2024.1 (lin64)
+| Command      : report_utilization -file synthetic.rpt
+| Design       : NeutralQueue
+
++-----------------+------+-------+------------+-----------+-------+
+| Site Type       | Used | Fixed | Prohibited | Available | Util% |
++-----------------+------+-------+------------+-----------+-------+
+| Slice LUTs*     | 1,234|     0 |          0 |     53200 |  2.32 |
+| Slice Registers |  567 |     0 |          0 |    106400 |  0.53 |
++-----------------+------+-------+------------+-----------+-------+
