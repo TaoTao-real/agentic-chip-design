@@ -102,6 +102,12 @@ def benchmark(
         operations[operation] = {
             "in_process_wall_time_ns": stats(api_wall),
             "cli_process_wall_time_ns": stats(cli_wall),
+            "response_phase_time_ns": {
+                name: stats([
+                    int(value["phase_time_ns"][name]) for value in costs
+                ])
+                for name in sorted(costs[0]["phase_time_ns"])
+            },
             "logical_work": {
                 name: stats([int(value[name]) for value in costs])
                 for name in counter_names
@@ -119,6 +125,8 @@ def benchmark(
             "clock": "time.monotonic_ns",
             "quartiles": "statistics.quantiles(n=4, method=inclusive)",
             "logical_bytes_are_not_physical_io": True,
+            "response_cost_boundary": "through_first_complete_render",
+            "phase_times_are_disjoint": True,
             "performance_threshold": None,
         },
         "operations": operations,

@@ -24,7 +24,8 @@ from .query import (
     RegisteredStore,
     TrustedStoreRegistry,
 )
-from .store import EvidenceMeter, EvidenceStore
+from .query_cli import QueryAttemptFailure, QueryAttemptResult, run_query_attempt
+from .store import EvidenceIntegrityError, EvidenceMeter, EvidenceStore
 
 __all__ = [
     "ArtifactRef",
@@ -33,6 +34,7 @@ __all__ = [
     "ChipContextService",
     "ChipContextQueryService",
     "EvidenceHandle",
+    "EvidenceIntegrityError",
     "EvidenceMeter",
     "EvidenceResolver",
     "EvidenceStore",
@@ -40,9 +42,12 @@ __all__ = [
     "Measurement",
     "PreparationResult",
     "QueryError",
+    "QueryAttemptFailure",
+    "QueryAttemptResult",
     "QueryScope",
     "RegisteredStore",
     "SchemaError",
     "WorkingState",
     "TrustedStoreRegistry",
+    "run_query_attempt",
 ]

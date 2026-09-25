@@ -9,8 +9,9 @@ from .query import QueryError
 from .query_cli import (
     DEFAULT_OUTPUT_BYTES,
     MAX_OUTPUT_BYTES,
-    execute_query,
-    serialize_execution,
+    QueryAttemptFailure,
+    run_query_attempt,
+    write_attempt_audit,
 )
 from .schema import SchemaError
 from .service import ChipContextService
@@ -44,17 +45,21 @@ def command_read(args: argparse.Namespace) -> int:
 
 
 def command_query(args: argparse.Namespace) -> int:
-    execution = execute_query(
-        args.registry.absolute(),
-        args.request.absolute(),
-        allow_controlled=args.allow_controlled,
-    )
-    rendered, _ = serialize_execution(
-        execution,
-        output_format=args.output_format,
-        max_output_bytes=args.max_output_bytes,
-    )
-    sys.stdout.write(rendered)
+    try:
+        result = run_query_attempt(
+            args.registry.absolute(),
+            args.request.absolute(),
+            output_format=args.output_format,
+            max_output_bytes=args.max_output_bytes,
+            allow_controlled=args.allow_controlled,
+        )
+    except QueryAttemptFailure as exc:
+        if args.audit_output is not None:
+            write_attempt_audit(args.audit_output.absolute(), exc.audit)
+        raise
+    if args.audit_output is not None:
+        write_attempt_audit(args.audit_output.absolute(), result.audit)
+    sys.stdout.write(result.rendered)
     return 0
 
 
@@ -84,6 +89,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"final UTF-8 output budget (maximum {MAX_OUTPUT_BYTES})",
     )
     query.add_argument("--allow-controlled", action="store_true")
+    query.add_argument(
+        "--audit-output",
+        type=Path,
+        help=(
+            "trusted new file for detailed success/rejection cost; the query "
+            "request cannot select this sink"
+        ),
+    )
     return parser
 
 
@@ -96,6 +109,14 @@ def main() -> None:
             code = command_read(args)
         else:
             code = command_query(args)
+    except QueryAttemptFailure as exc:
+        payload = json.dumps({
+            "schema_version": "chipcontext.error.v1",
+            "error": exc.code,
+            "message": exc.public_message,
+        }, indent=2, sort_keys=True)
+        print(payload, file=sys.stderr)
+        code = 2
     except (
         QueryError,
         SchemaError,
@@ -129,6 +150,16 @@ def main() -> None:
             "message": message,
         }, indent=2, sort_keys=True)
         print(payload, file=sys.stderr if args.command == "query" else sys.stdout)
+        code = 2
+    except Exception:
+        if args.command != "query":
+            raise
+        payload = json.dumps({
+            "schema_version": "chipcontext.error.v1",
+            "error": "internal_error",
+            "message": "query attempt failed safely",
+        }, indent=2, sort_keys=True)
+        print(payload, file=sys.stderr)
         code = 2
     raise SystemExit(code)
 

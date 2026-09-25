@@ -56,6 +56,21 @@ class EvidenceMeter:
         }
 
 
+class EvidenceIntegrityError(RuntimeError):
+    """Sealed store bytes or metadata violate their integrity contract."""
+
+
+def _decode_json_object(data: bytes, *, name: str) -> dict[str, Any]:
+    """Decode sealed JSON without leaking decoder or filesystem details."""
+    try:
+        value = json.loads(data)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise EvidenceIntegrityError(f"{name} is not valid JSON") from exc
+    if not isinstance(value, dict):
+        raise EvidenceIntegrityError(f"{name} must be a JSON object")
+    return value
+
+
 def _sha256_file(path: Path, meter: EvidenceMeter | None = None) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -132,9 +147,19 @@ class EvidenceStore:
             self.meter.store_metadata_read_count += 1
             self.meter.store_metadata_read_bytes += len(roots_data)
             self.meter.parse_bytes += len(roots_data)
-        self.artifact_roots = {
-            key: Path(value) for key, value in json.loads(roots_data).items()
-        }
+        roots = _decode_json_object(roots_data, name="evidence root registry")
+        artifact_roots_value: dict[str, Path] = {}
+        for key, value in roots.items():
+            if not isinstance(key, str) or not key or "/" in key or key.startswith("."):
+                raise EvidenceIntegrityError(
+                    "evidence root registry contains an invalid root ID"
+                )
+            if not isinstance(value, str) or not value:
+                raise EvidenceIntegrityError(
+                    "evidence root registry contains an invalid root location"
+                )
+            artifact_roots_value[key] = Path(value)
+        self.artifact_roots = artifact_roots_value
 
     def _require_writable(self) -> None:
         if self.read_only:
@@ -161,19 +186,18 @@ class EvidenceStore:
             self.meter.record_read_count += 1
             self.meter.record_read_bytes += len(data)
             self.meter.parse_bytes += len(data)
-        try:
-            record = json.loads(data)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError("record is not valid JSON") from exc
-        if not isinstance(record, dict):
-            raise RuntimeError("record must be a JSON object")
+        record = _decode_json_object(data, name="record")
         embedded = record.get("content_hash")
         unsigned = {key: value for key, value in record.items() if key != "content_hash"}
+        try:
+            canonical = canonical_json(unsigned).encode("utf-8")
+            actual = hashlib.sha256(canonical).hexdigest()
+        except (TypeError, ValueError) as exc:
+            raise EvidenceIntegrityError("record is not canonical JSON") from exc
         if self.meter is not None:
-            self.meter.hash_bytes += len(canonical_json(unsigned).encode("utf-8"))
-        actual = content_hash(unsigned)
+            self.meter.hash_bytes += len(canonical)
         if embedded != record_hash or actual != record_hash:
-            raise RuntimeError("record failed its content hash")
+            raise EvidenceIntegrityError("record failed its content hash")
         return record
 
     def publish_alias(self, name: str, record: dict[str, Any] | str) -> None:
@@ -257,13 +281,23 @@ class EvidenceStore:
             self.meter.artifact_metadata_read_count += 1
             self.meter.artifact_metadata_read_bytes += len(data)
             self.meter.parse_bytes += len(data)
-        payload = json.loads(data)
-        ref = ArtifactRef(**payload)
+        payload = _decode_json_object(data, name="artifact metadata")
+        try:
+            ref = ArtifactRef(**payload)
+        except (TypeError, SchemaError) as exc:
+            raise EvidenceIntegrityError("artifact metadata is invalid") from exc
         unsigned = {key: value for key, value in payload.items() if key != "ref_id"}
+        try:
+            canonical = canonical_json(unsigned).encode("utf-8")
+            actual = content_hash(unsigned)
+        except (TypeError, ValueError) as exc:
+            raise EvidenceIntegrityError("artifact metadata is not canonical JSON") from exc
         if self.meter is not None:
-            self.meter.hash_bytes += len(canonical_json(unsigned).encode("utf-8"))
-        if content_hash(unsigned) != ref.ref_id or ref.ref_id != ref_id:
-            raise RuntimeError("artifact reference metadata failed its content hash")
+            self.meter.hash_bytes += len(canonical)
+        if actual != ref.ref_id or ref.ref_id != ref_id:
+            raise EvidenceIntegrityError(
+                "artifact reference metadata failed its content hash"
+            )
         return ref
 
     def _artifact_path(

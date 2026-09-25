@@ -257,13 +257,21 @@
   "configuration_read_bytes": 0,
   "configuration_read_count": 0,
   "hash_bytes": 0,
+  "measurement_boundary": "through_first_complete_render",
   "parse_bytes": 0,
   "peak_memory_bytes": null,
+  "phase_time_ns": {
+    "evidence_query_ns": 0,
+    "first_render_ns": 0,
+    "request_validation_ns": 0,
+    "store_resolution_ns": 0
+  },
   "physical_io_bytes": null,
   "record_read_bytes": 0,
   "record_read_count": 0,
   "return_bytes": 0,
   "schema_version": "chipcontext.query-cost.v1",
+  "status": "success",
   "store_metadata_read_bytes": 0,
   "store_metadata_read_count": 0,
   "wall_time_ns": 0

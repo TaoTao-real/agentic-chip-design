@@ -300,12 +300,22 @@ A successful JSON response is `chipcontext.query-response.v1`, containing the
 unchanged deterministic `chipcontext.query-answer.v1` and a separate dynamic
 `chipcontext.query-cost.v1`. The cost reports wall time, configuration/store/
 record/artifact metadata reads, complete artifact scan bytes, hash bytes, JSON
-parse bytes and returned bytes. `physical_io_bytes` and `peak_memory_bytes`
-remain null because this implementation does not measure them, and
-`cache_status` is `not_configured`. Markdown renders the same QueryAnswer and
+parse bytes and returned bytes, plus disjoint validation, store-resolution,
+evidence-query and first-render phase timings. Its wall-time boundary is the
+first complete render; fixed-point byte accounting and stdout writing are
+outside that response field. `physical_io_bytes` and `peak_memory_bytes` remain
+null because this implementation does not measure them, and `cache_status` is
+`not_configured`. Markdown renders the same QueryAnswer and
 retains the full result, applicability, conditions, coverage, missing,
 conflicts, source references and pagination. Raw text is indented so tool output
 cannot alter the Markdown structure.
+
+An operator may add `--audit-output <new-file>` to collect the trusted
+`chipcontext.query-attempt.v1` record for either success or rejection. The
+attempt record measures through serialization or rejection, retains work done
+before integrity and budget failures, and uses disjoint phase values. Detailed
+rejected-query counts do not appear on public stderr and the query JSON cannot
+select the audit destination.
 
 The final encoded output has a 16 KiB default and 64 KiB hard maximum. The
 response includes its own `return_bytes`; serialization iterates until that
@@ -314,7 +324,8 @@ identity, conflict, coverage or source facts are removed. Domain states such as
 `partial`, `inconclusive` and `not_comparable` are successful query results and
 return status 0. Invalid input, permission denial, unknown content, integrity
 failure and budget overflow return a path-free `chipcontext.error.v1` and
-status 2.
+status 2. Corrupt ROOTS, record and artifact metadata encoding or shape are
+normalized to that integrity boundary rather than leaking decoder tracebacks.
 
 Scoped source reads use `chipcontext-query-foundation-v3`. The first page and
 every continuation repeat the same `start_line`, `line_count` and byte limit.

@@ -84,7 +84,8 @@ chia-chipcontext query \
   --registry trusted-stores.json \
   --request requests/status.json \
   --format json \
-  --max-output-bytes 16384
+  --max-output-bytes 16384 \
+  --audit-output audits/status-attempt.json
 ```
 
 JSON returns `chipcontext.query-response.v1` with two members:
@@ -93,8 +94,22 @@ JSON returns `chipcontext.query-response.v1` with two members:
   timing and counters.
 - `cost`: dynamic `chipcontext.query-cost.v1`; includes wall time, configuration,
   store/record/artifact metadata reads, full artifact scan bytes, hash bytes,
-  parse bytes and returned bytes. Cache status is `not_configured`; physical I/O
+  parse bytes and returned bytes. It also contains disjoint request-validation,
+  store-resolution, evidence-query and first-render phase times. The response
+  wall time ends after the first complete render, before fixed-point byte
+  accounting and stdout writing. Cache status is `not_configured`; physical I/O
   and peak memory are null because they are not measured.
+
+`--audit-output` is a trusted operator-side sink, not a request field and not an
+EvidenceStore mutation. It must name a new file in an existing directory. Every
+completed attempt writes `chipcontext.query-attempt.v1`, including `success` or
+`rejected`, a nullable answer ref, a path-free error code, attempted/returned
+bytes and all meter values accumulated before acceptance or rejection. Attempt
+phase times are disjoint: `response_serialization_ns` contains render and byte
+budget work and replaces the nested first-render value. In-process callers can
+collect the same record from `run_query_attempt`; rejected calls raise
+`QueryAttemptFailure` with the record attached. Without a trusted audit sink,
+public stderr remains deliberately limited to the sanitized error.
 
 Markdown is rendered from the same answer. It retains identity, stage,
 applicability, units, result, conditions, coverage, missing, conflicts, source
@@ -109,6 +124,9 @@ sources to fit.
 Business results such as `partial`, `inconclusive` and `not_comparable` exit 0.
 Invalid requests, permission denial, unknown content, integrity failure and
 budget overflow emit path-free `chipcontext.error.v1` on stderr and exit 2.
+Malformed UTF-8, non-object ROOTS/records, invalid ROOTS field types and corrupt
+artifact metadata are integrity failures; decoder exceptions, tracebacks and
+machine paths are never emitted by the query command.
 The legacy `prepare` and unscoped `read-artifact` commands preserve their prior
 stdout and error behavior.
 

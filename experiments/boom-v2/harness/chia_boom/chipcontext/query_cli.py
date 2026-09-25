@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,7 @@ from .store import EvidenceMeter, EvidenceStore
 QUERY_REQUEST_SCHEMA = "chipcontext.query-request.v1"
 QUERY_RESPONSE_SCHEMA = "chipcontext.query-response.v1"
 QUERY_COST_SCHEMA = "chipcontext.query-cost.v1"
+QUERY_ATTEMPT_SCHEMA = "chipcontext.query-attempt.v1"
 STORE_REGISTRY_SCHEMA = "chipcontext.store-registry.v1"
 DEFAULT_OUTPUT_BYTES = 16 * 1024
 MAX_OUTPUT_BYTES = 64 * 1024
@@ -40,6 +43,40 @@ class QueryExecution:
     answer: dict[str, Any]
     meter: EvidenceMeter
     started_ns: int
+    phase_time_ns: dict[str, int] = field(default_factory=dict)
+    attempted_output_bytes: int = 0
+
+
+@dataclass
+class QueryAttemptResult:
+    rendered: str
+    cost: dict[str, Any]
+    audit: dict[str, Any]
+
+
+class QueryAttemptFailure(Exception):
+    """A rejected query plus the trusted, detailed attempt audit."""
+
+    def __init__(
+        self,
+        code: str,
+        public_message: str,
+        audit: dict[str, Any],
+    ) -> None:
+        super().__init__(public_message)
+        self.code = code
+        self.public_message = public_message
+        self.audit = audit
+
+
+@dataclass
+class _AttemptState:
+    started_ns: int
+    meter: EvidenceMeter = field(default_factory=EvidenceMeter)
+    phase_time_ns: dict[str, int] = field(default_factory=dict)
+    operation: str | None = None
+    answer_ref: str | None = None
+    attempted_output_bytes: int = 0
 
 
 def _strict_object(
@@ -365,32 +402,90 @@ def _dispatch(service: ChipContextQueryService, request: ParsedQuery) -> dict[st
     raise SchemaError("query operation is unsupported")
 
 
+def _execute_query(
+    registry_path: Path,
+    request_path: Path,
+    *,
+    allow_controlled: bool,
+    state: _AttemptState,
+) -> QueryExecution:
+    phase_started = time.monotonic_ns()
+    try:
+        request_value = _read_json_object(request_path, state.meter, "query request")
+        parsed = parse_query_request(request_value)
+        state.operation = parsed.operation
+    finally:
+        state.phase_time_ns["request_validation_ns"] = max(
+            0, time.monotonic_ns() - phase_started
+        )
+
+    phase_started = time.monotonic_ns()
+    try:
+        registry_value = _read_json_object(
+            registry_path, state.meter, "store registry"
+        )
+        stores, policy = load_stores(
+            registry_path,
+            registry_value,
+            required_store_ids=parsed.referenced_store_ids,
+            allow_controlled=allow_controlled,
+            meter=state.meter,
+        )
+    finally:
+        state.phase_time_ns["store_resolution_ns"] = max(
+            0, time.monotonic_ns() - phase_started
+        )
+
+    phase_started = time.monotonic_ns()
+    try:
+        answer = _dispatch(ChipContextQueryService(stores, policy), parsed)
+        state.answer_ref = answer.get("content_hash")
+    finally:
+        state.phase_time_ns["evidence_query_ns"] = max(
+            0, time.monotonic_ns() - phase_started
+        )
+    return QueryExecution(
+        answer=answer,
+        meter=state.meter,
+        started_ns=state.started_ns,
+        phase_time_ns=state.phase_time_ns,
+    )
+
+
 def execute_query(
     registry_path: Path,
     request_path: Path,
     *,
     allow_controlled: bool = False,
 ) -> QueryExecution:
-    started_ns = time.monotonic_ns()
-    meter = EvidenceMeter()
-    request_value = _read_json_object(request_path, meter, "query request")
-    parsed = parse_query_request(request_value)
-    registry_value = _read_json_object(registry_path, meter, "store registry")
-    stores, policy = load_stores(
+    """Execute a successful query for the in-process API.
+
+    Call :func:`run_query_attempt` when rejected-attempt accounting is required.
+    """
+    state = _AttemptState(started_ns=time.monotonic_ns())
+    return _execute_query(
         registry_path,
-        registry_value,
-        required_store_ids=parsed.referenced_store_ids,
+        request_path,
         allow_controlled=allow_controlled,
-        meter=meter,
+        state=state,
     )
-    answer = _dispatch(ChipContextQueryService(stores, policy), parsed)
-    return QueryExecution(answer=answer, meter=meter, started_ns=started_ns)
 
 
-def _cost(execution: QueryExecution, wall_time_ns: int) -> dict[str, Any]:
+def _cost(
+    execution: QueryExecution,
+    wall_time_ns: int,
+    *,
+    status: str = "success",
+    phase_time_ns: dict[str, int] | None = None,
+) -> dict[str, Any]:
     return {
         "schema_version": QUERY_COST_SCHEMA,
+        "status": status,
         "wall_time_ns": wall_time_ns,
+        "measurement_boundary": "through_first_complete_render",
+        "phase_time_ns": dict(
+            sorted((phase_time_ns or execution.phase_time_ns).items())
+        ),
         **execution.meter.snapshot(),
         "return_bytes": 0,
         "cache_status": "not_configured",
@@ -417,7 +512,10 @@ def serialize_execution(
         )
 
     # Include one complete render in the internal query wall time, then freeze
-    # dynamic timing before solving the return_bytes fixed point.
+    # dynamic timing before solving the return_bytes fixed point.  The trusted
+    # attempt audit separately measures the full serialization/rejection path.
+    render_started = time.monotonic_ns()
+    execution.phase_time_ns["first_render_ns"] = 0
     preliminary_cost = _cost(
         execution, max(0, time.monotonic_ns() - execution.started_ns)
     )
@@ -429,6 +527,9 @@ def serialize_execution(
         })
     else:
         render_markdown(execution.answer, preliminary_cost)
+    execution.phase_time_ns["first_render_ns"] = max(
+        0, time.monotonic_ns() - render_started
+    )
     wall_time_ns = max(0, time.monotonic_ns() - execution.started_ns)
     cost = _cost(execution, wall_time_ns)
     rendered = ""
@@ -442,6 +543,7 @@ def serialize_execution(
         else:
             rendered = render_markdown(execution.answer, cost)
         actual = len(rendered.encode("utf-8"))
+        execution.attempted_output_bytes = actual
         if cost["return_bytes"] == actual:
             break
         cost["return_bytes"] = actual
@@ -452,17 +554,155 @@ def serialize_execution(
     return rendered, cost
 
 
+def _public_error(exc: Exception) -> tuple[str, str]:
+    if isinstance(exc, QueryError):
+        return exc.code, str(exc)
+    if isinstance(exc, SchemaError):
+        return "invalid_request", str(exc)
+    if isinstance(
+        exc, (RuntimeError, PermissionError, UnicodeError, TypeError, ValueError)
+    ):
+        return "integrity_error", "query evidence failed validation"
+    if isinstance(exc, (FileNotFoundError, KeyError)):
+        return "unknown_reference", "query evidence is unavailable"
+    return "internal_error", "query attempt failed safely"
+
+
+def _attempt_audit(
+    state: _AttemptState,
+    *,
+    status: str,
+    output_format: str,
+    max_output_bytes: int,
+    error_code: str | None,
+    returned_bytes: int,
+) -> dict[str, Any]:
+    wall_time_ns = max(0, time.monotonic_ns() - state.started_ns)
+    phases = dict(state.phase_time_ns)
+    # The response-wide serialization measurement contains the preliminary
+    # render.  Keep only the containing phase in the final attempt record so
+    # phase values are disjoint and may be summed without double counting.
+    if "response_serialization_ns" in phases:
+        phases.pop("first_render_ns", None)
+    cost = {
+        "schema_version": QUERY_COST_SCHEMA,
+        "status": status,
+        "wall_time_ns": wall_time_ns,
+        "measurement_boundary": "through_attempt_finalization",
+        "phase_time_ns": dict(sorted(phases.items())),
+        **state.meter.snapshot(),
+        "return_bytes": returned_bytes,
+        "cache_status": "not_configured",
+        "physical_io_bytes": None,
+        "peak_memory_bytes": None,
+    }
+    return {
+        "schema_version": QUERY_ATTEMPT_SCHEMA,
+        "status": status,
+        "operation": state.operation,
+        "answer_ref": state.answer_ref,
+        "error_code": error_code,
+        "output": {
+            "format": output_format,
+            "max_output_bytes": max_output_bytes,
+            "attempted_output_bytes": state.attempted_output_bytes,
+            "returned_bytes": returned_bytes,
+        },
+        "cost": cost,
+    }
+
+
+def run_query_attempt(
+    registry_path: Path,
+    request_path: Path,
+    *,
+    output_format: str,
+    max_output_bytes: int = DEFAULT_OUTPUT_BYTES,
+    allow_controlled: bool = False,
+) -> QueryAttemptResult:
+    """Run and finalize one query, retaining cost for success or rejection."""
+    state = _AttemptState(started_ns=time.monotonic_ns())
+    try:
+        execution = _execute_query(
+            registry_path,
+            request_path,
+            allow_controlled=allow_controlled,
+            state=state,
+        )
+        render_started = time.monotonic_ns()
+        try:
+            rendered, cost = serialize_execution(
+                execution,
+                output_format=output_format,
+                max_output_bytes=max_output_bytes,
+            )
+        finally:
+            state.attempted_output_bytes = execution.attempted_output_bytes
+            state.phase_time_ns["response_serialization_ns"] = max(
+                0, time.monotonic_ns() - render_started
+            )
+    except Exception as exc:
+        code, message = _public_error(exc)
+        audit = _attempt_audit(
+            state,
+            status="rejected",
+            output_format=output_format,
+            max_output_bytes=max_output_bytes,
+            error_code=code,
+            returned_bytes=0,
+        )
+        raise QueryAttemptFailure(code, message, audit) from exc
+    audit = _attempt_audit(
+        state,
+        status="success",
+        output_format=output_format,
+        max_output_bytes=max_output_bytes,
+        error_code=None,
+        returned_bytes=len(rendered.encode("utf-8")),
+    )
+    return QueryAttemptResult(rendered=rendered, cost=cost, audit=audit)
+
+
+def write_attempt_audit(path: Path, audit: dict[str, Any]) -> None:
+    """Atomically publish one trusted audit record without overwriting history."""
+    parent = path.parent.resolve(strict=True)
+    if not parent.is_dir() or path.exists() or path.is_symlink():
+        raise SchemaError("audit output must be a new file in an existing directory")
+    payload = json.dumps(audit, indent=2, sort_keys=True) + "\n"
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=parent, prefix=f".{path.name}.{os.getpid()}.", suffix=".tmp"
+    )
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError as exc:
+            raise SchemaError("audit output already exists") from exc
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 __all__ = [
     "DEFAULT_OUTPUT_BYTES",
     "MAX_OUTPUT_BYTES",
     "ParsedQuery",
     "QUERY_COST_SCHEMA",
+    "QUERY_ATTEMPT_SCHEMA",
     "QUERY_REQUEST_SCHEMA",
     "QUERY_RESPONSE_SCHEMA",
     "QueryExecution",
+    "QueryAttemptFailure",
+    "QueryAttemptResult",
     "STORE_REGISTRY_SCHEMA",
     "execute_query",
     "load_stores",
     "parse_query_request",
+    "run_query_attempt",
     "serialize_execution",
+    "write_attempt_audit",
 ]

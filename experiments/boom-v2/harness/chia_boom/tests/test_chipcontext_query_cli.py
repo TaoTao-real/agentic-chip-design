@@ -96,6 +96,20 @@ class QueryCliTestCase(QueryTestCase):
                     cli.main()
         return caught.exception.code, stdout.getvalue(), stderr.getvalue()
 
+    @staticmethod
+    def run_cli_process(*arguments: str) -> subprocess.CompletedProcess[str]:
+        harness = Path(__file__).parents[2]
+        environment = dict(os.environ)
+        environment["PYTHONPATH"] = str(harness)
+        return subprocess.run(
+            [sys.executable, "-m", "chia_boom.chipcontext.cli", *arguments],
+            cwd=harness,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
     def assert_formats(
         self, registry: Path, request: Path, *, allow_controlled: bool = False
     ) -> tuple[dict, str]:
@@ -125,7 +139,15 @@ class QueryCliOperationsTests(QueryCliTestCase):
         answer = self.service("success", store, "public").candidate_status(scope)
         cost = {
             "schema_version": "chipcontext.query-cost.v1",
+            "status": "success",
             "wall_time_ns": 0,
+            "measurement_boundary": "through_first_complete_render",
+            "phase_time_ns": {
+                "evidence_query_ns": 0,
+                "first_render_ns": 0,
+                "request_validation_ns": 0,
+                "store_resolution_ns": 0,
+            },
             "configuration_read_count": 0,
             "configuration_read_bytes": 0,
             "store_metadata_read_count": 0,
@@ -448,6 +470,154 @@ class QueryCliSecurityAndBudgetTests(QueryCliTestCase):
         self.assertEqual(code, 2)
         self.assertEqual(json.loads(error)["error"], "integrity_error")
         self.assertNotIn(str(snapshot_path), error)
+
+    def test_corrupt_store_metadata_is_path_free_and_audited(self) -> None:
+        _, store, prepared, _, scope = self.prepare(destination="cli-corrupt-store")
+        registry, request = self.write_cli_inputs(
+            stores={"primary": store},
+            scope=scope,
+            operation="candidate_status",
+            parameters={},
+        )
+
+        roots_path = store.root / "ROOTS.json"
+        original_roots = roots_path.read_bytes()
+        snapshot_path = (
+            store.root / "records" / "snapshots"
+            / f"{prepared.snapshot['content_hash']}.json"
+        )
+        original_snapshot = snapshot_path.read_bytes()
+        artifact_path = next(store.root.joinpath("artifacts").glob("*.json"))
+        original_artifact = artifact_path.read_bytes()
+        mutations = [
+            ("roots-array", roots_path, b"[]"),
+            ("roots-type", roots_path, b'{"input":123}'),
+            ("roots-encoding", roots_path, b"\xff\xfe"),
+            ("record-encoding", snapshot_path, b"\xff\xfe"),
+            ("artifact-encoding", artifact_path, b"\xff\xfe"),
+        ]
+        for name, target, damaged in mutations:
+            with self.subTest(name=name):
+                roots_path.write_bytes(original_roots)
+                snapshot_path.write_bytes(original_snapshot)
+                artifact_path.write_bytes(original_artifact)
+                target.write_bytes(damaged)
+                audit_path = registry.parent / f"audit-{name}.json"
+                completed = self.run_cli_process(
+                    "query",
+                    "--registry", str(registry),
+                    "--request", str(request),
+                    "--audit-output", str(audit_path),
+                )
+                self.assertEqual(completed.returncode, 2)
+                self.assertEqual(completed.stdout, "")
+                error = json.loads(completed.stderr)
+                self.assertEqual(error["error"], "integrity_error")
+                self.assertNotIn("Traceback", completed.stderr)
+                self.assertNotIn(str(self.root), completed.stderr)
+                audit = json.loads(audit_path.read_text())
+                self.assertEqual(audit["status"], "rejected")
+                self.assertEqual(audit["error_code"], "integrity_error")
+                self.assertIsNone(audit["answer_ref"])
+                self.assertGreater(audit["cost"]["wall_time_ns"], 0)
+                self.assertGreater(
+                    sum(audit["cost"]["phase_time_ns"].values()), 0
+                )
+        roots_path.write_bytes(original_roots)
+        snapshot_path.write_bytes(original_snapshot)
+        artifact_path.write_bytes(original_artifact)
+
+    def test_success_and_budget_rejection_have_complete_attempt_audits(self) -> None:
+        fixture = self.root / "input-audit-large"
+        shutil.copytree(FIXTURES / "success", fixture)
+        large = fixture / "large.txt"
+        large.write_text("x" * (1024 * 1024))
+        request_value = json.loads((fixture / "request.json").read_text())
+        request_value["artifacts"].append({
+            "name": "large_log",
+            "kind": "diagnostic_log",
+            "path": "large.txt",
+        })
+        (fixture / "request.json").write_text(json.dumps(request_value))
+        store = EvidenceStore(self.root / "store-audit-large", {"input": fixture})
+        prepared = ChipContextService(store).prepare(fixture / "request.json")
+        candidate = CandidateRef(**{
+            key: value for key, value in prepared.snapshot["candidate_ref"].items()
+            if key != "ref_id"
+        })
+        scope = QueryScope(
+            EvidenceHandle("large", prepared.snapshot["content_hash"]),
+            expected_candidate=candidate,
+            expected_attempt_id=prepared.evaluation_manifest["attempt_id"],
+        )
+        large_ref = next(
+            row["ref_id"] for row in prepared.evaluation_manifest["artifacts"]
+            if row["kind"] == "diagnostic_log"
+        )
+        registry, request = self.write_cli_inputs(
+            stores={"large": store},
+            scope=scope,
+            operation="read_artifact",
+            parameters={"artifact_ref": large_ref, "limit_bytes": 8},
+        )
+
+        success_audit_path = registry.parent / "audit-success.json"
+        completed = self.run_cli_process(
+            "query",
+            "--registry", str(registry),
+            "--request", str(request),
+            "--max-output-bytes", str(64 * 1024),
+            "--audit-output", str(success_audit_path),
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        response = json.loads(completed.stdout)
+        success_audit = json.loads(success_audit_path.read_text())
+        self.assertEqual(success_audit["status"], "success")
+        self.assertEqual(success_audit["answer_ref"], response["answer"]["content_hash"])
+        self.assertEqual(
+            success_audit["cost"]["artifact_scan_bytes"],
+            response["cost"]["artifact_scan_bytes"],
+        )
+        self.assertEqual(
+            success_audit["cost"]["hash_bytes"], response["cost"]["hash_bytes"]
+        )
+        self.assertEqual(
+            success_audit["output"]["returned_bytes"],
+            len(completed.stdout.encode("utf-8")),
+        )
+        self.assertGreaterEqual(
+            success_audit["cost"]["artifact_scan_bytes"], 1024 * 1024
+        )
+        self.assertGreater(
+            success_audit["cost"]["phase_time_ns"]["response_serialization_ns"], 0
+        )
+
+        rejected_audit_path = registry.parent / "audit-budget.json"
+        rejected = self.run_cli_process(
+            "query",
+            "--registry", str(registry),
+            "--request", str(request),
+            "--max-output-bytes", "1024",
+            "--audit-output", str(rejected_audit_path),
+        )
+        self.assertEqual(rejected.returncode, 2)
+        self.assertEqual(rejected.stdout, "")
+        self.assertEqual(json.loads(rejected.stderr)["error"], "budget_exceeded")
+        rejected_audit = json.loads(rejected_audit_path.read_text())
+        self.assertEqual(rejected_audit["status"], "rejected")
+        self.assertEqual(rejected_audit["error_code"], "budget_exceeded")
+        self.assertIsNotNone(rejected_audit["answer_ref"])
+        self.assertGreater(
+            rejected_audit["output"]["attempted_output_bytes"], 1024
+        )
+        self.assertEqual(rejected_audit["output"]["returned_bytes"], 0)
+        self.assertGreaterEqual(
+            rejected_audit["cost"]["artifact_scan_bytes"], 1024 * 1024
+        )
+        self.assertGreater(rejected_audit["cost"]["hash_bytes"], 0)
+        self.assertGreater(
+            rejected_audit["cost"]["phase_time_ns"]["response_serialization_ns"], 0
+        )
 
     def test_exact_output_budget_and_dynamic_cost_hash_separation(self) -> None:
         _, store, _, _, scope = self.prepare(destination="cli-budget")

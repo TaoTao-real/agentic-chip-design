@@ -162,13 +162,18 @@ chia-chipcontext query \
   --registry trusted-stores.json \
   --request requests/candidate-status.json \
   --format json \
-  --max-output-bytes 16384
+  --max-output-bytes 16384 \
+  --audit-output audits/candidate-status-attempt.json
 ```
 
 默认只授权 `public`。只有受信 registry 已允许 `controlled` 且调用方显式使用
 `--allow-controlled` 时，查询才会读取受控证据。store 以只读方式打开，查询不会
 创建 alias、事件或缓存。JSON 与 Markdown 由同一个确定性 QueryAnswer 渲染；
 动态耗时和读取成本位于独立 QueryCost，不影响 answer hash。
+QueryCost 明确区分请求校验、store 解析、证据查询和首次渲染；响应内耗时截至首次
+完整渲染。可信 `--audit-output` 会另外保存成功或拒绝 attempt 的完整计量，覆盖
+后续字节核算和预算拒绝；请求本身不能选择审计路径，公开错误也不会暴露这些受控
+计数、traceback 或机器路径。
 
 结构化输出默认上限 16 KiB，硬上限 64 KiB，按最终 UTF-8 字节计算。放不下时
 返回 `budget_exceeded`，不会删去冲突、来源或范围信息。scoped 原文读取支持在
