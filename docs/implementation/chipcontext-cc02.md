@@ -164,8 +164,8 @@ cursor and tamper cases are executable in
 `chia_boom.tests.test_chipcontext_queries`; its fixed answer hashes are stored
 in `chipcontext/fixtures/query-foundation/expected.json`.
 
-The frozen Linux Python 3.12 environment passed all 159 pre-review harness tests plus
-compileall, both CLI help checks and shell syntax checks. The public example's
+The frozen Linux Python 3.12 CI passed all 175 harness tests after the review
+fixes, plus compileall, both CLI help checks and shell syntax checks. The public example's
 complete JSON SHA-256 was
 `04cf47fd806c4f19f978b5e03115754b13fd67fa608e14357736a5f6d17fc502` after
 the v2 query-contract fixes.
