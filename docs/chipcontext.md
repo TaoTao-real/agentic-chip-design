@@ -117,14 +117,14 @@ chia-chipcontext read-artifact \
 
 ## CC-02a：原始工程证据提取
 
-CC-02a 已加入 `vivado-2024.1-v2` 和
-`verilator-differential-v2`。它们只解析 EvidenceStore 已校验的同一份字节，
+CC-02a 已加入 `vivado-2024.1-v3` 和
+`verilator-differential-v3`。它们只解析 EvidenceStore 已校验的同一份字节，
 把 PPA、已采集 timing path、差分检查和首个 grounded mismatch 保存为
 `chipcontext.extraction.v1` sidecar。每个事实都带 artifact hash 与 JSON pointer
 或 byte/line span；timing path 同时保存 top-k 和过滤范围，因此未出现在报告中的
 路径仍是未知。
 
-原始报告值会和 `legacy-evaluation-v3` 逐项核对。一致时合并来源，定义、单位、
+原始报告值会和 `legacy-evaluation-v4` 逐项核对。一致时合并来源，定义、单位、
 stage 或数值不一致时记录 conflict，该指标不产生 delta。既有 BOOM 评分入口也
 调用同一 Vivado 解析核心，但返回接口保持不变。
 

@@ -163,6 +163,14 @@ class ExtractionService:
                 "missing": record.get("missing", []),
                 "source_ref": extraction_ref,
             }
+        if first.get("availability") == "parse_failed":
+            return {
+                "availability": "parse_failed",
+                "fact": None,
+                "coverage": coverage,
+                "missing": record.get("missing", []),
+                "source_ref": extraction_ref,
+            }
         return {
             "availability": first.get("availability", "available"),
             "fact": first,

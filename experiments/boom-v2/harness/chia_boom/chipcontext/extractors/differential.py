@@ -8,7 +8,7 @@ from ..schema import SchemaError
 from .common import SourceDocument, missing
 
 
-EXTRACTOR_REVISION = "verilator-differential-v2"
+EXTRACTOR_REVISION = "verilator-differential-v3"
 _MISMATCH = re.compile(
     rb"MISMATCH\s+cycle=(?P<cycle>\d+)\s+"
     rb"(?:port|signal)=(?P<signal>\S+)"
@@ -33,8 +33,6 @@ def _load(document: SourceDocument) -> dict[str, Any]:
 
 
 def _nonnegative_integer(value: Any, field: str) -> int:
-    # bool is an int subclass and floats such as 3.75 used to be silently
-    # truncated. Producer counters and seeds are exact integers.
     if type(value) is not int or value < 0:
         raise SchemaError(f"{field} must be a non-negative integer")
     return value
@@ -47,12 +45,25 @@ def _check(
     outcome: str | None,
     source_location: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    if not executed and outcome is not None:
+        raise SchemaError(f"unexecuted check {check_id} cannot have an outcome")
+    if executed and outcome not in {"pass", "fail", "inconclusive"}:
+        raise SchemaError(f"executed check {check_id} needs a valid outcome")
     return {
         "check_id": check_id,
         "executed": executed,
         "outcome": outcome,
         "source_location": source_location,
     }
+
+
+def _source_refs(
+    result: SourceDocument, stdout: SourceDocument | None,
+) -> list[str]:
+    refs = [result.artifact_ref]
+    if stdout is not None:
+        refs.append(stdout.artifact_ref)
+    return refs
 
 
 def extract_differential(
@@ -77,13 +88,61 @@ def extract_differential(
     if interface_ok is not None and not isinstance(interface_ok, bool):
         raise SchemaError("differential interface_ok must be boolean when present")
     interface_failure = interface_ok is False
+    explicit_failure = value.get("failure_class")
+    explicit_functional_failure = explicit_failure in _FUNCTIONAL_FAILURE_CLASSES
 
+    mismatch = _MISMATCH.search(stdout.data) if stdout is not None else None
+    pass_line = _PASS.search(stdout.data) if stdout is not None else None
+    pass_cycles = int(pass_line.group(1)) if pass_line is not None else None
+
+    returncode_present = "returncode" in value
+    phases_present = "directed_phases" in value
     returncode: int | None = None
     phases: list[str] | None = None
-    if interface_failure:
-        # differential_test.py exits before simulation in this producer branch.
-        # Missing run-only fields prove the behavior check was not run; they do
-        # not make this valid producer result malformed or imply rc=0.
+    if returncode_present:
+        raw_returncode = value["returncode"]
+        if type(raw_returncode) is not int:
+            raise SchemaError("differential returncode must be an integer")
+        returncode = raw_returncode
+    elif not interface_failure:
+        raise SchemaError("differential returncode must be an integer")
+    if phases_present:
+        raw_phases = value["directed_phases"]
+        if not isinstance(raw_phases, list) or not all(
+            isinstance(item, str) for item in raw_phases
+        ):
+            raise SchemaError("differential directed_phases must be a string list")
+        phases = raw_phases
+    elif not interface_failure:
+        raise SchemaError("differential directed_phases must be a string list")
+
+    run_evidence = []
+    if returncode_present:
+        run_evidence.append("returncode")
+    if phases_present:
+        run_evidence.append("directed_phases")
+    if mismatch is not None:
+        run_evidence.append("stdout_mismatch")
+    if pass_line is not None:
+        run_evidence.append("stdout_pass")
+    if passed:
+        run_evidence.append("passed_true")
+    if explicit_functional_failure:
+        run_evidence.append("explicit_functional_failure")
+
+    execution_state_conflict = interface_failure and bool(run_evidence)
+    native_early_exit = interface_failure and not execution_state_conflict
+    if execution_state_conflict:
+        conflicts.append({
+            "field": "differential.execution_state",
+            "reason": "conflicting_sources",
+            "detail": (
+                "interface_ok=false claims pre-simulation exit but run evidence "
+                f"is present: {', '.join(run_evidence)}"
+            ),
+            "source_refs": _source_refs(result, stdout),
+        })
+    if native_early_exit:
         missing_items.extend([
             missing(
                 "differential.return_code",
@@ -97,22 +156,20 @@ def extract_differential(
             ),
         ])
     else:
-        raw_returncode = value.get("returncode")
-        if type(raw_returncode) is not int:
-            raise SchemaError("differential returncode must be an integer")
-        returncode = raw_returncode
-        raw_phases = value.get("directed_phases")
-        if not isinstance(raw_phases, list) or not all(
-            isinstance(item, str) for item in raw_phases
-        ):
-            raise SchemaError("differential directed_phases must be a string list")
-        phases = raw_phases
+        if returncode is None:
+            missing_items.append(missing(
+                "differential.return_code",
+                "not_collected",
+                "other evidence implies execution but return code is absent",
+            ))
+        if phases is None:
+            missing_items.append(missing(
+                "differential.directed_phases",
+                "not_collected",
+                "other evidence implies execution but directed phases are absent",
+            ))
 
-    mismatch = _MISMATCH.search(stdout.data) if stdout is not None else None
-    pass_line = _PASS.search(stdout.data) if stdout is not None else None
-    pass_cycles = int(pass_line.group(1)) if pass_line is not None else None
-
-    if not interface_failure and passed and returncode != 0:
+    if passed and returncode is not None and returncode != 0:
         conflicts.append({
             "field": "differential.outcome",
             "reason": "conflicting_sources",
@@ -124,14 +181,24 @@ def extract_differential(
             "field": "differential.outcome",
             "reason": "conflicting_sources",
             "detail": "result says pass while stdout contains a mismatch",
-            "source_refs": [result.artifact_ref, stdout.artifact_ref],
+            "source_refs": _source_refs(result, stdout),
         })
     if pass_line is not None and not passed:
         conflicts.append({
             "field": "differential.outcome",
             "reason": "conflicting_sources",
             "detail": "result says fail while stdout contains a PASS marker",
-            "source_refs": [result.artifact_ref, stdout.artifact_ref],
+            "source_refs": _source_refs(result, stdout),
+        })
+    if explicit_functional_failure and (passed or pass_line is not None):
+        conflicts.append({
+            "field": "differential.outcome",
+            "reason": "conflicting_sources",
+            "detail": (
+                f"functional failure class {explicit_failure!r} conflicts with "
+                "pass evidence"
+            ),
+            "source_refs": _source_refs(result, stdout),
         })
     if pass_cycles is not None and pass_cycles != cycles:
         conflicts.append({
@@ -140,14 +207,14 @@ def extract_differential(
             "detail": (
                 f"configured cycles={cycles} but stdout PASS cycles={pass_cycles}"
             ),
-            "source_refs": [result.artifact_ref, stdout.artifact_ref],
+            "source_refs": _source_refs(result, stdout),
         })
     if stdout is not None and passed and pass_line is None:
         conflicts.append({
             "field": "differential.outcome",
             "reason": "conflicting_sources",
             "detail": "result says pass but registered stdout has no PASS marker",
-            "source_refs": [result.artifact_ref, stdout.artifact_ref],
+            "source_refs": _source_refs(result, stdout),
         })
 
     mismatch_fact: dict[str, Any] | None = None
@@ -172,19 +239,18 @@ def extract_differential(
                     "not_collected",
                     f"stdout mismatch marker has no {field} value",
                 ))
-    elif not passed and not interface_failure:
+
+    grounded_functional_failure = (
+        mismatch_fact is not None or explicit_functional_failure
+    )
+    behavior_executed = not native_early_exit
+    if behavior_executed and mismatch_fact is None and not passed:
         missing_items.append(missing(
             "differential.first_mismatch",
-            "not_collected" if stdout is not None else "not_run",
+            "not_collected",
             "no grounded mismatch marker was found in registered stdout",
         ))
 
-    explicit_failure = value.get("failure_class")
-    grounded_functional_failure = (
-        mismatch_fact is not None
-        or explicit_failure in _FUNCTIONAL_FAILURE_CLASSES
-    )
-    behavior_executed = not interface_failure
     if conflicts:
         behavior_outcome = "inconclusive" if behavior_executed else None
     elif passed and returncode == 0:
@@ -192,16 +258,21 @@ def extract_differential(
     elif grounded_functional_failure:
         behavior_outcome = "fail"
     elif behavior_executed:
-        # A crash, timeout, or unexplained nonzero exit is not evidence of a
-        # functional predicate failure.
         behavior_outcome = "inconclusive"
     else:
         behavior_outcome = None
 
+    interface_outcome: str | None = None
+    if interface_ok is not None:
+        interface_outcome = (
+            "inconclusive"
+            if execution_state_conflict
+            else ("pass" if interface_ok else "fail")
+        )
     interface_check = _check(
         "interface_signature",
         executed=interface_ok is not None,
-        outcome=("pass" if interface_ok else "fail") if interface_ok is not None else None,
+        outcome=interface_outcome,
         source_location=(
             result.pointer("/interface_ok") if interface_ok is not None else None
         ),
@@ -226,17 +297,17 @@ def extract_differential(
     if interface_ok is not None:
         source_locations["interface_ok"] = result.pointer("/interface_ok")
 
-    classification = (
-        "interface_mismatch" if interface_failure
-        else (
-            "functional_mismatch" if grounded_functional_failure
-            else (
-                "passed"
-                if behavior_outcome == "pass"
-                else "infrastructure_or_unclassified"
-            )
-        )
-    )
+    if conflicts:
+        classification = "conflicting_evidence"
+    elif native_early_exit:
+        classification = "interface_mismatch"
+    elif grounded_functional_failure:
+        classification = "functional_mismatch"
+    elif behavior_outcome == "pass":
+        classification = "passed"
+    else:
+        classification = "infrastructure_or_unclassified"
+
     completed_cycles = (
         pass_cycles
         if pass_cycles == cycles and not any(
@@ -257,8 +328,6 @@ def extract_differential(
         ))
 
     facts = {
-        # Keep the singular field for v1 consumers while publishing both
-        # predicates explicitly for reconciliation.
         "check": behavior_check,
         "checks": [interface_check, behavior_check],
         "passed": passed,
@@ -270,17 +339,22 @@ def extract_differential(
         "scenario": scenario,
         "directed_phases": phases,
         "return_code": returncode,
+        "producer_failure_class": explicit_failure,
         "failure_class": classification,
         "first_mismatch": mismatch_fact,
         "source_locations": source_locations,
     }
+    simulator_execution = (
+        "inconclusive" if execution_state_conflict
+        else ("not_run" if native_early_exit else "attempted")
+    )
     return {
         "extractor_revision": EXTRACTOR_REVISION,
         "facts": facts,
         "coverage": {
             "result_json": "collected",
             "stdout": "collected" if stdout is not None else "not_collected",
-            "simulator_execution": "not_run" if interface_failure else "attempted",
+            "simulator_execution": simulator_execution,
             "mismatch_policy": "first_grounded_marker",
             "cycle_count_policy": "stdout_pass_marker_exact_match",
         },

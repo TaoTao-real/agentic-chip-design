@@ -9,25 +9,32 @@ runtime is using these facts.
 
 CC-02a adds two standard-library extractors:
 
-- `vivado-2024.1-v2` reads the timing summary, utilization report and collected
+- `vivado-2024.1-v3` reads the timing summary, utilization report and collected
   timing-path report. It records each supported value with an artifact hash and
   exact source span. Timing-path coverage records the producer command form,
   requested `max_paths`, filters, stage, returned count and report order. A path
   absent from the collected top-k is unknown, rather than proved absent. A
   partially parsed rank-one path remains rank one and is marked `partial`; a
   supplied but unparseable report is `parse_failed`, distinct from an absent
-  report (`not_collected`).
-- `verilator-differential-v2` reads the differential result JSON and optional
+  report (`not_collected`). Path-block boundaries are identified before Slack
+  parsing, so an invalid first Slack value cannot renumber a later path as the
+  collected worst path.
+- `verilator-differential-v3` reads the differential result JSON and optional
   stdout. It separates interface checking, simulator execution and functional
   correctness. A process crash without a grounded mismatch is `inconclusive`,
   while an interface mismatch records the interface failure and leaves the
   differential behavior check `not_run`. The JSON `cycles` value is a
   configured upper bound; `completed_cycles` is published only when a matching
-  stdout `PASS cycles=N` marker proves completion.
+  stdout `PASS cycles=N` marker proves completion. Early-exit, run fields,
+  PASS/mismatch markers and supported explicit failures are reconciled before
+  checks are published; contradictory evidence remains `inconclusive` with a
+  conflict record.
 
 The machine-readable field contract is in
 [`chipcontext-cc02-field-sources.json`](chipcontext-cc02-field-sources.json).
-The existing adapter remains `legacy-evaluation-v3`.
+The legacy adapter is `legacy-evaluation-v4`; the revision changed because an
+interface-failure claim that coexists with run evidence now remains an explicit
+conflict instead of being normalized to `not_run`.
 
 Extraction uses `EvidenceStore.verified_artifact_bytes()`: the digest is
 computed over the bytes passed to the parser, and a file mutation during or
@@ -88,7 +95,7 @@ the evaluator entry point and the new parsing core.
 The public-safe hashes, counts, logical bytes and measured preparation/query
 times are recorded in
 [`chipcontext-cc02a-controlled-calibration.json`](chipcontext-cc02a-controlled-calibration.json).
-The v2 server replay passed all 128 harness tests and the frozen low-resource
+The v3 server replay passed all 134 harness tests and the frozen low-resource
 qualification doctor. It reused the prior 10,000-cycle smoke by verified hash;
 no simulator, EDA, or model run was added. Revision, hashes, counts and timings
 are recorded in the adjacent calibration JSON.

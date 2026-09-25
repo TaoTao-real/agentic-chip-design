@@ -10,7 +10,7 @@ from ..schema import SchemaError
 from .common import SourceDocument, missing
 
 
-EXTRACTOR_REVISION = "vivado-2024.1-v2"
+EXTRACTOR_REVISION = "vivado-2024.1-v3"
 
 _SUMMARY = re.compile(
     rb"WNS\(ns\).*?\n\s*-+.*?\n\s*"
@@ -19,11 +19,12 @@ _SUMMARY = re.compile(
 )
 _LUTS = re.compile(rb"\|\s*Slice LUTs\*?\s*\|\s*([\d,]+)")
 _REGS = re.compile(rb"\|\s*Slice Registers\s*\|\s*([\d,]+)")
-_PATH_START = re.compile(
+_PATH_BOUNDARY = re.compile(
     rb"^Slack\s+\((?P<status>[^)]+)\)\s*:\s*"
-    rb"(?P<slack>-?\d+(?:\.\d+)?)ns[^\r\n]*",
+    rb"(?P<raw_slack>[^\r\n]*)",
     re.M,
 )
+_SLACK_VALUE = re.compile(rb"^\s*(-?\d+(?:\.\d+)?)ns\b")
 _COMMAND = re.compile(rb"^\| Command\s*:\s*(.*?)\s*$", re.M)
 
 
@@ -166,9 +167,10 @@ def parse_timing_paths(
     *,
     stage: str,
 ) -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[str, str]]]:
-    starts = list(_PATH_START.finditer(document.data))
+    starts = list(_PATH_BOUNDARY.finditer(document.data))
     paths: list[dict[str, Any]] = []
     omitted: list[dict[str, str]] = []
+    invalid_slack_count = 0
     optional = (
         b"Source", b"Destination", b"Path Group", b"Path Type",
         b"Requirement", b"Data Path Delay", b"Logic Levels",
@@ -177,6 +179,7 @@ def parse_timing_paths(
         block_start = header.start()
         block_end = starts[index + 1].start() if index + 1 < len(starts) else len(document.data)
         block = document.data[block_start:block_end]
+        slack_match = _SLACK_VALUE.match(header.group("raw_slack"))
         fields = {label: _field(block, label) for label in optional[:4]}
         requirement = _number_field(block, b"Requirement")
         delay = _number_field(block, b"Data Path Delay")
@@ -197,6 +200,13 @@ def parse_timing_paths(
                 "not_collected",
                 "path block lacks optional field(s): " + ", ".join(absent),
             ))
+        if slack_match is None:
+            invalid_slack_count += 1
+            omitted.append(missing(
+                f"timing_paths[{index + 1}].slack_ns",
+                "parse_failed",
+                "path block has an unparseable Slack value",
+            ))
         def text(label: bytes) -> str | None:
             match = fields[label]
             return (
@@ -206,12 +216,21 @@ def parse_timing_paths(
         paths.append({
             "rank": index + 1,
             "stage": stage,
-            "availability": "partial" if absent else "available",
-            "missing_fields": absent,
+            "availability": (
+                "parse_failed" if slack_match is None
+                else ("partial" if absent else "available")
+            ),
+            "missing_fields": (["Slack"] if slack_match is None else []) + absent,
             "status": header.group("status").decode("ascii", errors="replace").lower(),
             "source": text(b"Source"),
             "destination": text(b"Destination"),
-            "slack_ns": _float(header.group("slack"), "timing_path.slack_ns"),
+            "slack_ns": (
+                _float(slack_match.group(1), "timing_path.slack_ns")
+                if slack_match is not None else None
+            ),
+            "raw_slack": header.group("raw_slack").decode(
+                "utf-8", errors="replace"
+            ).strip(),
             "requirement_ns": (
                 _float(requirement.group(1), "timing_path.requirement_ns")
                 if requirement is not None else None
@@ -236,8 +255,9 @@ def parse_timing_paths(
         "stage": stage,
         "returned_path_count": len(paths),
         "reported_block_count": len(starts),
+        "parsed_slack_count": len(starts) - invalid_slack_count,
         "parse_status": (
-            "parse_failed" if not starts
+            "parse_failed" if not starts or invalid_slack_count == len(starts)
             else ("partial" if omitted else "complete")
         ),
         "ordering": "producer_report_order",

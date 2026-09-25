@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import tempfile
 import unittest
@@ -228,6 +229,51 @@ class VivadoExtractorTests(ExtractorTestCase):
         self.assertEqual(answer["fact"]["slack_ns"], -1.25)
         self.assertIsNone(answer["fact"]["logic_levels"])
         self.assertEqual(answer["coverage"]["parse_status"], "partial")
+
+    def test_unparseable_first_slack_does_not_renumber_second_path(self) -> None:
+        path = self.input / "post_synth_timing_paths.rpt"
+        path.write_bytes(path.read_bytes().replace(
+            b"Slack (VIOLATED) :        -1.250ns",
+            b"Slack (VIOLATED) :        N/A",
+            1,
+        ))
+        record = self.vivado_record()
+        paths = record["facts"]["timing_paths"]
+        self.assertEqual([item["rank"] for item in paths], [1, 2])
+        self.assertEqual(paths[0]["availability"], "parse_failed")
+        self.assertIsNone(paths[0]["slack_ns"])
+        self.assertEqual(paths[1]["slack_ns"], -0.75)
+        self.assertEqual(
+            record["coverage"]["timing_paths"]["parse_status"], "partial"
+        )
+        answer = ExtractionService(self.store).worst_timing_path(
+            record["content_hash"]
+        )
+        self.assertEqual(answer["availability"], "parse_failed")
+        self.assertIsNone(answer["fact"])
+
+    def test_all_unparseable_slacks_report_parse_failed(self) -> None:
+        path = self.input / "post_synth_timing_paths.rpt"
+        data = re.sub(
+            rb"Slack \(VIOLATED\)\s*:\s*-?\d+(?:\.\d+)?ns",
+            b"Slack (VIOLATED) : N/A",
+            path.read_bytes(),
+        )
+        path.write_bytes(data)
+        record = self.vivado_record()
+        self.assertEqual(
+            record["coverage"]["timing_paths"]["parse_status"],
+            "parse_failed",
+        )
+        self.assertEqual(
+            [item["rank"] for item in record["facts"]["timing_paths"]],
+            [1, 2],
+        )
+        answer = ExtractionService(self.store).worst_timing_path(
+            record["content_hash"]
+        )
+        self.assertEqual(answer["availability"], "parse_failed")
+        self.assertIsNone(answer["fact"])
 
     def test_malformed_path_report_is_not_reported_as_not_collected(self) -> None:
         (self.input / "post_synth_timing_paths.rpt").write_text(
@@ -457,6 +503,86 @@ class DifferentialExtractorTests(ExtractorTestCase):
         self.assertIsNone(result["facts"]["return_code"])
         self.assertEqual(result["coverage"]["simulator_execution"], "not_run")
 
+    def test_interface_failure_conflicting_with_run_evidence_is_inconclusive(
+        self,
+    ) -> None:
+        value = {
+            "cycles": 10000,
+            "seed": 41,
+            "scenario": "contradictory-interface-exit",
+            "passed": False,
+            "interface_ok": False,
+            "returncode": 1,
+            "directed_phases": [],
+            "failure_class": "candidate_interface_mismatch",
+        }
+        result = self.extract(
+            value, b"MISMATCH cycle=28 port=out_valid\n"
+        )
+        checks = {item["check_id"]: item for item in result["facts"]["checks"]}
+        self.assertEqual(
+            checks["interface_signature"]["outcome"], "inconclusive"
+        )
+        self.assertTrue(checks["differential_correctness"]["executed"])
+        self.assertEqual(
+            checks["differential_correctness"]["outcome"], "inconclusive"
+        )
+        self.assertEqual(
+            result["coverage"]["simulator_execution"], "inconclusive"
+        )
+        self.assertTrue(any(
+            item["field"] == "differential.execution_state"
+            for item in result["conflicts"]
+        ))
+        for check in checks.values():
+            if not check["executed"]:
+                self.assertIsNone(check["outcome"])
+
+    def test_explicit_functional_failure_conflicting_with_pass_is_inconclusive(
+        self,
+    ) -> None:
+        value = {
+            "cycles": 100,
+            "seed": 41,
+            "scenario": "conflicting-explicit-failure",
+            "directed_phases": ["idle"],
+            "returncode": 0,
+            "passed": True,
+            "failure_class": "functional_mismatch",
+        }
+        for stdout in (None, b"PASS cycles=100\n"):
+            with self.subTest(stdout=stdout):
+                result = self.extract(value, stdout)
+                self.assertEqual(
+                    result["facts"]["check"]["outcome"], "inconclusive"
+                )
+                self.assertEqual(
+                    result["facts"]["failure_class"], "conflicting_evidence"
+                )
+                self.assertTrue(any(
+                    "functional failure class" in item["detail"]
+                    for item in result["conflicts"]
+                ))
+
+    def test_explicit_functional_failure_without_pass_is_fail(self) -> None:
+        value = {
+            "cycles": 100,
+            "seed": 41,
+            "scenario": "explicit-functional-failure",
+            "directed_phases": ["idle"],
+            "returncode": 1,
+            "passed": False,
+            "failure_class": "functional_mismatch",
+        }
+        result = self.extract(value, None)
+        self.assertEqual(result["facts"]["check"]["outcome"], "fail")
+        self.assertFalse(result["conflicts"])
+        self.assertTrue(any(
+            item["field"] == "differential.first_mismatch"
+            and item["reason"] == "not_collected"
+            for item in result["missing"]
+        ))
+
     def test_noninteger_counters_are_rejected_without_truncation(self) -> None:
         value = json.loads((self.input / "differential-result.json").read_text())
         for field in ("cycles", "seed"):
@@ -608,6 +734,64 @@ class PreparationIntegrationTests(ExtractorTestCase):
         self.assertEqual(checks["interface_signature"]["outcome"], "fail")
         self.assertFalse(checks["differential_correctness"]["executed"])
         self.assertIsNone(checks["differential_correctness"]["outcome"])
+
+    def test_prepare_preserves_interface_and_run_evidence_conflict(self) -> None:
+        fixture = self.root / "interface-run-conflict"
+        shutil.copytree(FIXTURE.parent / "failure", fixture)
+        raw = {
+            "cycles": 10000,
+            "seed": 43,
+            "scenario": "synthetic-interface-run-conflict",
+            "passed": False,
+            "interface_ok": False,
+            "returncode": 1,
+            "directed_phases": [],
+            "failure_class": "candidate_interface_mismatch",
+        }
+        (fixture / "raw-differential.json").write_text(json.dumps(raw))
+        (fixture / "raw-differential.stdout").write_text(
+            "MISMATCH cycle=28 port=out_valid\n"
+        )
+        legacy_result = json.loads((fixture / "result.json").read_text())
+        evaluation = legacy_result["search_evaluation"]
+        evaluation["differential"] = raw
+        evaluation["interface_ok"] = False
+        evaluation["failure_class"] = "candidate_interface_mismatch"
+        (fixture / "result.json").write_text(json.dumps(legacy_result, indent=2))
+        request = json.loads((fixture / "request.json").read_text())
+        request["artifacts"].extend([
+            {
+                "name": "differential_result",
+                "kind": "differential_result",
+                "path": "raw-differential.json",
+            },
+            {
+                "name": "differential_stdout",
+                "kind": "differential_stdout",
+                "path": "raw-differential.stdout",
+            },
+        ])
+        (fixture / "request.json").write_text(json.dumps(request, indent=2))
+        result = ChipContextService(
+            EvidenceStore(self.root / "conflict-store", {"input": fixture})
+        ).prepare(fixture / "request.json")
+        checks = {
+            item["check_id"]: item for item in result.snapshot["checks"]
+        }
+        self.assertEqual(
+            checks["interface_signature"]["outcome"], "inconclusive"
+        )
+        self.assertTrue(checks["differential_correctness"]["executed"])
+        self.assertEqual(
+            checks["differential_correctness"]["outcome"], "inconclusive"
+        )
+        self.assertTrue(any(
+            item["field"] in {
+                "checks.differential_execution",
+                "differential.execution_state",
+            }
+            for item in result.packet["conflicts"]
+        ))
 
 
 if __name__ == "__main__":

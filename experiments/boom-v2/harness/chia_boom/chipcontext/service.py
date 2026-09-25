@@ -22,7 +22,7 @@ from .extraction import ExtractionService
 from .store import EvidenceStore
 
 
-PARSER_REVISION = "legacy-evaluation-v3"
+PARSER_REVISION = "legacy-evaluation-v4"
 POLICY_REVISION = "cc01-static-required-v1"
 METRIC_DEFINITIONS = {
     "critical_delay_ns": ("timing-critical-delay-v1", "ns"),
@@ -44,6 +44,10 @@ STAGE_MAP = {
     "post_route": "post_route",
     "regression": "regression",
 }
+_LEGACY_FUNCTIONAL_FAILURE_CLASSES = frozenset({
+    "functional_mismatch",
+    "differential_mismatch",
+})
 
 
 def _artifact_for(
@@ -454,10 +458,38 @@ def _checks(
     # infrastructure interruption).  Dataclass default booleans are summaries,
     # not execution evidence, and are only reconciled with concrete payloads.
     build_executed = _stage_executed(evaluation, {"elaboration"})
+    legacy_run_evidence = (
+        isinstance(differential, dict)
+        and (
+            "returncode" in differential
+            or "directed_phases" in differential
+            or differential.get("passed") is True
+            or differential.get("expected") is not None
+            or differential.get("actual") is not None
+            or differential.get("failure_class")
+            in _LEGACY_FUNCTIONAL_FAILURE_CLASSES
+        )
+    )
+    interface_execution_conflict = (
+        isinstance(differential, dict)
+        and differential.get("interface_ok") is False
+        and legacy_run_evidence
+    )
     interface_prevented_run = (
         isinstance(differential, dict)
         and differential.get("interface_ok") is False
+        and not legacy_run_evidence
     )
+    if interface_execution_conflict:
+        conflicts.append({
+            "field": "checks.differential_execution",
+            "reason": "conflicting_sources",
+            "detail": (
+                "interface_ok=false conflicts with recorded simulator or "
+                "functional evidence"
+            ),
+            "source_ref": source_ref,
+        })
     correctness_executed = (
         False
         if interface_prevented_run
@@ -588,6 +620,9 @@ def _checks(
             else None,
         },
     )
+    if interface_execution_conflict:
+        correctness_passed = None
+        interface_passed = None
     synth_passed = reconcile(
         "post_synth", {"payload": synth_payload, "stage": synth_stage}
     )

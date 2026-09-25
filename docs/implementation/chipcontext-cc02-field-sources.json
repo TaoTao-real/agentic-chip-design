@@ -1,10 +1,10 @@
 {
   "extractors": {
-    "verilator-differential-v2": {
+    "verilator-differential-v3": {
       "fields": {
         "check.outcome": {
-          "format": "separate interface and differential behavior predicates; result JSON reconciled with grounded stdout markers",
-          "missing": "not_run or inconclusive",
+          "format": "unified reconciliation of early-exit, run fields, PASS/mismatch markers and supported explicit failures",
+          "missing": "not_run or inconclusive; contradictory evidence is a conflict",
           "producer": "BoomDifferentialNode",
           "source": "result.json#/passed and #/returncode",
           "stages": [
@@ -34,7 +34,7 @@
         },
         "directed_phases": {
           "format": "JSON string array",
-          "missing": "not_run for interface mismatch; otherwise parse_failed",
+          "missing": "not_run for a native interface early exit; not_collected when other evidence implies execution; malformed present values are rejected",
           "producer": "BoomDifferentialNode",
           "source": "result.json#/directed_phases",
           "stages": [
@@ -92,9 +92,19 @@
           ],
           "unit": null
         },
+        "producer_failure_class": {
+          "format": "versioned producer failure label; only documented functional labels prove a behavior failure",
+          "missing": "not_collected",
+          "producer": "BoomDifferentialNode",
+          "source": "result.json#/failure_class",
+          "stages": [
+            "correctness"
+          ],
+          "unit": null
+        },
         "return_code": {
           "format": "JSON integer",
-          "missing": "not_run for interface mismatch; otherwise parse_failed",
+          "missing": "not_run for a native interface early exit; not_collected when other evidence implies execution; malformed present values are rejected",
           "producer": "BoomDifferentialNode",
           "source": "result.json#/returncode",
           "stages": [
@@ -124,7 +134,7 @@
         }
       }
     },
-    "vivado-2024.1-v2": {
+    "vivado-2024.1-v3": {
       "fields": {
         "clock_period_ns": {
           "definition_revision": "clock-constraint-v1",
@@ -187,9 +197,9 @@
           "unit": "count"
         },
         "timing_paths": {
-          "coverage": "command, max_paths, delay_type, path_type, report order, returned count and parse status",
+          "coverage": "command, max_paths, delay_type, path type, original block count/rank, parsed Slack count and parse status",
           "definition_revision": "vivado-timing-path-v1",
-          "format": "ordered report_timing path blocks; rank and slack survive missing optional fields",
+          "format": "ordered report_timing blocks; block rank is assigned before Slack and optional-field parsing",
           "missing": "not_collected, partial, or parse_failed",
           "producer": "Vivado report_timing",
           "source": "whole path-block byte and line span",
@@ -238,6 +248,6 @@
       }
     }
   },
-  "legacy_adapter": "legacy-evaluation-v3",
+  "legacy_adapter": "legacy-evaluation-v4",
   "schema_version": "chipcontext.field-source-registry.v1"
 }
