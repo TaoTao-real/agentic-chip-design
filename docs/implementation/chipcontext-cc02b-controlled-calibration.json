@@ -7,7 +7,7 @@
     "frozen_smoke_expected_sha256": "6821977ae1645eba6302feedb18cf07e057f2c9e308d8367b7d5c095fc41f52c",
     "frozen_smoke_hash_matches": true,
     "frozen_smoke_sha256": "6821977ae1645eba6302feedb18cf07e057f2c9e308d8367b7d5c095fc41f52c",
-    "full_harness_tests_passed": 205,
+    "full_harness_tests_passed": 207,
     "model_credential_present_during_review": false,
     "qualification_profile": "single-slot-low-resource"
   },
@@ -30,7 +30,7 @@
     "failure": {
       "answer_hash": "5d94f641cdf3b1cd3100b051cafe1923db6f081a67a1a2075bd5aebe5cf54fec",
       "answer_leaf_fields": 118,
-      "json_cli_wall_time_ns": 90689625,
+      "json_cli_wall_time_ns": 90041618,
       "json_markdown_identity_fields_checked": 4,
       "logical_reads": {
         "artifact_metadata_read_bytes": 10037,
@@ -38,14 +38,14 @@
         "hash_bytes": 279059,
         "parse_bytes": 36096,
         "record_read_bytes": 24620,
-        "return_bytes": 7667
+        "return_bytes": 7927
       },
-      "markdown_cli_wall_time_ns": 92537106
+      "markdown_cli_wall_time_ns": 91589198
     },
     "metrics": {
       "answer_hash": "e6b8fa62a6ee067e4c3ecc939e92e917492e58447a166fc0f329f469719f2b06",
       "answer_leaf_fields": 118,
-      "json_cli_wall_time_ns": 91357159,
+      "json_cli_wall_time_ns": 92725016,
       "json_markdown_identity_fields_checked": 4,
       "logical_reads": {
         "artifact_metadata_read_bytes": 11092,
@@ -53,14 +53,14 @@
         "hash_bytes": 428251,
         "parse_bytes": 57256,
         "record_read_bytes": 44109,
-        "return_bytes": 7657
+        "return_bytes": 7917
       },
-      "markdown_cli_wall_time_ns": 89772536
+      "markdown_cli_wall_time_ns": 92660134
     },
     "timing": {
       "answer_hash": "3d961404c47b871d2efacbe814411cfc1bd63d1bbaca718161cb95a42661a07e",
       "answer_leaf_fields": 129,
-      "json_cli_wall_time_ns": 90152917,
+      "json_cli_wall_time_ns": 92443792,
       "json_markdown_identity_fields_checked": 4,
       "logical_reads": {
         "artifact_metadata_read_bytes": 11289,
@@ -68,9 +68,9 @@
         "hash_bytes": 770470,
         "parse_bytes": 56844,
         "record_read_bytes": 44109,
-        "return_bytes": 8415
+        "return_bytes": 8676
       },
-      "markdown_cli_wall_time_ns": 90804110
+      "markdown_cli_wall_time_ns": 91836197
     }
   },
   "model_calls": 0,
