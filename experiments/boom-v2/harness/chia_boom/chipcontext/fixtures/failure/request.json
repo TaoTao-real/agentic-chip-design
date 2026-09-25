@@ -1,0 +1,31 @@
+{
+  "access": "public",
+  "artifacts": [
+    {
+      "kind": "differential_stderr",
+      "name": "differential_stderr",
+      "path": "differential.stderr"
+    }
+  ],
+  "attempt_id": "evaluation-attempt-01",
+  "baseline": "baseline-ppa.json",
+  "candidate": "candidate.json",
+  "evaluation": "result.json",
+  "experiment_id": "synthetic-failure-campaign",
+  "input_root": ".",
+  "knowledge_acl": {
+    "target_specific": false
+  },
+  "manifest_bindings": {
+    "baseline": "evidence/baseline-ppa.json",
+    "qualification": "evidence/QUALIFICATION.json"
+  },
+  "policy": {
+    "max_payload_bytes": 16384,
+    "revision": "cc01-static-required-v1"
+  },
+  "qualification": "QUALIFICATION.json",
+  "schema_version": "chipcontext.prepare-request.v1",
+  "sealed_manifest": "FROZEN_RUN_MANIFEST.json",
+  "working_source": "working-source.scala"
+}

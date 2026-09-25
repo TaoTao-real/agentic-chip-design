@@ -1,0 +1,128 @@
+{
+  "cases": {
+    "failure": {
+      "binding_status": {
+        "baseline": "verified",
+        "candidate_evaluation": "verified",
+        "qualification": "verified"
+      },
+      "conflict_count": 0,
+      "field_checked_count": 8,
+      "field_consistent_count": 8,
+      "input_hashes": {
+        "baseline": "773f4a8e996b076da083eefa2d1ceaa4078e223168d868a6ba7ad8ad861a1682",
+        "candidate": "3e4a61e7ec3c0cd09ceff6a93cdab9e5dad06e22af1c27786b7822f1b4c2d46e",
+        "differential_stdout": "af47369aa7755f14a4e4b32a2d424074568a4ef463f8352b8200a7352bdea510",
+        "evaluation": "75df07f52f5575b72086606624ecf784d127865ca3410005585a6a0e9635daac",
+        "qualification": "fc90e0ee9e6db30505a98ae869f0c762ab3d75c3e8957ffa974aa75bb13a6051",
+        "sealed_manifest": "8ff02267cbc805ebc071229ce44d5e53c5bd313e071577a8c0070878e7745fe6",
+        "working_source": "bfebf7980a88036c59fbe2d191a5e15a481b80548c87e83297053d8384396906"
+      },
+      "missing_count": 9,
+      "output_hashes": {
+        "bundle": "464fd1b2f6451ac6c674078991ee3ec8cfb22b17aa8bb92d107d8709897c6937",
+        "evaluation_manifest": "40777b16eb6bcf59147e2a3b23a970ba3d39586c0edb974633fe5d33670da385",
+        "packet": "42e316d260eebe4c0bc750ad12f3ebaafeb3e39f23777214bca38a51ca8b4c77",
+        "packet_bytes": 3789,
+        "schema_version": "chipcontext.preparation-result.v1",
+        "snapshot": "147052d7232d6f97beaf9e11bc989c3369759e3143be1ab5621b886aad7d9d25"
+      },
+      "packet_actual_bytes": 3789,
+      "packet_required_bytes": 3789,
+      "parser_revision": "legacy-evaluation-v3",
+      "prepare_milliseconds": 90.0,
+      "query_artifact_sha256": "af47369aa7755f14a4e4b32a2d424074568a4ef463f8352b8200a7352bdea510",
+      "query_bytes": 328,
+      "query_milliseconds": 60.0,
+      "query_span": {
+        "end_byte": 328,
+        "end_line": 4,
+        "start_byte": 0,
+        "start_line": 1
+      },
+      "query_truncated": false
+    },
+    "success": {
+      "binding_status": {
+        "baseline": "verified",
+        "candidate_evaluation": "verified",
+        "qualification": "verified"
+      },
+      "conflict_count": 0,
+      "field_checked_count": 15,
+      "field_consistent_count": 15,
+      "input_hashes": {
+        "baseline": "773f4a8e996b076da083eefa2d1ceaa4078e223168d868a6ba7ad8ad861a1682",
+        "candidate": "8791df1cb2d32102cf250ae4bb3c630d8b2513a4b14c471243f469f1c399dbf6",
+        "evaluation": "5998f502322058ed2ac35cf97128d292c244cd4dd05fea27ecd5c7579947e87d",
+        "qualification": "fc90e0ee9e6db30505a98ae869f0c762ab3d75c3e8957ffa974aa75bb13a6051",
+        "sealed_manifest": "8ff02267cbc805ebc071229ce44d5e53c5bd313e071577a8c0070878e7745fe6",
+        "timing_report": "dbf713ce115cb94377374a332a91ee3fd4a601b05b0659aa3020ea8391d50f3d",
+        "working_source": "9310379c5bf3e12c88acbc31e86ce204acdc1642688d3d24545ea1265179915c"
+      },
+      "missing_count": 5,
+      "output_hashes": {
+        "bundle": "fec088578dcf58486cc2f59543377c5ebbd980ae75a749e514a74f296fea2630",
+        "evaluation_manifest": "e8e1b340e75a7e28fe2e075973c4855e6e1539bee1e20f2a868e8ab90fb718a1",
+        "packet": "854ae2de6e7756abb645d2a137e988788fc230e26ba77e2ce21f2efd29ebae78",
+        "packet_bytes": 3355,
+        "schema_version": "chipcontext.preparation-result.v1",
+        "snapshot": "412e97d3434fdad21731db80c30976dc42111c90ed4d45ce5d4f224bdd8350ed"
+      },
+      "packet_actual_bytes": 3355,
+      "packet_required_bytes": 3355,
+      "parser_revision": "legacy-evaluation-v3",
+      "prepare_milliseconds": 90.0,
+      "query_artifact_sha256": "dbf713ce115cb94377374a332a91ee3fd4a601b05b0659aa3020ea8391d50f3d",
+      "query_bytes": 922,
+      "query_milliseconds": 70.0,
+      "query_span": {
+        "end_byte": 922,
+        "end_line": 8,
+        "start_byte": 0,
+        "start_line": 1
+      },
+      "query_truncated": false
+    }
+  },
+  "environment_review": {
+    "doctor_failed_required_checks": [],
+    "doctor_passed": true,
+    "doctor_sha256": "a3726f25c99a86d8962d315608344f8e4ffc3cfecececb5c62c3db3e6ecd282c",
+    "existing_qualification_current": true,
+    "failed_smoke": {
+      "cycles": 10000,
+      "reason": "relative_output_path_resolved_after_subprocess_cwd_change",
+      "sha256": "6273c620e73db52e15204402ba1c6355c6cbf91ea0cad8f4cb1eeca1656af95e",
+      "status": "failed"
+    },
+    "measured_resources": {
+      "available_memory_bytes": 26996989952,
+      "free_disk_bytes": 107979886592,
+      "logical_cpus": 64,
+      "total_memory_bytes": 33491304448
+    },
+    "new_baseline_smoke": {
+      "api_key_used": false,
+      "cycles": 10000,
+      "differential_result_sha256": "4ccb1f269fbd7830f67b064dd826b1d4f61a7085a2ba3ac9cc438ea82111fc83",
+      "elapsed_seconds": 17.61110425798688,
+      "frozen_manifest_sha256": "b2af5505e581d4285bc51154136de63da36c3877c440483b2ff3e30aca9c7212",
+      "jobs": 12,
+      "model_calls": 0,
+      "seed": 20260925,
+      "sha256": "6821977ae1645eba6302feedb18cf07e057f2c9e308d8367b7d5c095fc41f52c",
+      "status": "passed"
+    },
+    "resource_thresholds": {
+      "minimum_free_disk_gib": 80,
+      "minimum_total_memory_gib": 30,
+      "scope": "single_slot_no_model_smoke"
+    },
+    "verify_environment_passed": true,
+    "verify_environment_sha256": "36c45681cc349cb03e66834760cae2f6ca245fe95f65a0304bdb0dc09efd6fe5"
+  },
+  "public_safe": true,
+  "schema_version": "chipcontext.controlled-calibration-summary.v3",
+  "source_type": "controlled_real"
+}

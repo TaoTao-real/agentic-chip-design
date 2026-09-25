@@ -1,0 +1,12 @@
+{
+  "campaign_id": "synthetic-success-campaign",
+  "id": "neutral-success-candidate-01",
+  "target": "NeutralArithmetic",
+  "arm": "fixture",
+  "seed": 41,
+  "index": 1,
+  "parent_id": null,
+  "parent_source_sha256": null,
+  "source": "class NeutralArithmetic extends Module {\n  val io = IO(new Bundle {})\n}\n",
+  "diff": "synthetic fixture diff; no production design content"
+}

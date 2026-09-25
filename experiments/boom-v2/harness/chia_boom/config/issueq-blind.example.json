@@ -27,6 +27,7 @@
     "clock_period_ns": 5.0,
     "maximum_lut_ratio": 1.05,
     "cpus_per_job": 12,
+    "minimum_total_memory_gib": 32,
     "candidate_timeout_seconds": 5400,
     "route_timeout_seconds": 10800,
     "regression_timeout_seconds": 10800
@@ -45,6 +46,7 @@
     "install_root": "${AGENTIC_CHIP_LAB_ROOT}/boom-public-v1",
     "workspace_slots": "${CHIPYARD_WORKSPACE_ROOT}",
     "workspace_wait_seconds": 7200,
+    "minimum_free_disk_gib": 200,
     "required_patch": null,
     "tools_root": "${AGENTIC_CHIP_HARNESS_ROOT}/chia_boom/tools",
     "baseline_rtl_root": "${AGENTIC_CHIP_LAB_ROOT}/boom-public-v1/frozen/baseline-rtl",

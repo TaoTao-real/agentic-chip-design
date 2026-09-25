@@ -1,0 +1,11 @@
+{
+  "stage": "post_synth",
+  "critical_delay_ns": 10.0,
+  "clock_period_ns": 5.0,
+  "wns_ns": -5.0,
+  "tns_ns": -20.0,
+  "failing_endpoints": 3,
+  "total_endpoints": 128,
+  "slice_luts": 100,
+  "slice_registers": 80
+}

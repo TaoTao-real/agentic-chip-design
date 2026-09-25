@@ -1,0 +1,25 @@
+{
+  "contract": {
+    "base": {
+      "config": "SyntheticConfig"
+    },
+    "physical": {
+      "clock_period_ns": 5.0,
+      "maximum_lut_ratio": 1.05,
+      "part": "synthetic-part",
+      "tool": "Vivado"
+    },
+    "targets": {
+      "NeutralQueue": {
+        "id": "NeutralQueue"
+      }
+    }
+  },
+  "files": {
+    "evidence/QUALIFICATION.json": "8d54709ec6eb308830b60a063e47362f7130b5809150f24f928ed964bde838b1",
+    "evidence/baseline-ppa.json": "162a56c14439a7ef90cc48e2d33e2ab0cb26b3f36e741ec8d4923940c233a2d3",
+    "targets/NeutralQueue/baseline-source.scala": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "fingerprint": "41f3ee01095daf28b49f71ac2fd4adf5266c1599b09406bb2d0e33cd215518e2",
+  "schema_version": "frozen-run-v1"
+}

@@ -32,6 +32,12 @@ API key 不属于实验输入包。所有命令只从 `DEEPSEEK_API_KEY` 环境�
 | Java | OpenJDK 11（受控环境） | BOOM Chisel elaboration |
 | Scala | 由冻结 Chipyard 环境提供 | BOOM Chisel elaboration |
 
+`doctor` 默认仍要求 32 GiB 总内存和 200 GiB 可用磁盘。仅运行单槽、无模型的
+资格或 smoke 时，可以在新实验配置中显式设置
+`physical.minimum_total_memory_gib` 和 `remote.minimum_free_disk_gib`；该调整
+必须记录实测资源和用途，不能沿用为双槽搜索资格，也不会改变硬件/工具
+qualification 指纹。
+
 冻结的源码版本：
 
 - Chipyard `4ab72313087580a44d647b52923389a06ec0712f`
@@ -77,7 +83,26 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 python -c 'import chia, ray; print("ray", ray.__version__)'
 chia-boom --help
+chia-chipcontext --help
 ```
+
+### 3.1 只复测 ChipContext CC-01
+
+CC-01 的公开样例只使用 Python 标准库，不要求 Chipyard、Ray、Vivado、
+Verilator 或 DeepSeek key。仍建议在上面的 Python 3.12 环境中执行：
+
+```bash
+python -m unittest chia_boom.tests.test_chipcontext -v
+OUT=/tmp/chipcontext-success
+chia-chipcontext prepare \
+  --request chia_boom/chipcontext/fixtures/success/request.json \
+  --output "$OUT"
+cat "$OUT/context.md"
+```
+
+success 和 failure fixture 内的 `expected.json`、`expected-context.md` 是固定
+预期；测试会分别从三个空输出目录重建并核对内容哈希。它们是 synthetic 数据，
+不能替代下面真实 BOOM 环境的 qualification、smoke 或私有证据 parser 校准。
 
 `pyproject.toml` 固定 `chialoops==1.0.1`；其依赖固定 Ray 2.54.0。
 本仓库不复制 CHIA 源码，依赖来源和许可证见

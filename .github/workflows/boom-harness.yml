@@ -30,7 +30,9 @@ jobs:
       - name: Run public-safe checks
         working-directory: experiments/boom-v2/harness
         run: |
+          python -m unittest chia_boom.tests.test_chipcontext -v
           python -m unittest discover -s chia_boom/tests -v
           python -m compileall -q chia_boom
           chia-boom --help
+          chia-chipcontext --help
           bash -n chia_boom/scripts/*.sh

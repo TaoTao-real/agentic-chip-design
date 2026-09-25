@@ -31,6 +31,8 @@ def run_baseline_smoke(
     force: bool = False,
 ) -> dict[str, Any]:
     """Run the frozen golden RTL against itself without a model call."""
+    config_path = config_path.resolve(strict=True)
+    output = output.resolve()
     if cycles < 128:
         raise ValueError("smoke cycles must be at least 128")
     if output.exists() and any(output.iterdir()):

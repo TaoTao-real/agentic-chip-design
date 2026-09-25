@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "tool_versions": {
+    "python": "synthetic-3.12",
+    "java": "synthetic-17",
+    "verilator": "synthetic-5",
+    "vivado": "synthetic-2024.1",
+    "chialoops": "synthetic-1.0.1",
+    "ray": "synthetic-2"
+  }
+}

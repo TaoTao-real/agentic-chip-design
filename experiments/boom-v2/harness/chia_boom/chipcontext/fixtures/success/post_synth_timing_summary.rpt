@@ -1,0 +1,5 @@
+Synthetic public-safe Vivado-style summary
+Stage: post_synth
+Critical delay: 9.000 ns
+WNS: -4.000 ns
+This file contains no production design names or paths.

@@ -343,12 +343,60 @@ class IntegrityTests(unittest.TestCase):
             self.assertNotIn(secret, (output / "SMOKE.json").read_text())
             self.assertTrue((output / "frozen/FROZEN_RUN_MANIFEST.json").is_file())
 
+    def test_baseline_smoke_resolves_relative_output_before_subprocess(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            config = self._reference(root)
+            config["remote"]["install_root"] = str(root / "install")
+            config["targets"]["T0"]["rtl_top"] = "Top"
+            qualification = root / "install/qualification/QUALIFICATION.json"
+            qualification.parent.mkdir(parents=True)
+            qualification.write_text('{"passed": true}\n')
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps(config))
+
+            def fake_run(*args: object, **kwargs: object) -> tuple[int, str, str, float]:
+                cwd = Path(kwargs["cwd"])
+                self.assertTrue(cwd.is_absolute())
+                self.assertIn(str(cwd / "differential"), args[0])
+                run = cwd / "differential"
+                run.mkdir(parents=True)
+                (run / "result.json").write_text(json.dumps({
+                    "passed": True,
+                    "interface_ok": True,
+                    "cycles": 1000,
+                    "seed": 41,
+                }))
+                return 0, "PASS", "", 0.1
+
+            previous = Path.cwd()
+            os.chdir(root)
+            try:
+                with (
+                    mock.patch("chia_boom.smoke.verify_qualification"),
+                    mock.patch("chia_boom.smoke._run", side_effect=fake_run),
+                ):
+                    result = run_baseline_smoke(
+                        config,
+                        config_path=Path("config.json"),
+                        output=Path("relative-smoke"),
+                        target_id="T0",
+                        cycles=1000,
+                        seed=41,
+                    )
+            finally:
+                os.chdir(previous)
+            self.assertTrue(result["passed"])
+            self.assertTrue((root / "relative-smoke/SMOKE.json").is_file())
+
     def test_baseline_smoke_timeout_reaps_descendant_processes(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             config = self._reference(root)
             config["remote"]["install_root"] = str(root / "install")
-            config["physical"]["candidate_timeout_seconds"] = 1
+            # A cold hosted runner can spend more than one second starting
+            # login bash and Python before the fixture records its child PID.
+            config["physical"]["candidate_timeout_seconds"] = 5
             config["targets"]["T0"]["rtl_top"] = "Top"
             qualification = root / "install/qualification/QUALIFICATION.json"
             qualification.parent.mkdir(parents=True)
@@ -439,6 +487,51 @@ class IntegrityTests(unittest.TestCase):
                 result["checks"]["vivado_settings"]["detail"], "not configured"
             )
 
+    def test_doctor_resource_thresholds_are_explicit_and_non_qualifying(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            config = self._reference(root)
+            before = qualification_request(config)["fingerprint"]
+            config["physical"]["minimum_total_memory_gib"] = 1.5
+            config["remote"]["minimum_free_disk_gib"] = 2
+            after = qualification_request(config)["fingerprint"]
+            self.assertEqual(before, after)
+            config.update({
+                "version": "resource-threshold-test",
+                "model": {
+                    "api_key_env": "DEEPSEEK_API_KEY",
+                    "api_base": "https://api.deepseek.com/v1",
+                    "id": "deepseek-v4-pro",
+                },
+                "arms": ["A", "B", "C", "D"],
+            })
+            config["remote"].update({
+                "workspace_slots": str(root / "slots"),
+                "install_root": str(root / "install"),
+            })
+            memory = SimpleNamespace(total=2 * 1024 ** 3)
+            disk = SimpleNamespace(free=3 * 1024 ** 3)
+            with (
+                mock.patch("chia_boom.deployment.validate_config"),
+                mock.patch(
+                    "chia_boom.deployment.psutil.virtual_memory",
+                    return_value=memory,
+                ),
+                mock.patch(
+                    "chia_boom.deployment.shutil.disk_usage",
+                    return_value=disk,
+                ),
+            ):
+                result = doctor(config)
+            self.assertTrue(result["checks"]["memory"]["passed"])
+            self.assertTrue(result["checks"]["disk"]["passed"])
+            self.assertIn(
+                "configured_gib=1.5", result["checks"]["memory"]["detail"]
+            )
+            self.assertIn(
+                "configured_gib=2", result["checks"]["disk"]["detail"]
+            )
+
     def test_arm_d_packaged_memory_is_nonempty_and_generic(self) -> None:
         episodes = packaged_process_memory()
         self.assertGreater(len(episodes), 0)
@@ -493,7 +586,9 @@ endmodule
                 cwd=root,
                 stdout_path=root / "stdout",
                 stderr_path=root / "stderr",
-                timeout=1,
+                # Leave enough time for a cold login shell to publish the PID;
+                # the command still must reach the real timeout path.
+                timeout=5,
             )
             self.assertEqual(rc, -9)
             pid = int((root / "child.pid").read_text())
