@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +22,7 @@ from .chipcontext.runtime import (
     prepare_runtime_context,
     query_runtime_context,
 )
-from .core import apply_exact_edits, canonical_hash, lineage_fields, make_diff
+from .core import apply_exact_edits, canonical_hash, lineage_fields, make_diff, update_validity
 from .deepseek import DeepSeekOfficialToolLLM
 from .finalize import BoomFinalizationNode, finalize_candidate
 from .frozen import (
@@ -39,6 +40,23 @@ from .frozen import (
 )
 from .knowledge import MEMORY_MODES, MEMORY_TOOL_SPECS, KnowledgeStore
 from .nodes import BoomCandidateEvaluationNode
+from .optimization_trace import (
+    BASELINE_CANDIDATE_ID,
+    CandidatePool,
+    ParentSelection,
+    TRACE_TAIL_MAX_BYTES,
+    Transition,
+    branch_history,
+    build_trace_tail,
+    build_visibility_manifest,
+    canonical_json,
+    compare_ppa,
+    content_hash,
+    physical_tool_contract_hash,
+    select_parent,
+    signed_record,
+)
+from .validation_timeline import Timeline, timeline_from_evaluation
 
 
 INTERACTIVE_SYSTEM = """You are an autonomous hardware optimization agent.
@@ -60,6 +78,8 @@ OBSERVATION_TOOLS = {
     "query_candidate_failure", "compare_candidate_metrics",
     "query_candidate_timing_paths",
 }
+CC03T_ARMS = ("E0", "E1T")
+TRACE_TAIL_PREFIX = "CC03T_TRACE_TAIL\n"
 INSPECTION_WARNING_TURNS = 12
 INSPECTION_HARD_LIMIT_TURNS = 16
 
@@ -188,7 +208,7 @@ def _interactive_system_with_feedback(memory_mode: str, feedback_arm: str) -> st
             "from the same raw artifacts available to the control arm. Use its query tools "
             "to inspect missing, conflicting, or source-linked evidence before the next edit."
         )
-    if feedback_arm != "E0":
+    if feedback_arm not in {"E0", "E1T"}:
         raise ValueError(f"unknown feedback arm: {feedback_arm}")
     return value
 
@@ -492,7 +512,7 @@ STRUCTURED_EVIDENCE_TOOL_SPECS: list[dict[str, Any]] = [
 
 
 def _interactive_tool_specs(memory_enabled: bool, feedback_arm: str) -> list[dict[str, Any]]:
-    if feedback_arm not in FEEDBACK_ARMS:
+    if feedback_arm not in set(FEEDBACK_ARMS) | {"E1T"}:
         raise ValueError(f"unknown feedback arm: {feedback_arm}")
     return (
         (MEMORY_TOOL_SPECS if memory_enabled else [])
@@ -553,17 +573,211 @@ def _meets_auto_stop(
     return improvement >= threshold_percent
 
 
+def _trace_ppa(
+    raw: dict[str, Any] | None, *, tool_contract_hash: str,
+) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    delay = raw.get("critical_delay_ns")
+    luts = raw.get("slice_luts")
+    if not isinstance(delay, (int, float)) or not isinstance(luts, (int, float)):
+        return None
+    return {
+        "stage": "post_synth",
+        "critical_delay_ns": float(delay),
+        "slice_luts": int(luts),
+        "tool_contract_hash": raw.get("tool_contract_hash") or tool_contract_hash,
+    }
+
+
+def _trace_transition_from_state(
+    *,
+    index: int,
+    candidate_id: str,
+    parent_id: str,
+    best_before_id: str,
+    evaluation: dict[str, Any],
+    parent_ppa: dict[str, Any] | None,
+    best_before_ppa: dict[str, Any] | None,
+    raw_evidence_refs: list[str],
+    tool_contract_hash: str,
+    run_id: str,
+    branch_id: str,
+    source_before_sha256: str,
+    source_after_sha256: str,
+    patch_ref: str,
+) -> Transition:
+    current_ppa = (
+        _trace_ppa(
+            evaluation.get("post_synth"),
+            tool_contract_hash=tool_contract_hash,
+        )
+        if evaluation.get("candidate_valid") else None
+    )
+    current_score = (
+        float(current_ppa["critical_delay_ns"]), float(current_ppa["slice_luts"])
+    ) if current_ppa else (float("inf"), float("inf"))
+    best_score = (
+        float(best_before_ppa["critical_delay_ns"]), float(best_before_ppa["slice_luts"])
+    ) if best_before_ppa else (float("inf"), float("inf"))
+    correctness = evaluation.get("correctness_ok")
+    return Transition(
+        transition_id=f"transition-{index:02d}",
+        decision_point_id=f"decision-{index:02d}",
+        from_candidate_id=parent_id,
+        to_candidate_id=candidate_id,
+        evaluation_id=f"evaluation-{candidate_id}",
+        best_before_candidate_id=best_before_id,
+        parent_delta=compare_ppa(current_ppa, parent_ppa),
+        best_delta=compare_ppa(current_ppa, best_before_ppa),
+        correctness={
+            "status": "available" if isinstance(correctness, bool) else "unavailable",
+            "passed": correctness if isinstance(correctness, bool) else None,
+        },
+        became_new_best=current_score < best_score,
+        raw_evidence_refs=tuple(raw_evidence_refs),
+        provenance={"evaluation_index": index},
+        run_id=run_id,
+        branch_id=branch_id,
+        selected_parent_id=parent_id,
+        source_before_sha256=source_before_sha256,
+        source_after_sha256=source_after_sha256,
+        patch_ref=patch_ref,
+        cost_ref=f"validation_timeline:{candidate_id}",
+    )
+
+
+def _cc03t_tail(
+    state: dict[str, Any], *, max_evaluations: int,
+) -> dict[str, Any]:
+    from .optimization_trace import Candidate, Evaluation
+
+    candidate_rows = {
+        key: Candidate(**value) for key, value in state.get("trace_candidates", {}).items()
+    }
+    evaluation_rows = {
+        key: Evaluation(
+            evaluation_id=value["evaluation_id"],
+            candidate_id=value["candidate_id"],
+            status=value["status"],
+            stage=value["stage"],
+            correctness_ok=value.get("correctness_ok"),
+            candidate_valid=bool(value.get("candidate_valid")),
+            promotable=bool(value.get("promotable")),
+            ppa=value.get("ppa"),
+            raw_refs=tuple(value.get("raw_refs", [])),
+            provenance=dict(value.get("provenance", {})),
+        ) for key, value in state.get("trace_evaluations", {}).items()
+    }
+    transition_rows = {
+        key: Transition(
+            transition_id=value["transition_id"],
+            decision_point_id=value["decision_point_id"],
+            from_candidate_id=value["from_candidate_id"],
+            to_candidate_id=value["to_candidate_id"],
+            evaluation_id=value["evaluation_id"],
+            best_before_candidate_id=value["best_before_candidate_id"],
+            parent_delta=dict(value["parent_delta"]),
+            best_delta=dict(value["best_delta"]),
+            correctness=dict(value["correctness"]),
+            became_new_best=bool(value["became_new_best"]),
+            raw_evidence_refs=tuple(value.get("raw_evidence_refs", [])),
+            provenance=dict(value.get("provenance", {})),
+        ) for key, value in state.get("trace_transitions", {}).items()
+    }
+    last = transition_rows.get(state.get("last_transition_id"))
+    history = branch_history(
+        str(state["selected_parent_id"]), candidate_rows, evaluation_rows,
+        transition_rows, limit=3,
+    ) if str(state["selected_parent_id"]) != BASELINE_CANDIDATE_ID else []
+    return build_trace_tail(
+        current_candidate_id=str(state["selected_parent_id"]),
+        selected_parent_id=str(state["selected_parent_id"]),
+        current_best_candidate_id=str(state["current_best_candidate_id"]),
+        last_transition=last,
+        history=history,
+        remaining_evaluation_budget=max(0, max_evaluations - int(state["evaluations"])),
+        raw_evidence_refs=list(last.raw_evidence_refs) if last else [],
+        source_classes=state.get("trace_source_classes", []),
+        max_bytes=TRACE_TAIL_MAX_BYTES,
+    )
+
+
+def _append_trace_tail_message(
+    messages: list[dict[str, Any]], tail: dict[str, Any],
+) -> None:
+    messages.append({
+        "role": "user",
+        "content": TRACE_TAIL_PREFIX + canonical_json(tail),
+    })
+
+
+def _prepare_trace_tail(
+    state: dict[str, Any], *, max_evaluations: int, label: str,
+) -> dict[str, Any]:
+    started = time.monotonic_ns()
+    tail = _cc03t_tail(state, max_evaluations=max_evaluations)
+    trace_elapsed = time.monotonic_ns() - started
+    prepare_started = time.monotonic_ns()
+    encoded = canonical_json(tail).encode("utf-8")
+    prepare_elapsed = time.monotonic_ns() - prepare_started
+    ready_started = time.monotonic_ns()
+    if not encoded or tail.get("content_hash") != content_hash({
+        key: value for key, value in tail.items()
+        if key not in {"content_hash", "serialized_bytes"}
+    }):
+        raise RuntimeError("TraceTail failed publication integrity check")
+    ready_elapsed = time.monotonic_ns() - ready_started
+    for stage, active in (
+        ("trace_build", trace_elapsed),
+        ("feedback_prepare", prepare_elapsed),
+        ("feedback_ready", ready_elapsed),
+    ):
+        state["validation_timeline"].append({
+            "span_id": f"{label}-{stage}",
+            "stage": stage,
+            "wall_time_ns": active,
+            "active_time_ns": active,
+            "queue_time_ns": None,
+            "parent_span_id": None,
+            "candidate_id": state.get("selected_parent_id"),
+            "leaf": True,
+            "unavailable_reason": None,
+            "provenance": {"trace_tail_hash": tail["content_hash"]},
+        })
+    return tail
+
+
+def _common_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        row for row in messages
+        if not (
+            row.get("role") == "user"
+            and str(row.get("content", "")).startswith(TRACE_TAIL_PREFIX)
+        )
+    ]
+
+
 def run_interactive_issueq(
     config: dict[str, Any], output: Path, *, seed: int = 41,
     max_turns: int = 24, max_evaluations: int = 5,
     memory_mode: str = "none", feedback_arm: str = "E0",
     auto_stop_improvement_percent: float | None = None,
+    cc03t: dict[str, Any] | None = None,
     _resume: bool = False,
 ) -> dict[str, Any]:
     if memory_mode not in MEMORY_MODES:
         raise ValueError(f"unknown memory mode: {memory_mode}")
-    if feedback_arm not in FEEDBACK_ARMS:
+    allowed_arms = set(FEEDBACK_ARMS) | ({"E1T"} if cc03t is not None else set())
+    if feedback_arm not in allowed_arms:
         raise ValueError(f"unknown feedback arm: {feedback_arm}")
+    if cc03t is not None:
+        if feedback_arm not in CC03T_ARMS:
+            raise ValueError("CC-03T only permits E0 and E1T")
+        if memory_mode != "none":
+            raise ValueError("CC-03T requires memory_mode=none")
+        if cc03t.get("policy_revision") != "baseline-3-best-2-v1":
+            raise ValueError("CC-03T requires baseline-3-best-2-v1")
     output.mkdir(parents=True, exist_ok=True)
     session_path = output / "SESSION.json"
     result_path = output / "RESULT.json"
@@ -589,6 +803,7 @@ def run_interactive_issueq(
     timing = baseline_input(config, target_id, "baseline-timing.txt").read_text()
     baseline = load_json(baseline_input(config, target_id, "baseline-ppa.json"))
     baseline["maximum_lut_ratio"] = config["physical"]["maximum_lut_ratio"]
+    ppa_contract_hash = physical_tool_contract_hash(config)
     saved = load_json(session_path) if _resume else None
     if saved is not None:
         frozen_fields = {
@@ -598,12 +813,14 @@ def run_interactive_issueq(
             "memory_mode": memory_mode,
             "feedback_arm": feedback_arm,
             "auto_stop_improvement_percent": auto_stop_improvement_percent,
+            "cc03t": cc03t,
         }
         for name, expected in frozen_fields.items():
             if saved.get(name) != expected:
                 raise RuntimeError(f"interactive resume changed frozen field: {name}")
         if saved.get("status") == "finished":
             raise RuntimeError("interactive campaign is already finished")
+        cc03t = saved.get("cc03t")
         current_source = str(saved["current_source"])
         current_parent_source = str(saved["current_parent_source"])
         current_parent_id = saved.get("current_parent_id")
@@ -618,10 +835,16 @@ def run_interactive_issueq(
         messages = list(saved["messages"])
         inspection_only_turns = int(saved.get("inspection_only_turns", 0))
         start_turn = int(saved["turn"]) + 1
+        cc03t_state = dict(saved.get("cc03t_state") or {})
+        if cc03t is not None and saved.get("cc03t_state_hash") != content_hash(cc03t_state):
+            raise RuntimeError("CC-03T trace/DAG state failed resume identity check")
     else:
-        current_source = baseline_source
-        current_parent_source = baseline_source
-        current_parent_id: str | None = None
+        fixture = dict((cc03t or {}).get("fixture") or {})
+        current_source = str(fixture.get("selected_parent_source") or baseline_source)
+        current_parent_source = current_source
+        current_parent_id: str | None = fixture.get("selected_parent_id")
+        if cc03t is not None and current_parent_id is None:
+            current_parent_id = BASELINE_CANDIDATE_ID
         best_source: str | None = None
         best_ppa: dict[str, Any] | None = None
         best_candidate: dict[str, Any] | None = None
@@ -632,6 +855,93 @@ def run_interactive_issueq(
         session_usage: list[dict[str, Any]] = []
         inspection_only_turns = 0
         start_turn = 1
+        cc03t_state: dict[str, Any] = {}
+        if cc03t is not None:
+            fixture = dict(cc03t.get("fixture") or {})
+            baseline_candidate_row = {
+                "candidate_id": BASELINE_CANDIDATE_ID,
+                "parent_candidate_id": None,
+                "source_sha256": sha256_text(baseline_source),
+                "patch_sha256": None,
+                "evaluation_ref": "evaluation-candidate-00",
+                "generated_rtl_ref": None,
+                "generated_rtl_sha256": None,
+                "provenance": {"kind": "frozen_baseline"},
+            }
+            baseline_evaluation_row = {
+                "evaluation_id": "evaluation-candidate-00",
+                "candidate_id": BASELINE_CANDIDATE_ID,
+                "status": "complete",
+                "stage": "post_synth",
+                "correctness_ok": True,
+                "candidate_valid": True,
+                "promotable": False,
+                "ppa": _trace_ppa(
+                    baseline, tool_contract_hash=ppa_contract_hash,
+                ),
+                "raw_refs": [],
+                "provenance": {"kind": "frozen_baseline"},
+            }
+            trace_candidates = {BASELINE_CANDIDATE_ID: baseline_candidate_row}
+            trace_evaluations = {"evaluation-candidate-00": baseline_evaluation_row}
+            trace_transitions: dict[str, Any] = {}
+            source_by_candidate = {BASELINE_CANDIDATE_ID: baseline_source}
+            for row in fixture.get("history", []):
+                candidate_row = dict(row["candidate"])
+                evaluation_row = dict(row["evaluation"])
+                candidate_id = str(candidate_row["candidate_id"])
+                trace_candidates[candidate_id] = candidate_row
+                trace_evaluations[str(evaluation_row["evaluation_id"])] = evaluation_row
+                source_by_candidate[candidate_id] = str(row["source"])
+                if row.get("transition"):
+                    transition_row = dict(row["transition"])
+                    trace_transitions[str(transition_row["transition_id"])] = transition_row
+            selected_parent_id = str(
+                fixture.get("selected_parent_id") or BASELINE_CANDIDATE_ID
+            )
+            current_best_id = str(
+                fixture.get("current_best_candidate_id") or BASELINE_CANDIDATE_ID
+            )
+            if selected_parent_id not in source_by_candidate:
+                raise ValueError("fixture selected parent source is unavailable")
+            current_source = source_by_candidate[selected_parent_id]
+            current_parent_source = current_source
+            current_parent_id = selected_parent_id
+            cc03t_state = {
+                "evaluations": 0,
+                "selected_parent_id": selected_parent_id,
+                "current_best_candidate_id": current_best_id,
+                "trace_candidates": trace_candidates,
+                "trace_evaluations": trace_evaluations,
+                "trace_transitions": trace_transitions,
+                "last_transition_id": fixture.get("last_transition_id"),
+                "source_by_candidate": source_by_candidate,
+                "parent_selections": [],
+                "visibility_manifests": [],
+                "validation_timeline": [],
+                "fixture_override": bool(fixture.get("fixture_override", False)),
+                "trace_source_classes": [],
+            }
+            if fixture.get("frozen_decision_parent") and not fixture.get("fixture_override"):
+                selection = ParentSelection(
+                    decision_point_id="decision-01",
+                    evaluation_slot=1,
+                    selected_parent_id=selected_parent_id,
+                    selection_reason="frozen_decision_parent",
+                    policy_revision="baseline-3-best-2-v1",
+                    fixture_override=False,
+                    provenance={"fixture": str(fixture.get("name", "unknown"))},
+                )
+            else:
+                selection = select_parent(
+                    1,
+                    current_best_candidate_id=current_best_id,
+                    decision_point_id="decision-01",
+                    fixture_parent_id=(selected_parent_id if fixture.get("fixture_override") else None),
+                )
+            if selection.selected_parent_id != selected_parent_id:
+                raise ValueError("fixture parent conflicts with frozen SearchPolicy")
+            cc03t_state["parent_selections"].append(selection.to_dict())
     knowledge_root = config.get("knowledge", {}).get("root")
     knowledge = KnowledgeStore(
         memory_mode, Path(knowledge_root) if knowledge_root else None
@@ -650,13 +960,27 @@ def run_interactive_issueq(
     tool_specs = _interactive_tool_specs(knowledge.enabled, feedback_arm)
     runtime_contexts: dict[str, RuntimeContext] = {
         key: RuntimeContext.from_dict(value)
-        for key, value in (saved.get("chipcontext_contexts", {}) if saved else {}).items()
+        for key, value in (
+            saved.get("chipcontext_contexts", {})
+            if saved else ((cc03t or {}).get("fixture") or {}).get("runtime_contexts", {})
+        ).items()
     }
     chipcontext_costs: list[dict[str, Any]] = (
         list(saved.get("chipcontext_costs", [])) if saved else []
     )
     dump_json(output / "KNOWLEDGE_MANIFEST.json", knowledge.manifest())
     if saved is None:
+        fixture_note = ""
+        if cc03t is not None and cc03t_state["selected_parent_id"] != BASELINE_CANDIDATE_ID:
+            selected = cc03t_state["trace_candidates"][cc03t_state["selected_parent_id"]]
+            selected_eval = cc03t_state["trace_evaluations"].get(
+                selected.get("evaluation_ref"), {}
+            )
+            fixture_note = (
+                "\nFrozen decision parent: " + cc03t_state["selected_parent_id"]
+                + ". Its unprocessed recorded evaluation is:\n"
+                + json.dumps(selected_eval, sort_keys=True)
+            )
         messages = [{
             "role": "user",
             "content": (
@@ -665,8 +989,41 @@ def run_interactive_issueq(
                 " ns and Slice LUTs are " + str(baseline["slice_luts"]) + ".\n"
                 f"You have at most {max_evaluations} EDA evaluations. "
                 "Start by inspecting raw evidence with tools."
+                + fixture_note
             ),
         }]
+        if cc03t is not None and feedback_arm == "E1T":
+            _append_trace_tail_message(
+                messages, _prepare_trace_tail(
+                    cc03t_state, max_evaluations=max_evaluations, label="decision-01"
+                )
+            )
+        # Publish a resumable checkpoint before the first provider request.  A
+        # network or provider failure must not force a new candidate lineage.
+        dump_json(output / "SESSION.json", {
+            "status": "running", "turn": 0, "evaluations": evaluations,
+            "best_candidate": best_candidate, "best_post_synth": best_ppa,
+            "usage": session_usage, "messages": messages,
+            "finish_summary": finish_summary, "memory_mode": memory_mode,
+            "knowledge_retrievals": knowledge_retrievals,
+            "feedback_arm": feedback_arm, "seed": seed,
+            "max_turns": max_turns, "max_evaluations": max_evaluations,
+            "current_source": current_source,
+            "current_parent_source": current_parent_source,
+            "current_parent_id": current_parent_id,
+            "evaluated_source_sha256s": sorted(evaluated_hashes),
+            "inspection_only_turns": inspection_only_turns,
+            "chipcontext_contexts": {
+                key: value.to_dict() for key, value in runtime_contexts.items()
+            },
+            "chipcontext_costs": chipcontext_costs,
+            "auto_stop_improvement_percent": auto_stop_improvement_percent,
+            "cc03t": cc03t, "cc03t_state": cc03t_state,
+            "cc03t_state_hash": content_hash(cc03t_state) if cc03t else None,
+            "validation_timeline": (
+                cc03t_state.get("validation_timeline", []) if cc03t else []
+            ),
+        })
     llm = DeepSeekOfficialToolLLM(
         system_message=_interactive_system_with_feedback(memory_mode, feedback_arm),
         model=config["model"]["id"], base_url=config["model"]["api_base"],
@@ -679,18 +1036,124 @@ def run_interactive_issueq(
 
     for turn in range(start_turn, max_turns + 1):
         turn_dir = output / "turns" / f"turn-{turn:02d}"
-        turn_dir.mkdir(parents=True)
+        if turn_dir.exists():
+            if not _resume or (turn_dir / "assistant-message.json").is_file():
+                raise RuntimeError(
+                    "cannot safely replay a turn after an assistant response was "
+                    "published; retain the artifacts and classify the run as blocked"
+                )
+            metadata_path = turn_dir / "provider-metadata.json"
+            if metadata_path.is_file():
+                retry_index = 1
+                while (
+                    turn_dir / f"provider-metadata-failed-{retry_index:02d}.json"
+                ).exists():
+                    retry_index += 1
+                metadata_path.replace(
+                    turn_dir / f"provider-metadata-failed-{retry_index:02d}.json"
+                )
+        else:
+            turn_dir.mkdir(parents=True)
         dump_json(turn_dir / "messages-before.json", messages)
         model_messages = _messages_for_model(messages)
         dump_json(turn_dir / "model-messages-before.json", model_messages)
         visible_tool_specs = _available_tool_specs(tool_specs, inspection_only_turns)
         dump_json(turn_dir / "tool-specs.json", visible_tool_specs)
+        if cc03t is not None:
+            tail = None
+            if feedback_arm == "E1T":
+                for message in reversed(model_messages):
+                    content = str(message.get("content", ""))
+                    if content.startswith(TRACE_TAIL_PREFIX):
+                        tail = json.loads(content[len(TRACE_TAIL_PREFIX):])
+                        break
+                if tail is None:
+                    raise RuntimeError("E1T request is missing its deterministic TraceTail")
+            manifest_row = build_visibility_manifest(
+                request_id=f"turn-{turn:02d}",
+                arm=feedback_arm,
+                common_context=_common_messages(model_messages),
+                tool_specs=visible_tool_specs,
+                raw_permissions=sorted(
+                    (item.get("function") or {}).get("name", "")
+                    for item in visible_tool_specs
+                ),
+                trace_tail=tail,
+            )
+            cc03t_state["visibility_manifests"].append(manifest_row)
+            dump_json(turn_dir / "VISIBILITY.json", manifest_row)
+        model_started_ns = time.monotonic_ns()
         result = get(llm.chat_turn.chia_remote(
             llm, model_messages, visible_tool_specs,
             _chia_display_name=f"deepseek-interactive:{target_id}:turn-{turn:02d}",
         ))
+        model_wall_ns = time.monotonic_ns() - model_started_ns
         metadata = json.loads(result.stream_result) if result.stream_result else {}
+        metadata["client_wall_time_ns"] = model_wall_ns
         dump_json(turn_dir / "provider-metadata.json", metadata)
+        if cc03t is not None:
+            provider_seconds = metadata.get("elapsed_seconds")
+            provider_ns = (
+                int(float(provider_seconds) * 1_000_000_000)
+                if isinstance(provider_seconds, (int, float)) else None
+            )
+            cc03t_state["validation_timeline"].append({
+                "span_id": f"turn-{turn:02d}-model-request-total",
+                "stage": "model_request_total",
+                "wall_time_ns": model_wall_ns,
+                "active_time_ns": model_wall_ns,
+                "queue_time_ns": None,
+                "parent_span_id": None,
+                "candidate_id": None,
+                "leaf": False,
+                "unavailable_reason": None,
+                "queue_unavailable_reason": "ray_queue_not_separately_measured",
+                "provenance": {"turn": turn},
+            })
+            cc03t_state["validation_timeline"].append({
+                "span_id": f"turn-{turn:02d}-model-api",
+                "stage": "model_api",
+                "wall_time_ns": provider_ns,
+                "active_time_ns": provider_ns,
+                "queue_time_ns": None,
+                "parent_span_id": None,
+                "candidate_id": None,
+                "leaf": True,
+                "unavailable_reason": (
+                    None if provider_ns is not None else "provider_elapsed_not_reported"
+                ),
+                "queue_unavailable_reason": "ray_queue_not_separately_measured",
+                "provenance": {"turn": turn},
+            })
+            wait_ns = max(0, model_wall_ns - provider_ns) if provider_ns is not None else None
+            cc03t_state["validation_timeline"].append({
+                "span_id": f"turn-{turn:02d}-controller-wait",
+                "stage": "controller_wait",
+                "wall_time_ns": wait_ns,
+                "active_time_ns": 0 if wait_ns is not None else None,
+                "queue_time_ns": None,
+                "parent_span_id": None,
+                "candidate_id": None,
+                "leaf": True,
+                "unavailable_reason": (
+                    None if wait_ns is not None else "provider_elapsed_not_reported"
+                ),
+                "queue_unavailable_reason": "ray_queue_not_separately_measured",
+                "provenance": {"turn": turn},
+            })
+            cc03t_state["validation_timeline"].append({
+                "span_id": f"turn-{turn:02d}-scheduler-queue",
+                "stage": "scheduler_queue",
+                "wall_time_ns": None,
+                "active_time_ns": None,
+                "queue_time_ns": None,
+                "parent_span_id": None,
+                "candidate_id": None,
+                "leaf": True,
+                "unavailable_reason": "ray_queue_not_separately_measured",
+                "queue_unavailable_reason": "ray_queue_not_separately_measured",
+                "provenance": {"turn": turn},
+            })
         if not result.success:
             raise RuntimeError(result.stderr or "DeepSeek interactive turn failed")
         assistant = json.loads(result.result)
@@ -704,12 +1167,13 @@ def run_interactive_issueq(
                 "role": "user",
                 "content": "Continue by calling an available tool. Use finish only after measured evaluation evidence.",
             })
-            continue
         turn_observed = False
         turn_progressed = False
+        decision_completed = False
         for call in tool_calls:
             call_id = call.get("id")
             fn = (call.get("function") or {}).get("name")
+            tool_started_ns = time.monotonic_ns()
             try:
                 args = json.loads((call.get("function") or {}).get("arguments") or "{}")
                 if fn in OBSERVATION_TOOLS:
@@ -845,15 +1309,39 @@ def run_interactive_issueq(
                     content = queried
                 elif fn == "apply_exact_edits":
                     turn_progressed = True
+                    edit_started_ns = time.monotonic_ns()
                     current_source = apply_exact_edits(current_source, args["edits"])
                     diff = make_diff(baseline_source, current_source, target["mutable_file"])
                     content = {
                         "status": "applied", "source_sha256": sha256_text(current_source),
                         "diff_sha256": sha256_text(diff), "changed_lines": len(diff.splitlines()),
                     }
+                    if cc03t is not None:
+                        elapsed_ns = time.monotonic_ns() - edit_started_ns
+                        cc03t_state["validation_timeline"].append({
+                            "span_id": f"turn-{turn:02d}-{call_id}-edit",
+                            "stage": "edit", "wall_time_ns": elapsed_ns,
+                            "active_time_ns": elapsed_ns, "queue_time_ns": None,
+                            "parent_span_id": None, "candidate_id": None,
+                            "leaf": True, "unavailable_reason": None,
+                            "provenance": {"turn": turn, "tool_call_id": call_id},
+                        })
                 elif fn == "revert_source":
                     turn_progressed = True
-                    if args["target"] == "best":
+                    if cc03t is not None:
+                        selected_parent_id = str(cc03t_state["selected_parent_id"])
+                        current_source = str(
+                            cc03t_state["source_by_candidate"][selected_parent_id]
+                        )
+                        current_parent_source = current_source
+                        current_parent_id = selected_parent_id
+                        content = {
+                            "status": "reverted",
+                            "target": "selected_parent",
+                            "selected_parent_id": selected_parent_id,
+                            "source_sha256": sha256_text(current_source),
+                        }
+                    elif args["target"] == "best":
                         if best_source is None:
                             raise ValueError("no measured valid best candidate exists")
                         current_source = best_source
@@ -863,7 +1351,8 @@ def run_interactive_issueq(
                         current_source = baseline_source
                         current_parent_source = baseline_source
                         current_parent_id = None
-                    content = {"status": "reverted", "target": args["target"], "source_sha256": sha256_text(current_source)}
+                    if cc03t is None:
+                        content = {"status": "reverted", "target": args["target"], "source_sha256": sha256_text(current_source)}
                 elif fn == "evaluate_candidate":
                     turn_progressed = True
                     verify_frozen_run(output / "frozen", frozen_fingerprint)
@@ -911,6 +1400,26 @@ def run_interactive_issueq(
                         node=evaluator, candidate=candidate, target=target, config=config,
                         baseline=baseline, candidate_dir=candidate_dir,
                     )
+                    if cc03t is not None:
+                        parent_eval_ref = cc03t_state["trace_candidates"][
+                            str(current_parent_id)
+                        ].get("evaluation_ref")
+                        parent_eval_raw = cc03t_state["trace_evaluations"].get(
+                            parent_eval_ref, {}
+                        )
+                        parent_for_validity = EvaluationArtifact(
+                            candidate_id=str(current_parent_id),
+                            candidate_valid=bool(parent_eval_raw.get("candidate_valid")),
+                            post_synth=(
+                                {
+                                    "critical_delay_ns": parent_eval_raw["ppa"]["critical_delay_ns"],
+                                    "slice_luts": parent_eval_raw["ppa"]["slice_luts"],
+                                }
+                                if parent_eval_raw.get("ppa") else None
+                            ),
+                        )
+                        update_validity(evaluation, baseline, parent=parent_for_validity)
+                        dump_json(candidate_dir / "evaluation.json", evaluation)
                     row = {
                         "candidate": candidate.to_dict(),
                         "search_evaluation": evaluation.to_dict(),
@@ -945,10 +1454,20 @@ def run_interactive_issueq(
                     })
                     ppa = evaluation.post_synth or {}
                     if evaluation.candidate_valid and isinstance(ppa.get("critical_delay_ns"), (int, float)):
-                        if best_ppa is None or (ppa["critical_delay_ns"], ppa.get("slice_luts", 10**18)) < (best_ppa["critical_delay_ns"], best_ppa.get("slice_luts", 10**18)):
+                        baseline_score = (
+                            float(baseline["critical_delay_ns"]),
+                            float(baseline["slice_luts"]),
+                        )
+                        candidate_score = (
+                            float(ppa["critical_delay_ns"]),
+                            float(ppa.get("slice_luts", 10**18)),
+                        )
+                        incumbent_score = (
+                            (float(best_ppa["critical_delay_ns"]), float(best_ppa.get("slice_luts", 10**18)))
+                            if best_ppa is not None else baseline_score
+                        )
+                        if candidate_score < incumbent_score:
                             best_source, best_ppa, best_candidate = current_source, ppa, candidate.to_dict()
-                    current_parent_source = current_source
-                    current_parent_id = candidate.id
                     content = _compact_evaluation(evaluation.to_dict())
                     content["evaluations_remaining"] = max_evaluations - evaluations
                     content["baseline_post_synth"] = {
@@ -963,6 +1482,127 @@ def run_interactive_issueq(
                         "artifacts": inventory["answer"]["result"]["artifacts"],
                         "read_tool": "read_candidate_artifact",
                     }
+                    if cc03t is not None:
+                        best_before_id = str(cc03t_state["current_best_candidate_id"])
+                        parent_id = str(current_parent_id)
+                        parent_eval = cc03t_state["trace_evaluations"].get(
+                            cc03t_state["trace_candidates"][parent_id].get("evaluation_ref"), {}
+                        )
+                        best_before_eval = cc03t_state["trace_evaluations"].get(
+                            cc03t_state["trace_candidates"][best_before_id].get("evaluation_ref"), {}
+                        )
+                        raw_refs = [
+                            str(item.get("artifact_ref"))
+                            for item in inventory["answer"]["result"]["artifacts"]
+                            if item.get("artifact_ref")
+                        ]
+                        transition = _trace_transition_from_state(
+                            index=evaluations, candidate_id=candidate.id,
+                            parent_id=parent_id, best_before_id=best_before_id,
+                            evaluation=evaluation.to_dict(),
+                            parent_ppa=parent_eval.get("ppa"),
+                            best_before_ppa=best_before_eval.get("ppa"),
+                            raw_evidence_refs=raw_refs,
+                            tool_contract_hash=ppa_contract_hash,
+                            run_id=output.name,
+                            branch_id=feedback_arm,
+                            source_before_sha256=sha256_text(current_parent_source),
+                            source_after_sha256=sha256_text(current_source),
+                            patch_ref=sha256_text(candidate.diff),
+                        )
+                        evaluation_ref = f"evaluation-{candidate.id}"
+                        cc03t_state["trace_candidates"][candidate.id] = {
+                            "candidate_id": candidate.id,
+                            "parent_candidate_id": parent_id,
+                            "source_sha256": sha256_text(current_source),
+                            "patch_sha256": sha256_text(candidate.diff),
+                            "evaluation_ref": evaluation_ref,
+                            "generated_rtl_ref": None,
+                            "generated_rtl_sha256": None,
+                            "provenance": {"candidate_dir": f"evaluations/candidate-{evaluations:02d}"},
+                        }
+                        cc03t_state["trace_evaluations"][evaluation_ref] = {
+                            "evaluation_id": evaluation_ref,
+                            "candidate_id": candidate.id,
+                            "status": evaluation.status,
+                            "stage": evaluation.stage,
+                            "correctness_ok": evaluation.correctness_ok,
+                            "candidate_valid": evaluation.candidate_valid,
+                            "promotable": evaluation.promotable,
+                            "ppa": _trace_ppa(
+                                evaluation.post_synth,
+                                tool_contract_hash=ppa_contract_hash,
+                            ),
+                            "raw_refs": raw_refs,
+                            "provenance": {"candidate_dir": f"evaluations/candidate-{evaluations:02d}"},
+                        }
+                        cc03t_state["trace_transitions"][transition.transition_id] = transition.to_dict()
+                        cc03t_state["last_transition_id"] = transition.transition_id
+                        cc03t_state["source_by_candidate"][candidate.id] = current_source
+                        cc03t_state["evaluations"] = evaluations
+                        if transition.became_new_best:
+                            cc03t_state["current_best_candidate_id"] = candidate.id
+                        eval_timeline = timeline_from_evaluation(
+                            output.name, candidate.id, evaluation.to_dict()
+                        )
+                        cc03t_state["validation_timeline"].extend(
+                            [span.to_dict() for span in eval_timeline.spans]
+                        )
+                        for attempt_row in attempt_records[:-1]:
+                            seconds = attempt_row.get("active_seconds")
+                            active_ns = (
+                                int(float(seconds) * 1_000_000_000)
+                                if isinstance(seconds, (int, float)) else None
+                            )
+                            cc03t_state["validation_timeline"].append({
+                                "span_id": (
+                                    f"{candidate.id}-infrastructure-attempt-"
+                                    f"{int(attempt_row.get('attempt', 0)):02d}"
+                                ),
+                                "stage": "infrastructure_retry",
+                                "wall_time_ns": active_ns,
+                                "active_time_ns": active_ns,
+                                "queue_time_ns": None,
+                                "parent_span_id": None,
+                                "candidate_id": candidate.id,
+                                "leaf": True,
+                                "unavailable_reason": (
+                                    None if active_ns is not None else "not_measured"
+                                ),
+                                "queue_unavailable_reason": "ray_queue_not_separately_measured",
+                                "provenance": {
+                                    "attempt": attempt_row.get("attempt"),
+                                    "status": attempt_row.get("status"),
+                                },
+                            })
+                        decision_completed = True
+                        if bool(cc03t.get("stop_after_first_evaluation")):
+                            finished = True
+                            finish_summary = "CC-03T frozen DecisionPoint completed one evaluation"
+                        elif evaluations < max_evaluations:
+                            next_selection = select_parent(
+                                evaluations + 1,
+                                current_best_candidate_id=str(
+                                    cc03t_state["current_best_candidate_id"]
+                                ),
+                                decision_point_id=f"decision-{evaluations + 1:02d}",
+                            )
+                            cc03t_state["parent_selections"].append(next_selection.to_dict())
+                            next_parent_id = next_selection.selected_parent_id
+                            cc03t_state["selected_parent_id"] = next_parent_id
+                            current_source = str(
+                                cc03t_state["source_by_candidate"][next_parent_id]
+                            )
+                            current_parent_source = current_source
+                            current_parent_id = next_parent_id
+                            content["next_parent_selection"] = next_selection.to_dict()
+                            content["working_source_sha256"] = sha256_text(current_source)
+                        else:
+                            finished = True
+                            finish_summary = "CC-03T evaluation budget exhausted"
+                    else:
+                        current_parent_source = current_source
+                        current_parent_id = candidate.id
                     if feedback_arm == "E1":
                         structured = build_structured_feedback(
                             runtime_context, working_source=current_source
@@ -1005,8 +1645,34 @@ def run_interactive_issueq(
                 response_text = json.dumps(content, sort_keys=True) if not isinstance(content, str) else content
             except Exception as exc:
                 response_text = json.dumps({"status": "tool_error", "error": f"{type(exc).__name__}: {exc}"})
+            if cc03t is not None and fn in OBSERVATION_TOOLS:
+                tool_elapsed_ns = time.monotonic_ns() - tool_started_ns
+                cc03t_state["validation_timeline"].append({
+                    "span_id": f"turn-{turn:02d}-{call_id}-tool-inspection",
+                    "stage": "tool_inspection",
+                    "wall_time_ns": tool_elapsed_ns,
+                    "active_time_ns": tool_elapsed_ns,
+                    "queue_time_ns": None,
+                    "parent_span_id": None,
+                    "candidate_id": cc03t_state.get("selected_parent_id"),
+                    "leaf": True,
+                    "unavailable_reason": None,
+                    "queue_unavailable_reason": "not_applicable",
+                    "provenance": {"turn": turn, "tool_call_id": call_id, "tool": fn},
+                })
             (turn_dir / f"tool-{call_id}.txt").write_text(response_text)
             messages.append({"role": "tool", "tool_call_id": call_id, "content": response_text})
+            if decision_completed:
+                if cc03t is not None and feedback_arm == "E1T" and not finished:
+                    _append_trace_tail_message(
+                        messages,
+                        _prepare_trace_tail(
+                            cc03t_state,
+                            max_evaluations=max_evaluations,
+                            label=f"decision-{evaluations + 1:02d}",
+                        ),
+                    )
+                break
             if finished:
                 break
         inspection_only_turns, inspection_notice = _advance_inspection_budget(
@@ -1041,6 +1707,10 @@ def run_interactive_issueq(
             },
             "chipcontext_costs": chipcontext_costs,
             "auto_stop_improvement_percent": auto_stop_improvement_percent,
+            "cc03t": cc03t,
+            "cc03t_state": cc03t_state,
+            "cc03t_state_hash": content_hash(cc03t_state) if cc03t else None,
+            "validation_timeline": cc03t_state.get("validation_timeline", []) if cc03t else [],
         })
         if finished:
             break
@@ -1061,8 +1731,67 @@ def run_interactive_issueq(
             key: value.to_dict() for key, value in runtime_contexts.items()
         },
         "chipcontext_costs": chipcontext_costs,
+        "cc03t": cc03t,
+        "cc03t_state": cc03t_state,
+        "cc03t_state_hash": content_hash(cc03t_state) if cc03t else None,
+        "validation_timeline": cc03t_state.get("validation_timeline", []) if cc03t else [],
     }
     dump_json(output / "RESULT.json", result)
+    if cc03t is not None:
+        verified_ids = []
+        invalid_ids = []
+        for candidate_id, candidate_row in cc03t_state["trace_candidates"].items():
+            evaluation_row = cc03t_state["trace_evaluations"].get(
+                candidate_row.get("evaluation_ref"), {}
+            )
+            (verified_ids if evaluation_row.get("candidate_valid") else invalid_ids).append(
+                candidate_id
+            )
+        current_candidate_id = (
+            list(cc03t_state["trace_candidates"])[-1]
+            if cc03t_state["trace_candidates"] else BASELINE_CANDIDATE_ID
+        )
+        pool = CandidatePool(
+            baseline_candidate_id=BASELINE_CANDIDATE_ID,
+            current_candidate_id=current_candidate_id,
+            current_best_candidate_id=cc03t_state["current_best_candidate_id"],
+            eligible_parent_ids=tuple(sorted({
+                BASELINE_CANDIDATE_ID,
+                str(cc03t_state["current_best_candidate_id"]),
+            })),
+            verified_candidate_ids=tuple(sorted(verified_ids)),
+            invalid_candidate_ids=tuple(sorted(invalid_ids)),
+            remaining_evaluation_budget=max(0, max_evaluations - evaluations),
+        )
+        dump_json(output / "CANDIDATE_DAG.json", signed_record({
+            "schema_version": "chia-boom.candidate-dag.v1",
+            "baseline_candidate_id": BASELINE_CANDIDATE_ID,
+            "current_candidate_id": current_candidate_id,
+            "current_best_candidate_id": cc03t_state["current_best_candidate_id"],
+            "candidates": list(cc03t_state["trace_candidates"].values()),
+            "candidate_pool": pool.to_dict(),
+            "parent_selections": cc03t_state["parent_selections"],
+            "unexecuted_policy_slots": [
+                {
+                    "evaluation_slot": slot,
+                    "status": "not_executed",
+                    "reason": (
+                        "agent_finished" if result["status"] == "finished"
+                        else "turn_limit_exhausted"
+                    ),
+                }
+                for slot in range(evaluations + 1, max_evaluations + 1)
+            ],
+        }))
+        dump_json(output / "VISIBILITY_MANIFEST.json", signed_record({
+            "schema_version": "chia-boom.visibility-manifest-set.v1",
+            "rows": cc03t_state["visibility_manifests"],
+        }))
+        dump_json(output / "VALIDATION_TIMELINE.json", signed_record({
+            "schema_version": "chia-boom.validation-timeline.v1",
+            "run_id": output.name,
+            "spans": cc03t_state["validation_timeline"],
+        }))
     return result
 
 
@@ -1091,6 +1820,7 @@ def resume_interactive_issueq(
         memory_mode=str(saved["memory_mode"]),
         feedback_arm=str(saved["feedback_arm"]),
         auto_stop_improvement_percent=saved.get("auto_stop_improvement_percent"),
+        cc03t=saved.get("cc03t"),
         _resume=True,
     )
 

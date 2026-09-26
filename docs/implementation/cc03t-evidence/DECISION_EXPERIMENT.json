@@ -1,0 +1,128 @@
+{
+  "base_commit": "f8b7b8e1ee22631ce66f54a3e0f6cfec5e9ce29e",
+  "content_hash": "08020b302caa9997818c7a19df169ded58e45ce9298b06a092fd1e30e08377ca",
+  "controlled_decision_file_sha256": "039ceb9489e86c1d69c635688b97a19819c01bffa8dd98ac97e43c3be4163ba0",
+  "decision_gate": {
+    "experiment_b_executed": false,
+    "failures": [
+      "D0-seed41: E0 violated single-candidate protocol"
+    ],
+    "passed": false,
+    "unexecuted_scenarios": [
+      "Dfail-seed42",
+      "Dperf-seed43",
+      "Dperf-seed44",
+      "Dperf-seed45",
+      "END-seed46"
+    ]
+  },
+  "executed_pairs": [
+    {
+      "arms": [
+        {
+          "arm": "E0",
+          "candidate_valid": false,
+          "evaluations": 0,
+          "model_calls": 24,
+          "parent_identity": "unavailable_no_transition",
+          "provider_tokens": {
+            "cache_hit_prompt": 117248,
+            "cache_miss_prompt": 142867,
+            "completion": 13065,
+            "prompt": 260115,
+            "reasoning": 10242,
+            "total": 273180
+          },
+          "status": "turn_limit_exhausted",
+          "synthesis_calls": 0,
+          "tool_calls": {
+            "apply_exact_edits": 1,
+            "evaluate_candidate": 0,
+            "read_generated_rtl": 14,
+            "read_source": 9,
+            "read_timing": 6,
+            "search_source": 11,
+            "total": 41
+          },
+          "verified_qor": null
+        },
+        {
+          "arm": "E1T",
+          "candidate_valid": false,
+          "evaluations": 1,
+          "failure": {
+            "configured_random_cycles": 1000000,
+            "failure_class": "candidate_correctness_failure",
+            "first_mismatch_cycle": 28,
+            "first_mismatch_signal": "io_dis_uops_1_ready",
+            "interface_check_passed": true,
+            "stage": "correctness"
+          },
+          "model_calls": 23,
+          "parent_identity": "verified_candidate-00",
+          "provider_tokens": {
+            "cache_hit_prompt": 138752,
+            "cache_miss_prompt": 264950,
+            "completion": 30355,
+            "prompt": 403702,
+            "reasoning": 27411,
+            "total": 434057
+          },
+          "status": "finished",
+          "synthesis_calls": 0,
+          "tool_calls": {
+            "apply_exact_edits": 2,
+            "evaluate_candidate": 1,
+            "read_generated_rtl": 12,
+            "read_source": 7,
+            "read_timing": 5,
+            "search_source": 4,
+            "total": 31
+          },
+          "verified_qor": null
+        }
+      ],
+      "order": [
+        "E0",
+        "E1T"
+      ],
+      "pair_id": "D0-seed41",
+      "scenario": "D0"
+    }
+  ],
+  "experiment_id": "cc03t-minimal-trace-v1",
+  "manifest_sha256": "6ba450b8bf603a1e051b1b1f5b6b0973625b54497fbf346522b8404ebb39eb17",
+  "memory_mode": "none",
+  "model": "deepseek-v4-pro",
+  "model_endpoint_class": "official_deepseek_api",
+  "qualification": {
+    "combined_peak_tree_rss_bytes": 23067615232,
+    "file_sha256": "e8384ebdf86b94e795477bd35f7c5806aba23fe8e7a0cc5c8bb84d2f7401b000",
+    "fingerprint": "b7eaa979ef59707729ad70564d61a0095e13e5f0d92051dafeaf25b039de55c1",
+    "passed": true,
+    "post_route_delay_ns": [
+      28.962,
+      28.962,
+      28.962
+    ],
+    "post_route_luts": [
+      50160,
+      50160,
+      50160
+    ],
+    "post_synth_delay_ns": [
+      31.92,
+      31.92,
+      31.92
+    ],
+    "post_synth_luts": [
+      49214,
+      49214,
+      49214
+    ],
+    "q1_replay_passed": true,
+    "qualified_parallel_runs": 2
+  },
+  "schema_version": "chia-boom.cc03t-public-decision-experiment.v1",
+  "target": "T0-issue-queue"
+}

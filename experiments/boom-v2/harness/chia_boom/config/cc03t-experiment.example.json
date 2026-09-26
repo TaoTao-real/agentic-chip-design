@@ -1,0 +1,33 @@
+{
+  "decision_pairs": [
+    {"order": ["E0", "E1T"], "scenario": "D0", "seed": 41},
+    {"order": ["E1T", "E0"], "scenario": "Dfail", "seed": 42},
+    {"order": ["E0", "E1T"], "scenario": "Dperf", "seed": 43},
+    {"order": ["E1T", "E0"], "scenario": "Dperf", "seed": 44},
+    {"order": ["E0", "E1T"], "scenario": "Dperf", "seed": 45}
+  ],
+  "end_to_end": {"order": ["E1T", "E0"], "seed": 46},
+  "experiment_id": "cc03t-minimal-trace-v1",
+  "fixtures": {
+    "D0": {"kind": "baseline"},
+    "Dfail": {
+      "campaign": "/controlled/path/to/cc03-e1-seed41-v5",
+      "candidate_index": 1,
+      "kind": "sealed_candidate",
+      "source_sha256": "f5b6a0f0697db647c09e2e722011ab4f6df3ba4b109732de9295a239377db417"
+    },
+    "Dperf": {
+      "campaign": "/controlled/path/to/cc03-e1-seed41-v5",
+      "candidate_index": 2,
+      "critical_delay_ns": 23.657,
+      "kind": "sealed_candidate",
+      "slice_luts": 50715,
+      "source_sha256": "8df5dde8a48a0bfb265e1e9eedf8b424cdf52349216d7b5931da0b16349f65c1"
+    }
+  },
+  "memory_mode": "none",
+  "model": "deepseek-v4-pro",
+  "schema_version": "chia-boom.cc03t-experiment.v1",
+  "search_policy": "baseline-3-best-2-v1",
+  "target": "T0-issue-queue"
+}

@@ -10,6 +10,12 @@ from chia.trace.profiler import get_collector, start_collector, stop_collector
 
 from .artifacts import dump_json, load_json, sha256_file
 from .campaign import campaign_report, init_campaign, run_campaign
+from .cc03t import (
+    prepare_experiment,
+    report_experiment,
+    resume_experiment,
+    run_experiment,
+)
 from .core import validate_config
 from .deployment import doctor
 from .environment import load_config
@@ -23,6 +29,7 @@ from .interactive import (
 from .information_audit import AuditError, audit_campaign, audit_campaign_pair
 from .qualification import qualify
 from .smoke import run_baseline_smoke
+from .optimization_trace import trace_build_cost
 
 
 def connect(namespace: str, profile_dir: Path) -> None:
@@ -232,6 +239,39 @@ def command_audit_information_pair(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_trace_build(args: argparse.Namespace) -> int:
+    result = trace_build_cost(args.campaign, args.output)
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def command_cc03t_prepare(args: argparse.Namespace) -> int:
+    result = prepare_experiment(args.config, args.manifest, args.output)
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def command_cc03t_run(args: argparse.Namespace, *, resume: bool = False) -> int:
+    config = load_config(args.output / "CONFIG.json")
+    validate_config(config)
+    qualification_path = Path(config["remote"]["install_root"]) / "qualification/QUALIFICATION.json"
+    require_qualification(config, qualification_path)
+    connect(args.output.name + ("-resume" if resume else ""), args.output / ("profiler-resume" if resume else "profiler"))
+    try:
+        result = resume_experiment(args.output) if resume else run_experiment(args.output)
+        save_profile(args.output / ("CHIA_PROFILE_RESUME.json" if resume else "CHIA_PROFILE.json"))
+        print(json.dumps(result, indent=2))
+        return 0 if result.get("status") == "complete" else 3
+    finally:
+        stop_collector()
+
+
+def command_cc03t_report(args: argparse.Namespace) -> int:
+    result = report_experiment(args.output)
+    print(json.dumps(result, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m chia_boom.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -291,6 +331,16 @@ def build_parser() -> argparse.ArgumentParser:
     audit_pair.add_argument("--e0", type=Path, required=True)
     audit_pair.add_argument("--e1", type=Path, required=True)
     audit_pair.add_argument("--output", type=Path, required=True)
+    trace_build = sub.add_parser("trace-build")
+    trace_build.add_argument("--campaign", type=Path, required=True)
+    trace_build.add_argument("--output", type=Path, required=True)
+    cc03t_prepare = sub.add_parser("cc03t-prepare")
+    cc03t_prepare.add_argument("--config", type=Path, required=True)
+    cc03t_prepare.add_argument("--manifest", type=Path, required=True)
+    cc03t_prepare.add_argument("--output", type=Path, required=True)
+    for name in ("cc03t-run", "cc03t-resume", "cc03t-report"):
+        item = sub.add_parser(name)
+        item.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -322,6 +372,16 @@ def main() -> None:
         code = command_audit_information(args)
     elif args.command == "audit-information-pair":
         code = command_audit_information_pair(args)
+    elif args.command == "trace-build":
+        code = command_trace_build(args)
+    elif args.command == "cc03t-prepare":
+        code = command_cc03t_prepare(args)
+    elif args.command == "cc03t-run":
+        code = command_cc03t_run(args)
+    elif args.command == "cc03t-resume":
+        code = command_cc03t_run(args, resume=True)
+    elif args.command == "cc03t-report":
+        code = command_cc03t_report(args)
     else:
         print(json.dumps(campaign_report(args.campaign), indent=2))
         code = 0

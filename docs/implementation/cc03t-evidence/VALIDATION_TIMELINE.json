@@ -1,0 +1,71 @@
+{
+  "content_hash": "12d8141bb469e8474b5792913edf663f904abe4d537a7ff3bd134756c5a6b2bc",
+  "controlled_root_file_sha256": "dcd3cd5763daf353dd7eb585594ed95d7083390a47f7f07ab44e52748178564c",
+  "experiment_id": "cc03t-minimal-trace-v1",
+  "largest_executed_candidate_validation_stage": {
+    "active_time_ns": 153855043850,
+    "stage": "chisel_elaboration"
+  },
+  "peak_memory_bytes_per_run": null,
+  "physical_io_bytes": null,
+  "runs": [
+    {
+      "active_time_ns": {
+        "candidate_validation": null,
+        "edit": 527845,
+        "model_api": 164536677778,
+        "tool_inspection": 459603101,
+        "trace_and_feedback": 0,
+        "vivado_post_synth": null
+      },
+      "controlled_content_hash": "3ffc488b307489fab37e70add095292ba619519da75e72eb1cbbf4fecc857405",
+      "controlled_file_sha256": "a25e3ecc3980379208d80436be652b82d99f36794e568c6281d7ff7ada28208f",
+      "leaf_span_counts": {
+        "controller_wait": 24,
+        "edit": 1,
+        "model_api": 24,
+        "scheduler_queue": 24,
+        "tool_inspection": 40
+      },
+      "run_id": "d0-seed41-e0",
+      "scheduler_queue_time_ns": null,
+      "scheduler_queue_unavailable_reason": "ray_queue_not_separately_measured"
+    },
+    {
+      "active_time_ns": {
+        "candidate_validation": 170762765092,
+        "chisel_elaboration": 153855043850,
+        "differential": 16879728210,
+        "edit": 606300,
+        "feedback_prepare": 23284,
+        "feedback_ready": 28704,
+        "interface_check": 27993032,
+        "model_api": 335254961187,
+        "tool_inspection": 289159097,
+        "trace_and_feedback": 273375,
+        "trace_build": 221387,
+        "vivado_post_synth": null
+      },
+      "controlled_content_hash": "06c8a34ae33f03311b4b764be7cc0fa25b0b6db2780642db377a0a91351a8316",
+      "controlled_file_sha256": "00987e513affdb82cf7f6ab00231fad8fae4bbe6e9cd4d51a1cfb1fbfc711bd8",
+      "leaf_span_counts": {
+        "chisel_elaboration": 1,
+        "controller_wait": 23,
+        "differential": 1,
+        "edit": 1,
+        "feedback_prepare": 1,
+        "feedback_ready": 1,
+        "interface_check": 1,
+        "materialize": 1,
+        "model_api": 23,
+        "scheduler_queue": 24,
+        "tool_inspection": 28,
+        "trace_build": 1
+      },
+      "run_id": "d0-seed41-e1t",
+      "scheduler_queue_time_ns": null,
+      "scheduler_queue_unavailable_reason": "ray_queue_not_separately_measured"
+    }
+  ],
+  "schema_version": "chia-boom.cc03t-public-validation-timeline-summary.v1"
+}
