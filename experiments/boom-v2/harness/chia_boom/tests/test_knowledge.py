@@ -9,6 +9,7 @@ from chia_boom.interactive import (
     _interactive_system,
     _interactive_system_with_feedback,
     _interactive_tool_specs,
+    _messages_for_model,
     _meets_auto_stop,
 )
 from chia_boom.knowledge import KnowledgeStore
@@ -98,6 +99,44 @@ class KnowledgeTests(unittest.TestCase):
         self.assertIn(
             "deterministic structured facts",
             _interactive_system_with_feedback("none", "E1"),
+        )
+
+    def test_model_prompt_archives_old_tool_bytes_without_changing_audit(self) -> None:
+        messages: list[dict] = [{"role": "user", "content": "start"}]
+        for index in range(6):
+            call_id = f"call-{index}"
+            messages.extend([
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": call_id,
+                        "function": {"name": "read_generated_rtl", "arguments": "{}"},
+                    }],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": "raw RTL " + str(index) + ("x" * 10_000),
+                },
+            ])
+        original = json.loads(json.dumps(messages))
+        compacted = _messages_for_model(messages, keep_recent_tool_results=2)
+        self.assertEqual(messages, original)
+        archived = [
+            json.loads(row["content"])
+            for row in compacted if row.get("role") == "tool"
+            and "archived_tool_result" in row["content"]
+        ]
+        self.assertEqual(len(archived), 4)
+        self.assertTrue(all(row["tool"] == "read_generated_rtl" for row in archived))
+        self.assertEqual(
+            [row["content"] for row in compacted if row.get("role") == "tool"][-2:],
+            [row["content"] for row in messages if row.get("role") == "tool"][-2:],
+        )
+        self.assertLess(
+            len(json.dumps(compacted)),
+            len(json.dumps(messages)) // 3,
         )
 
 

@@ -17,6 +17,13 @@ After every completed candidate evaluation the harness:
 5. for E1, queries and pushes a compact deterministic summary;
 6. records prepare and query work separately from model and EDA work.
 
+The campaign retains the complete tool transcript. Before each subsequent model
+call, older tool payloads are represented by their tool name, content hash and
+length while the four most recent tool results remain inline. The Agent can
+reissue any bounded query. This prevents repeated raw RTL bytes from dominating
+provider input without deleting the audit evidence, and is identical in E0 and
+E1.
+
 The E1 push contains candidate/attempt identity, current or historical
 applicability, check outcomes, a grounded failure when one exists, comparable
 post-synthesis delay and LUT deltas, collected timing-path scope, explicit

@@ -49,7 +49,9 @@ must remain within 105% of baseline. Discover bottlenecks yourself from source,
 generated RTL, raw timing evidence, and measured candidate results. No human
 diagnosis or historical solution is available. Never ask for a suggested
 optimization. Inspect, form hypotheses, edit, evaluate, repair, and finish with
-the best measured candidate. Do not claim improvement without tool evidence."""
+the best measured candidate. Budget inspection so that you evaluate a concrete
+edit instead of exhausting the turn limit on raw reads. Do not claim improvement
+without tool evidence."""
 
 
 def _prepare_interactive_snapshot(
@@ -146,6 +148,47 @@ def _interactive_system_with_feedback(memory_mode: str, feedback_arm: str) -> st
     if feedback_arm != "E0":
         raise ValueError(f"unknown feedback arm: {feedback_arm}")
     return value
+
+
+def _messages_for_model(
+    messages: list[dict[str, Any]], *, keep_recent_tool_results: int = 4,
+) -> list[dict[str, Any]]:
+    """Keep the full audit transcript on disk while bounding repeated prompt bytes.
+
+    Old tool results stay addressable through the same read/search/query tools.
+    Their content is replaced only in the next model request by an identity
+    marker; assistant tool calls and their corresponding tool responses remain
+    structurally paired for API compatibility.
+    """
+
+    tool_indexes = [
+        index for index, message in enumerate(messages)
+        if message.get("role") == "tool"
+    ]
+    retained = set(tool_indexes[-keep_recent_tool_results:])
+    tool_names: dict[str, str] = {}
+    for message in messages:
+        if message.get("role") != "assistant":
+            continue
+        for call in message.get("tool_calls") or []:
+            call_id = str(call.get("id", ""))
+            tool_names[call_id] = str((call.get("function") or {}).get("name", "unknown"))
+
+    compacted: list[dict[str, Any]] = []
+    for index, message in enumerate(messages):
+        copied = dict(message)
+        if message.get("role") == "tool" and index not in retained:
+            original = str(message.get("content", ""))
+            call_id = str(message.get("tool_call_id", ""))
+            copied["content"] = json.dumps({
+                "status": "archived_tool_result",
+                "tool": tool_names.get(call_id, "unknown"),
+                "content_sha256": sha256_text(original),
+                "content_chars": len(original),
+                "instruction": "Reissue the tool query if these bytes are needed again.",
+            }, sort_keys=True)
+        compacted.append(copied)
+    return compacted
 
 
 TOOL_SPECS: list[dict[str, Any]] = [
@@ -593,8 +636,10 @@ def run_interactive_issueq(
         turn_dir = output / "turns" / f"turn-{turn:02d}"
         turn_dir.mkdir(parents=True)
         dump_json(turn_dir / "messages-before.json", messages)
+        model_messages = _messages_for_model(messages)
+        dump_json(turn_dir / "model-messages-before.json", model_messages)
         result = get(llm.chat_turn.chia_remote(
-            llm, messages, tool_specs,
+            llm, model_messages, tool_specs,
             _chia_display_name=f"deepseek-interactive:{target_id}:turn-{turn:02d}",
         ))
         metadata = json.loads(result.stream_result) if result.stream_result else {}
@@ -793,7 +838,9 @@ def run_interactive_issueq(
                             "risk": "checked by differential verification",
                         }], selected_hypothesis=0,
                         visible_feedback="interactive tool transcript",
-                        request_sha256=sha256_text(json.dumps(messages, sort_keys=True)),
+                        request_sha256=sha256_text(
+                            json.dumps(model_messages, sort_keys=True)
+                        ),
                         response_sha256=sha256_text(json.dumps(assistant, sort_keys=True)),
                         usage=metadata.get("usage"), attempts=metadata.get("attempts", []),
                         model_elapsed_seconds=float(metadata.get("elapsed_seconds", 0.0)),
