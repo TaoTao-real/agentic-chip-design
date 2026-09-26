@@ -791,6 +791,12 @@ def build_trace(campaign: Path, output: Path) -> dict[str, Any]:
     # run's evaluation directory.  Their signed CC-03T state is required to
     # reconstruct the selected parent without inventing a linear history.
     cc03t_state = session.get("cc03t_state") or result.get("cc03t_state") or {}
+    if cc03t_state:
+        expected_state_hash = session.get("cc03t_state_hash") or result.get(
+            "cc03t_state_hash"
+        )
+        if expected_state_hash != content_hash(cc03t_state):
+            raise TraceError("sealed CC-03T state hash is missing or invalid")
     row_candidate_ids = {str(row[0]["id"]) for row in rows}
     for candidate_id, raw in (cc03t_state.get("trace_candidates") or {}).items():
         if candidate_id == BASELINE_CANDIDATE_ID:
@@ -937,24 +943,31 @@ def build_trace(campaign: Path, output: Path) -> dict[str, Any]:
         )
         # Historical runs may not implement policy v1. Record rather than rewrite reality.
         actual_parent = parent_id
-        parent_selections.append(signed_record({
-            "schema_version": PARENT_SELECTION_SCHEMA,
-            "decision_point_id": decision_id,
-            "evaluation_slot": index,
-            "selected_parent_id": actual_parent,
-            "selection_reason": (
-                selected.selection_reason
-                if selected.selected_parent_id == actual_parent
-                else "historical_controller_selection"
-            ),
-            "policy_revision": (
-                SEARCH_POLICY_REVISION
-                if selected.selected_parent_id == actual_parent
-                else "historical-interactive"
-            ),
-            "fixture_override": False,
-            "provenance": {"candidate": row_ref},
-        }))
+        saved_selections = cc03t_state.get("parent_selections") or []
+        if index <= len(saved_selections):
+            saved_selection = dict(saved_selections[index - 1])
+            if saved_selection.get("selected_parent_id") != actual_parent:
+                raise TraceError("saved ParentSelection differs from candidate parent")
+            parent_selections.append(saved_selection)
+        else:
+            parent_selections.append(signed_record({
+                "schema_version": PARENT_SELECTION_SCHEMA,
+                "decision_point_id": decision_id,
+                "evaluation_slot": index,
+                "selected_parent_id": actual_parent,
+                "selection_reason": (
+                    selected.selection_reason
+                    if selected.selected_parent_id == actual_parent
+                    else "historical_controller_selection"
+                ),
+                "policy_revision": (
+                    SEARCH_POLICY_REVISION
+                    if selected.selected_parent_id == actual_parent
+                    else "historical-interactive"
+                ),
+                "fixture_override": False,
+                "provenance": {"candidate": row_ref},
+            }))
         decision_points.append(DecisionPoint(
             decision_point_id=decision_id,
             decision_kind=_classify_decision(prior_evaluations[-1] if prior_evaluations else None, index == 1),

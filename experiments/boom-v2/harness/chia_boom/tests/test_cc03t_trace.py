@@ -335,6 +335,7 @@ class TraceTests(unittest.TestCase):
                 },
                 "trace_transitions": {},
             }
+            session["cc03t_state_hash"] = content_hash(session["cc03t_state"])
             session_path.write_text(json.dumps(session))
             build_trace(campaign, root / "trace")
             dag = json.loads((root / "trace/CANDIDATE_DAG.json").read_text())
