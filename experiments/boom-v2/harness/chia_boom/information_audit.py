@@ -154,7 +154,10 @@ class _Reader:
         path = self.root / relative
         if path.is_symlink():
             raise AuditError("audit refuses symlinked evidence")
-        resolved = path.resolve(strict=True)
+        try:
+            resolved = path.resolve(strict=True)
+        except FileNotFoundError as exc:
+            raise AuditError("required audit evidence is missing") from exc
         if not _is_relative_to(resolved, self.root):
             raise AuditError("audit input resolved outside the campaign")
         return resolved
@@ -532,8 +535,11 @@ def _parse_campaign(campaign: Path) -> dict[str, Any]:
             raise AuditError("provider messages differ from model-messages-before")
         if request.get("tools") != tool_specs:
             raise AuditError("provider tools differ from tool-specs")
-        provider_message = (((provider.get("response") or {}).get("choices") or [{}])[0].get("message"))
-        if provider_message is not None and provider_message != assistant:
+        choices = (provider.get("response") or {}).get("choices")
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            raise AuditError("provider response message is missing")
+        provider_message = choices[0].get("message")
+        if provider_message != assistant:
             raise AuditError("saved assistant message differs from provider response")
         requests[turn] = model_messages
         calls = assistant.get("tool_calls") or []
@@ -545,6 +551,8 @@ def _parse_campaign(campaign: Path) -> dict[str, Any]:
             call_id = str(call.get("id", ""))
             if not name or not call_id:
                 raise AuditError("tool call lacks a stable identity")
+            if name not in _tool_names(tool_specs):
+                raise AuditError("assistant called a tool absent from the provider request")
             args = _tool_call_args(call)
             tool_path = relative / f"tool-{call_id}.txt"
             raw_content = reader.text(tool_path)
@@ -588,7 +596,14 @@ def _parse_campaign(campaign: Path) -> dict[str, Any]:
     # Consumption is based on bytes that reached a real provider request, not
     # on a tool call existing in the transcript.
     all_events = [event for payload in turn_payloads for event in payload["events"]]
+    session_tools = {
+        str(message.get("tool_call_id")): str(message.get("content", ""))
+        for message in session.get("messages", [])
+        if isinstance(message, dict) and message.get("role") == "tool"
+    }
     for event in all_events:
+        if session_tools.get(event["call_id"]) != event["raw_content"]:
+            raise AuditError("tool result differs from the final session transcript")
         seen = []
         for turn, messages in requests.items():
             if turn <= event["turn"]:
@@ -599,6 +614,13 @@ def _parse_campaign(campaign: Path) -> dict[str, Any]:
                 seen.append(turn)
         event["seen_turns"] = seen
         event["seen_before_or_at"] = min(seen) if seen else None
+        later_turns = [turn for turn in requests if turn > event["turn"]]
+        if later_turns:
+            next_messages = requests[min(later_turns)]
+            if _message_tool_state(next_messages, event) not in {
+                "inline_current_request", "visible_recent_tool_result", "archived_hash_only",
+            }:
+                raise AuditError("tool result differs from the next model request")
 
     for payload in turn_payloads:
         turn = payload["turn"]

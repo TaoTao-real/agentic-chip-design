@@ -314,6 +314,12 @@ class InformationAuditTests(unittest.TestCase):
         with self.assertRaisesRegex(AuditError, "provider messages differ"):
             audit_campaign(self.e0, self.root / "audit")
 
+    def test_tool_result_tamper_fails_closed(self) -> None:
+        path = self.e0 / "turns/turn-02/tool-edit-1.txt"
+        path.write_text('{"status":"applied","tampered":true}')
+        with self.assertRaisesRegex(AuditError, "tool result differs"):
+            audit_campaign(self.e0, self.root / "audit")
+
     def test_input_changed_between_reads_fails_closed(self) -> None:
         reader = _Reader(self.e0)
         reader.bytes("SESSION.json")
