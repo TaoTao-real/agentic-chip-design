@@ -853,3 +853,293 @@ Trace 已可靠
 因此当前 v1 冻结为：
 
 > **Deterministic Trace first; LLM mining later, only if experiments justify it.**
+
+---
+
+## 16. Candidate DAG：Trace 记录历史，但不能把搜索锁成一条链
+
+如果每一轮都默认从最新 candidate 继续修改，搜索会退化成：
+
+~~~text
+C0 → C1 → C4 → C6 → ...
+~~~
+
+这会把第一轮的方向偏差持续放大。OptimizationTrace 因此不能被解释成“下一轮必须继承上一轮”。
+
+正确模型是 Candidate DAG：
+
+~~~text
+                C0 baseline
+               /    |     \
+              /     |      \
+            C1      C2      C3
+            |               |
+           C4              C5
+~~~
+
+其中：
+
+- Trace 记录所有 node / edge 发生了什么；
+- Candidate Pool 保存哪些历史节点仍允许作为 parent；
+- SearchPolicy 决定下一轮从哪个 parent 出发；
+- Agent 只负责基于选定 parent 生成下一版设计。
+
+> **Trace 是 memory；Candidate DAG 是 search state；SearchPolicy 是 parent selector。三者必须分离。**
+
+### 16.1 Candidate Pool
+
+~~~text
+CandidatePool {
+  baseline_candidate_id
+  current_candidate_id
+  current_best_candidate_id
+
+  eligible_parent_ids[]
+  recent_candidate_ids[]
+  verified_candidate_ids[]
+  invalid_candidate_ids[]
+
+  remaining_evaluation_budget
+  provenance
+}
+~~~
+
+Candidate Pool 不判断哪个设计思路更聪明，只维护候选身份、验证状态和可选 parent。
+
+### 16.2 ParentSelection
+
+~~~text
+ParentSelection {
+  decision_point_id
+  selected_parent_id
+
+  selection_reason =
+    baseline_exploration
+    | current_best_exploitation
+    | recent_promising
+    | explicit_restart
+
+  policy_revision
+  provenance
+}
+~~~
+
+第一版不需要 LLM 决定 parent。
+
+### 16.3 最小 breadth 规则
+
+为了避免第一条优化路径把整个搜索带进死胡同，第一版建议使用非常简单、可审计的规则：
+
+~~~text
+前 N 个有效评估槽位：
+  从 baseline C0 独立分叉
+
+后续槽位：
+  从 current best 分叉
+  必要时保留一次 baseline restart
+~~~
+
+例如 5 次 evaluation budget：
+
+~~~text
+Eval 1: C0 → C1
+Eval 2: C0 → C2
+Eval 3: C0 → C3
+
+选择当前 best，例如 C2
+
+Eval 4: C2 → C4
+Eval 5: C2 → C5
+~~~
+
+这样前半程保证 exploration，后半程做 exploitation。这个规则不是宣称 3+2 最优，而是先保证搜索广度不依赖 Agent 自己记得回退。
+
+### 16.4 不把 sibling branch 内容自动塞给 Agent
+
+Candidate DAG 可以保存多个 sibling branch，但详细 patch / reasoning 是否可见必须由 VisibilityManifest 决定。SearchPolicy 可以使用候选状态和 QoR 选择 parent，不等于把 sibling 解法泄漏给当前 Agent。
+
+---
+
+## 17. 最小 SearchPolicy v1：先固定、后学习
+
+当前阶段不要直接做复杂 Bayesian、evolutionary 或 LLM search policy。先实现一个 deterministic policy，目标只有两个：
+
+1. 防止线性死胡同；
+2. 让 E0/E1T 的搜索成本可比。
+
+建议 v1：
+
+~~~text
+Policy A — baseline breadth then best exploitation
+
+phase 1:
+  first K evaluation slots
+  parent = baseline
+
+phase 2:
+  remaining slots
+  parent = current_best
+
+optional:
+  reserve 1 restart slot from baseline
+~~~
+
+所有 parent selection 都要进入 Trace。
+
+如果同时改变 Trace 表达、feedback、parent selection、exploration budget、LLM 和 EDA budget，就无法归因。因此第一轮验证中 E0 和 E1T 必须共享同一个 deterministic SearchPolicy，差异只能是 E1T 额外看到 deterministic TraceTail。
+
+后续只有基础实验有效后，再考虑 epsilon-greedy、top-k pool、diversity-aware population、Bayesian acquisition、evolutionary selection 或 learned SearchPolicy。
+
+---
+
+## 18. 快速验证 Trace + Search 是否值得继续
+
+当前最优先的问题不是把 Trace 做完整，而是尽快回答：
+
+> **在相同搜索预算、相同 parent-selection policy 下，给 DS 最小 deterministic Trace 信息，能不能至少持平甚至超过 E0？**
+
+### 18.1 实验组
+
+~~~text
+E0:
+  raw-feedback Agent
+  + fixed SearchPolicy
+
+E1T:
+  same E0
+  + same SearchPolicy
+  + minimal deterministic TraceTail
+~~~
+
+PR #19 的 E1-old state-oriented timing push 只保留作历史负面对照，不作为下一版主 treatment。
+
+### 18.2 E1T 第一版 TraceTail
+
+只给：
+
+~~~text
+current candidate
+current best
+
+last transition:
+  parent
+  current
+  correctness transition
+  delay delta
+  LUT delta
+  became_new_best
+
+recent branch history:
+  last 2–3 verified outcomes
+  numeric QoR gains only
+
+remaining evaluation budget
+missing / unavailable
+raw drilldown refs
+~~~
+
+不要自动 push top-N timing paths、LLM strategy summary、sibling branch patch、旧实验 solution、semantic diagnosis 或 optimization advice。
+
+### 18.3 先做 Decision-level 实验
+
+先选三个 Frozen DecisionPoint：
+
+~~~text
+D0: baseline → first optimization
+Dfail: invalid candidate → repair decision
+Dperf: valid candidate + PPA → next performance decision
+~~~
+
+每个 DecisionPoint 中，E0/E1T 使用相同 state、evaluation、SearchPolicy 和预算，各自只生成下一版 candidate 并做一次真实 evaluation。
+
+测：
+
+~~~text
+next_candidate_valid
+next_candidate_new_best
+delta_vs_parent
+delta_vs_best
+model tokens
+tool turns
+decision wall time
+validation wall/active time
+~~~
+
+如果 E1T 在单步实验里持续不如 E0，就不要继续跑昂贵 end-to-end。
+
+### 18.4 再做固定 EDA 成本的 end-to-end
+
+Decision-level 不退化后，再跑完整 E0 / E1T。必须同时报告：
+
+~~~text
+fixed evaluation-count result
+fixed synthesis-count result
+fixed EDA-active-time result
+~~~
+
+同样数量的 candidate 不等于同样数量的 synthesis。一个 candidate 可能在 elaboration / correctness 阶段失败，另一个会进入昂贵 synthesis。
+
+最终至少看：
+
+~~~text
+best verified QoR / synthesis call
+best verified QoR / EDA active minute
+new-best yield / synthesis call
+T_delivery
+tokens
+finalization cost
+~~~
+
+### 18.5 先测 E0 自身方差
+
+provider sampling 当前不能由 seed 完全复现。在宣称 E1T 持平 E0 之前，应做少量 E0 repeat，估计 first improvement、best post-synth、post-route、token 和 wall-time 的方差。
+
+### 18.6 Promotion gate
+
+E1T 只有满足以下条件才进入更昂贵实验：
+
+~~~text
+Decision-level:
+  D0 no material regression
+  Dfail repair efficiency >= E0
+  Dperf next-candidate QoR/new-best yield >= E0
+
+End-to-end:
+  verified QoR approximately >= E0
+  AND at least one of:
+    lower T_delivery
+    fewer tokens
+    fewer synthesis calls
+    lower EDA active time
+~~~
+
+像 PR #19 seed41 那种 token 少一点但 verified QoR 明显更差，不能算成功。
+
+---
+
+## 19. 当前最快的实施顺序
+
+~~~text
+S0  merge/freeze Information Audit (#22)
+ ↓
+S1  Minimal OptimizationTrace builder
+    + parent/current/best relation
+    + BranchHistory
+ ↓
+S2  ValidationTimeline
+    + stage wall/active/queue
+ ↓
+S3  Deterministic Candidate DAG / ParentSelection
+ ↓
+S4  Frozen DecisionPoint:
+    E0 vs E1T
+ ↓
+S5  only if S4 no-regression:
+    end-to-end E0 vs E1T
+~~~
+
+Candidate generated RTL、timing movement 和 LLM mining 都可以后置。
+
+当前最快能验证核心假设的最小集合是：
+
+> **parent/current/best + bounded own-branch history + fixed breadth/exploitation SearchPolicy + 真实成本时间线。**
