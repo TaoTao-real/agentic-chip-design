@@ -64,6 +64,22 @@ class KnowledgeTests(unittest.TestCase):
                 retrieved.audit["knowledge_class"], "target-specific-solution"
             )
 
+    def test_analysis_only_records_are_rejected_even_if_disguised_as_episode(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "forbidden.json").write_text(json.dumps({
+                "schema_version": "design-episode-v2",
+                "episode_id": "forbidden-audit",
+                "knowledge_class": "cross-target-process-memory",
+                "usage_class": "analysis_only",
+                "eligible_for_agent_context": False,
+                "eligible_for_knowledge_store": False,
+                "access_policy": {},
+                "retrieval_keys": ["must not load"],
+            }))
+            with self.assertRaisesRegex(ValueError, "analysis-only"):
+                KnowledgeStore("generic", root)
+
     def test_prompts_distinguish_blind_and_memory_assisted_runs(self) -> None:
         self.assertIn("No human\ndiagnosis", _interactive_system("none"))
         self.assertIn("No target-specific diagnosis", _interactive_system("generic"))

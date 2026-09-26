@@ -20,6 +20,7 @@ from .interactive import (
     resume_interactive_issueq,
     run_interactive_issueq,
 )
+from .information_audit import AuditError, audit_campaign, audit_campaign_pair
 from .qualification import qualify
 from .smoke import run_baseline_smoke
 
@@ -211,6 +212,26 @@ def command_interactive_reconcile(args: argparse.Namespace) -> int:
     return 0 if result.get("final_valid") else 3
 
 
+def command_audit_information(args: argparse.Namespace) -> int:
+    try:
+        result = audit_campaign(args.campaign, args.output)
+    except AuditError as exc:
+        print(json.dumps({"status": "audit_error", "error": str(exc)}, indent=2))
+        return 2
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def command_audit_information_pair(args: argparse.Namespace) -> int:
+    try:
+        result = audit_campaign_pair(args.e0, args.e1, args.output)
+    except AuditError as exc:
+        print(json.dumps({"status": "audit_error", "error": str(exc)}, indent=2))
+        return 2
+    print(json.dumps(result, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m chia_boom.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -263,6 +284,13 @@ def build_parser() -> argparse.ArgumentParser:
     interactive_reconcile = sub.add_parser("interactive-reconcile")
     interactive_reconcile.add_argument("--config", type=Path, required=True)
     interactive_reconcile.add_argument("--output", type=Path, required=True)
+    audit = sub.add_parser("audit-information")
+    audit.add_argument("--campaign", type=Path, required=True)
+    audit.add_argument("--output", type=Path, required=True)
+    audit_pair = sub.add_parser("audit-information-pair")
+    audit_pair.add_argument("--e0", type=Path, required=True)
+    audit_pair.add_argument("--e1", type=Path, required=True)
+    audit_pair.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -290,6 +318,10 @@ def main() -> None:
         code = command_interactive_finalize(args)
     elif args.command == "interactive-reconcile":
         code = command_interactive_reconcile(args)
+    elif args.command == "audit-information":
+        code = command_audit_information(args)
+    elif args.command == "audit-information-pair":
+        code = command_audit_information_pair(args)
     else:
         print(json.dumps(campaign_report(args.campaign), indent=2))
         code = 0

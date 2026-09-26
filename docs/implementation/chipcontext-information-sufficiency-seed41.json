@@ -1,0 +1,88 @@
+{
+  "schema_version": "chipcontext.information-sufficiency-public-summary.v1",
+  "usage_class": "analysis_only",
+  "eligible_for_agent_context": false,
+  "eligible_for_knowledge_store": false,
+  "base_sha": "6bf8aa45c2f053fcc34bb4cd58a7a17db60e930e",
+  "audit_revision": "chipcontext-information-sufficiency-v1",
+  "experiment": {
+    "seed": 41,
+    "model_calls": 0,
+    "eda_calls": 0,
+    "simulator_calls": 0,
+    "decision_points": 21,
+    "evidence_coverage_rows": 210,
+    "input_source_count_per_arm": 216,
+    "deterministic_clean_replays": 3
+  },
+  "campaign_hashes": {
+    "E0": "80148fa02a14b615f18e152ccf5eacf8e8409af485af39f751f21f5e6b27b247",
+    "E1": "fc49f6eb98512f5ad6382a09c436cccefb6116aa8516338c7c9baa57e080b6d8"
+  },
+  "record_hashes": {
+    "AUDIT_MANIFEST.json": "55be095f1ec6ef133fc3137a3425cb8b554fedc72a5f610dd81bed61a6982061",
+    "DECISION_POINTS.json": "4634daa515693dabfd8b0337631b45f9f5c95cf81e42a66096f5059fe44b4237",
+    "EVIDENCE_COVERAGE.json": "e858b038f927300e9cc57cac4cc72ab59d2fa3b4b1bd875a98db33a81418e7dc",
+    "PAIR_COMPARISON.json": "b7d03964b35af6a79d1502e8648160f9331b8599eb63cae5fc0e8fc90384bb23"
+  },
+  "raw_reads": {
+    "E0_candidate_artifact_reads": 9,
+    "E1_candidate_artifact_reads": 4,
+    "E0_candidate_artifact_kinds": {
+      "differential_result": 7,
+      "post_synth_timing_paths": 2
+    },
+    "E0_unique_refs": {
+      "differential_result": 1,
+      "post_synth_timing_paths": 2
+    },
+    "E0_repeat_reads": {
+      "differential_result": 6,
+      "post_synth_timing_paths": 0
+    },
+    "E1_candidate_artifact_kinds": {
+      "post_synth_timing_paths": 4
+    },
+    "E1_unique_refs": {
+      "post_synth_timing_paths": 2
+    },
+    "E1_repeat_reads": {
+      "post_synth_timing_paths": 2
+    },
+    "E0_baseline_timing_reads": 9,
+    "E1_baseline_timing_reads": 14
+  },
+  "structured_compression_loss": {
+    "E4_scalar_ppa": [
+      "failing_endpoints",
+      "slice_registers",
+      "tns_ns",
+      "total_endpoints",
+      "wns_ns"
+    ],
+    "E6_candidate_transition": [
+      "best_relative_delta",
+      "parent_relative_delta"
+    ],
+    "E7_critical_path_movement": [
+      "critical_path_signature_change",
+      "endpoint_or_path_group_movement"
+    ],
+    "E8_branch_history": [
+      "current_branch_history"
+    ],
+    "E9_cost_and_validation": [
+      "evaluation_and_query_cost"
+    ]
+  },
+  "unavailable": [
+    "current_candidate_generated_rtl"
+  ],
+  "interpretation": [
+    "The five-read reduction came from seven fewer differential-result reads while candidate timing-path reads increased by two.",
+    "Scalar PPA omissions are losses in the structured sub-packet, but those fields remained visible in the outer evaluation response in this run.",
+    "E1 exposed more timing evidence, so lower QoR cannot be described as a simple lack of timing detail.",
+    "Parent/best-relative deltas, explicit critical-path movement, branch history, and validation cost were not expressed as decision-oriented structured facts."
+  ],
+  "causal_claim": "none"
+}

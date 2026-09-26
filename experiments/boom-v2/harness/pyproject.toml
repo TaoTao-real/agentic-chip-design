@@ -25,6 +25,7 @@ chia_boom = [
   "config/*.json",
   "design_episodes/*.json",
   "chipcontext/fixtures/*/*",
+  "chipcontext/fixtures/information-audit/*",
   "scripts/*.py",
   "scripts/*.sh",
   "tools/*.py",
