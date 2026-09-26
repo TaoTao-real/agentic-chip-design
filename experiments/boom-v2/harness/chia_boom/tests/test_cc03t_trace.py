@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -289,6 +290,53 @@ class TraceTests(unittest.TestCase):
             self.assertEqual(trace["provenance"]["result"]["sha256"], __import__("hashlib").sha256(
                 (campaign / "RESULT.json").read_bytes()
             ).hexdigest())
+
+    def test_trace_rebuild_includes_frozen_parent_outside_run_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            campaign = self._write_campaign(root)
+            shutil.rmtree(campaign / "evaluations/candidate-02")
+            candidate_path = campaign / "evaluations/candidate-01/candidate.json"
+            candidate_row = json.loads(candidate_path.read_text())
+            candidate_row["parent_id"] = "fixture-fail"
+            candidate_path.write_text(json.dumps(candidate_row))
+            session_path = campaign / "SESSION.json"
+            session = json.loads(session_path.read_text())
+            session["cc03t_state"] = {
+                "trace_candidates": {
+                    "fixture-fail": {
+                        "candidate_id": "fixture-fail",
+                        "parent_candidate_id": BASELINE_CANDIDATE_ID,
+                        "source_sha256": "f" * 64,
+                        "patch_sha256": "e" * 64,
+                        "evaluation_ref": "evaluation-fixture-fail",
+                        "generated_rtl_ref": None,
+                        "generated_rtl_sha256": None,
+                        "provenance": {"fixture": "Dfail"},
+                    }
+                },
+                "trace_evaluations": {
+                    "evaluation-fixture-fail": {
+                        "evaluation_id": "evaluation-fixture-fail",
+                        "candidate_id": "fixture-fail",
+                        "status": "candidate_invalid",
+                        "stage": "elaboration",
+                        "correctness_ok": None,
+                        "candidate_valid": False,
+                        "promotable": False,
+                        "ppa": None,
+                        "raw_refs": [],
+                    }
+                },
+                "trace_transitions": {},
+            }
+            session_path.write_text(json.dumps(session))
+            build_trace(campaign, root / "trace")
+            dag = json.loads((root / "trace/CANDIDATE_DAG.json").read_text())
+            ids = {row["candidate_id"] for row in dag["candidates"]}
+            self.assertIn("fixture-fail", ids)
+            transition_row = json.loads((root / "trace/RUN_TRACE.json").read_text())["transitions"][0]
+            self.assertEqual(transition_row["selected_parent_id"], "fixture-fail")
 
 
 if __name__ == "__main__":
