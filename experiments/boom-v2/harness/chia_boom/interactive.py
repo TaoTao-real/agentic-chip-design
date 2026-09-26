@@ -49,6 +49,7 @@ from .optimization_trace import (
     branch_history,
     build_trace_tail,
     build_visibility_manifest,
+    canonical_json,
     compare_ppa,
     content_hash,
     physical_tool_contract_hash,
@@ -707,7 +708,7 @@ def _append_trace_tail_message(
 ) -> None:
     messages.append({
         "role": "user",
-        "content": TRACE_TAIL_PREFIX + json.dumps(tail, sort_keys=True),
+        "content": TRACE_TAIL_PREFIX + canonical_json(tail),
     })
 
 
@@ -718,7 +719,7 @@ def _prepare_trace_tail(
     tail = _cc03t_tail(state, max_evaluations=max_evaluations)
     trace_elapsed = time.monotonic_ns() - started
     prepare_started = time.monotonic_ns()
-    encoded = json.dumps(tail, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    encoded = canonical_json(tail).encode("utf-8")
     prepare_elapsed = time.monotonic_ns() - prepare_started
     ready_started = time.monotonic_ns()
     if not encoded or tail.get("content_hash") != content_hash({
@@ -1551,7 +1552,6 @@ def run_interactive_issueq(
                                     "status": attempt_row.get("status"),
                                 },
                             })
-                        content["cc03t_transition"] = transition.to_dict()
                         decision_completed = True
                         if bool(cc03t.get("stop_after_first_evaluation")):
                             finished = True
