@@ -96,21 +96,22 @@ class RuntimeBridgeTests(unittest.TestCase):
     def prepare(self, index: int, source: str, arm: str = "E1"):
         artifact = candidate(index, source, arm)
         directory = self.root / arm / "evaluations" / f"candidate-{index:02d}"
-        (directory / "vivado").mkdir(parents=True)
-        (directory / "differential/run").mkdir(parents=True)
+        evidence = directory / "evaluation-attempt-01"
+        (evidence / "vivado").mkdir(parents=True)
+        (evidence / "differential/run").mkdir(parents=True)
         shutil.copy2(
             FIXTURES / "post_synth_timing_summary.rpt",
-            directory / "vivado/post_synth_timing_summary.rpt",
+            evidence / "vivado/post_synth_timing_summary.rpt",
         )
         shutil.copy2(
             FIXTURES / "post_synth_utilization.rpt",
-            directory / "vivado/post_synth_utilization.rpt",
+            evidence / "vivado/post_synth_utilization.rpt",
         )
         shutil.copy2(
             FIXTURES / "post_synth_timing_paths.rpt",
-            directory / "vivado/post_synth_timing_paths.rpt",
+            evidence / "vivado/post_synth_timing_paths.rpt",
         )
-        dump_json(directory / "differential/run/result.json", {
+        dump_json(evidence / "differential/run/result.json", {
             "cycles": 1_000_000,
             "completed_cycles": 1_000_000,
             "directed_phases": ["idle", "dispatch"],
@@ -119,7 +120,7 @@ class RuntimeBridgeTests(unittest.TestCase):
             "scenario": "NeutralQueue",
             "seed": 41,
         })
-        (directory / "differential/driver.stdout").write_text(
+        (evidence / "differential/driver.stdout").write_text(
             "PASS cycles=1000000 seed=41 scenario=NeutralQueue\n"
         )
         evaluation = EvaluationArtifact(
@@ -187,6 +188,12 @@ class RuntimeBridgeTests(unittest.TestCase):
             feedback["timing_paths"]["report_first"]["fact"]["rank"], 1
         )
         self.assertTrue(feedback["raw_artifacts"])
+        request = json.loads((directory / "chipcontext-request.json").read_text())
+        self.assertTrue(request["artifacts"])
+        self.assertTrue(all(
+            "evaluation-attempt-01/" in row["path"]
+            for row in request["artifacts"]
+        ))
         self.assertEqual(feedback["cost"]["prepare"]["model_calls"], 0)
         self.assertEqual(feedback["cost"]["prepare"]["eda_calls"], 0)
         agent_payload = {key: value for key, value in feedback.items() if key != "cost"}

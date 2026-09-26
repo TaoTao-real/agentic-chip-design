@@ -88,25 +88,31 @@ def _relative(root: Path, path: Path) -> str:
         raise SchemaError("runtime evidence escaped the campaign root") from exc
 
 
-def _raw_artifacts(candidate_dir: Path, campaign_root: Path) -> list[dict[str, Any]]:
+def _raw_artifacts(
+    candidate_dir: Path,
+    campaign_root: Path,
+    infrastructure_attempts: int,
+) -> list[dict[str, Any]]:
+    attempt_dir = candidate_dir / f"evaluation-attempt-{infrastructure_attempts:02d}"
+    evidence_dir = attempt_dir if attempt_dir.is_dir() else candidate_dir
     candidates = [
-        ("elaboration_stdout", "elaboration_stdout", candidate_dir / "elaboration/elaboration.stdout", "text/plain"),
-        ("elaboration_stderr", "elaboration_stderr", candidate_dir / "elaboration/elaboration.stderr", "text/plain"),
-        ("candidate_diff", "candidate_diff", candidate_dir / "elaboration/applied.diff", "text/plain"),
-        ("differential_stdout", "differential_stdout", candidate_dir / "differential/driver.stdout", "text/plain"),
-        ("differential_stderr", "differential_stderr", candidate_dir / "differential/driver.stderr", "text/plain"),
-        ("differential_result", "differential_result", candidate_dir / "differential/run/result.json", "application/json"),
-        ("vivado_stdout", "vivado_stdout", candidate_dir / "vivado/vivado.stdout", "text/plain"),
-        ("vivado_stderr", "vivado_stderr", candidate_dir / "vivado/vivado.stderr", "text/plain"),
+        ("elaboration_stdout", "elaboration_stdout", evidence_dir / "elaboration/elaboration.stdout", "text/plain"),
+        ("elaboration_stderr", "elaboration_stderr", evidence_dir / "elaboration/elaboration.stderr", "text/plain"),
+        ("candidate_diff", "candidate_diff", evidence_dir / "elaboration/applied.diff", "text/plain"),
+        ("differential_stdout", "differential_stdout", evidence_dir / "differential/driver.stdout", "text/plain"),
+        ("differential_stderr", "differential_stderr", evidence_dir / "differential/driver.stderr", "text/plain"),
+        ("differential_result", "differential_result", evidence_dir / "differential/run/result.json", "application/json"),
+        ("vivado_stdout", "vivado_stdout", evidence_dir / "vivado/vivado.stdout", "text/plain"),
+        ("vivado_stderr", "vivado_stderr", evidence_dir / "vivado/vivado.stderr", "text/plain"),
     ]
-    summary = candidate_dir / "vivado/post_synth_timing_summary.rpt"
-    utilization = candidate_dir / "vivado/post_synth_utilization.rpt"
+    summary = evidence_dir / "vivado/post_synth_timing_summary.rpt"
+    utilization = evidence_dir / "vivado/post_synth_utilization.rpt"
     if summary.is_file() and utilization.is_file():
         candidates.extend([
             ("post_synth_timing_summary", "post_synth_timing_summary", summary, "text/plain"),
             ("post_synth_utilization", "post_synth_utilization", utilization, "text/plain"),
         ])
-        paths = candidate_dir / "vivado/post_synth_timing_paths.rpt"
+        paths = evidence_dir / "vivado/post_synth_timing_paths.rpt"
         if paths.is_file():
             candidates.append((
                 "post_synth_timing_paths", "post_synth_timing_paths", paths,
@@ -212,7 +218,11 @@ def prepare_runtime_context(
             "max_payload_bytes": 16 * 1024,
             "revision": "cc03-runtime-feedback-v1",
         },
-        "artifacts": _raw_artifacts(candidate_dir, campaign_root),
+        "artifacts": _raw_artifacts(
+            candidate_dir,
+            campaign_root,
+            infrastructure_attempts,
+        ),
     }
     _write_exact(request_path, request)
     store_root = candidate_dir / "chipcontext-store"
