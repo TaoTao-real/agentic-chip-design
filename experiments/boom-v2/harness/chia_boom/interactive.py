@@ -1154,7 +1154,6 @@ def run_interactive_issueq(
                 "role": "user",
                 "content": "Continue by calling an available tool. Use finish only after measured evaluation evidence.",
             })
-            continue
         turn_observed = False
         turn_progressed = False
         decision_completed = False
