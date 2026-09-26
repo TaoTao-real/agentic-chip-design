@@ -21,10 +21,10 @@ and budget cases belong to PR-C2.
 
 Expected values were manually transcribed from the cited raw fixture hashes and
 spans.  The verifier does not import a production extractor or comparison
-recipe.  `ORACLE_REVIEW.json` remains `pending` until a PR maintainer compares
-the expected facts with those raw sources.  A development run may execute while
-review is pending, but it reports `formal_eligible=false`; `--require-approved-oracle`
-fails closed.
+recipe.  `ORACLE_REVIEW.json` is approved for frozen corpus revision 3 after a PR
+maintainer independently compared the expected facts with the cited raw sources.
+Formal runs use `--require-approved-oracle` and fail closed if the approval or
+corpus hash becomes stale.
 
 ## Reproduce the public vertical slice
 
@@ -63,8 +63,7 @@ zero-cost evidence or a successful rejection.
 
 ## What C1 establishes
 
-A successful development run establishes that the six-case harness can retain
-normal, unknown, and rejected outcomes with raw source identity and trusted
-attempt cost.  It does not establish formal CC-02c acceptance until the oracle
-review is approved, does not cover the remaining 26 cases, and does not show
-Agent or hardware optimization benefit.
+A successful formal C1 run establishes that the approved six-case harness can
+retain normal, unknown, and rejected outcomes with raw source identity and
+trusted attempt cost.  It does not cover the remaining 26 cases and does not
+show Agent or hardware optimization benefit.
