@@ -62,6 +62,14 @@ class KnowledgeStore:
         )
         for path in paths:
             episode = json.loads(path.read_text())
+            if (
+                episode.get("usage_class") == "analysis_only"
+                or episode.get("eligible_for_agent_context") is False
+                or episode.get("eligible_for_knowledge_store") is False
+            ):
+                raise ValueError(
+                    f"analysis-only evidence cannot enter KnowledgeStore: {path.name}"
+                )
             knowledge_class = episode.get("knowledge_class")
             if knowledge_class == GENERIC_CLASS:
                 pass

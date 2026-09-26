@@ -1,0 +1,21 @@
+{
+  "schema_version": "chipcontext.information-audit-fixture.v1",
+  "synthetic": true,
+  "target": "NeutralQueue",
+  "scenarios": [
+    "automatic pushed evidence",
+    "structured pull available but not called",
+    "raw pull called and consumed",
+    "raw pull available but not consumed",
+    "old tool result represented by archived hash",
+    "current candidate generated RTL unavailable",
+    "WNS TNS and failing-endpoint structured omissions",
+    "baseline parent best distinction",
+    "timing movement not represented",
+    "provenance mismatch fails closed",
+    "sibling arm isolation",
+    "multiple actions share one decision point",
+    "analysis-only output is ineligible for Agent context and KnowledgeStore"
+  ],
+  "notice": "The test suite materializes neutral campaigns from this scenario contract; it contains no BOOM source or historical solution."
+}
