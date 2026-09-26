@@ -481,7 +481,7 @@ def summarize_run(run_dir: Path) -> dict[str, Any]:
     )
     timeline_model_wall_ns = sum(
         int(row["wall_time_ns"]) for row in timeline
-        if row.get("stage") == "model_api"
+        if row.get("stage") in {"model_api", "controller_wait"}
         and isinstance(row.get("wall_time_ns"), int)
     )
     curves = _qor_curves(run_dir, result, timeline)

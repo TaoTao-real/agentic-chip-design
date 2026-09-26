@@ -41,8 +41,8 @@ chia-boom cc03t-report --output <directory>
 
 在封存的 seed41 E1 campaign 上从三个空目录重建 Trace，三个 `TRACE_MANIFEST.json` 文件逐字节相同：
 
-- manifest 文件 SHA-256：`e93aa8611aa79effdcd852496b05b8b9152a3eba411afbd0aff63d75f9463ff4`
-- manifest content hash：`8255cc2332204248328f58495647af0092dfaa22d5d917f52619f4b6f35eb850`
+- manifest 文件 SHA-256：`29929de7ad127e89a1743c1786013e35af5bfe359c5d3535f372563d2dad298a`
+- manifest content hash：`3360b367333869fb9f459b4e1a5005a6a13c6b34a28217ef1cc762e5ee288f51`
 - RunTrace content hash：`4d9ac6096e9ded8c331f25b52a7bd15afae1fff3f0801a2f49a04d43eccfe232`
 - 重建内容：4 条 transition、46 条真实工具 action
 - 新调用：0 model、0 EDA、0 simulator

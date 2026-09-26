@@ -1098,9 +1098,22 @@ def run_interactive_issueq(
                 if isinstance(provider_seconds, (int, float)) else None
             )
             cc03t_state["validation_timeline"].append({
+                "span_id": f"turn-{turn:02d}-model-request-total",
+                "stage": "model_request_total",
+                "wall_time_ns": model_wall_ns,
+                "active_time_ns": model_wall_ns,
+                "queue_time_ns": None,
+                "parent_span_id": None,
+                "candidate_id": None,
+                "leaf": False,
+                "unavailable_reason": None,
+                "queue_unavailable_reason": "ray_queue_not_separately_measured",
+                "provenance": {"turn": turn},
+            })
+            cc03t_state["validation_timeline"].append({
                 "span_id": f"turn-{turn:02d}-model-api",
                 "stage": "model_api",
-                "wall_time_ns": model_wall_ns,
+                "wall_time_ns": provider_ns,
                 "active_time_ns": provider_ns,
                 "queue_time_ns": None,
                 "parent_span_id": None,
