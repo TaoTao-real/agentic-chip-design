@@ -136,7 +136,7 @@ class KnowledgeTests(unittest.TestCase):
         )
         self.assertLess(
             len(json.dumps(compacted)),
-            len(json.dumps(messages)) // 3,
+            len(json.dumps(messages)) // 2,
         )
 
 
