@@ -46,14 +46,14 @@ class ChipContextAcceptanceTests(unittest.TestCase):
             code_version="test",
         )
 
-    def test_six_case_api_and_cli_vertical_slice_passes_as_development(self) -> None:
+    def test_six_case_api_and_cli_vertical_slice_passes_with_approved_oracle(self) -> None:
         summary = self.run_suite()
         self.assertEqual(summary["counts"], {"pass": 6, "fail": 0, "blocked": 0})
         self.assertEqual(summary["expected_rejection_cases"], 3)
         self.assertEqual(summary["expected_rejection_attempts"], 6)
         self.assertEqual(summary["unexpected_rejection_attempts"], 0)
-        self.assertFalse(summary["formal_eligible"])
-        self.assertEqual(summary["oracle_review_status"], "pending")
+        self.assertTrue(summary["formal_eligible"])
+        self.assertEqual(summary["oracle_review_status"], "approved")
         attempts = [
             path for path in (self.root / "run" / "attempts").glob("*.json")
             if not path.name.endswith(".audit.json")
@@ -69,17 +69,18 @@ class ChipContextAcceptanceTests(unittest.TestCase):
         summary = self.run_suite(mode="api")
         self.assertEqual(rebuild_summary_from_run(self.root / "run"), summary)
 
-    def test_formal_run_requires_maintainer_oracle_approval(self) -> None:
-        with self.assertRaisesRegex(AcceptanceError, "approved oracle"):
-            run_acceptance(
-                corpus_path=self.suite / "corpus.json",
-                registry=self.suite / "trusted-stores.json",
-                mode="api",
-                output=self.root / "formal",
-                require_approved_oracle=True,
-                code_version="test",
-            )
-        self.assertFalse((self.root / "formal").exists())
+    def test_formal_run_passes_with_maintainer_oracle_approval(self) -> None:
+        summary = run_acceptance(
+            corpus_path=self.suite / "corpus.json",
+            registry=self.suite / "trusted-stores.json",
+            mode="both",
+            output=self.root / "formal",
+            require_approved_oracle=True,
+            code_version="test",
+        )
+        self.assertEqual(summary["counts"], {"pass": 6, "fail": 0, "blocked": 0})
+        self.assertTrue(summary["formal_eligible"])
+        self.assertEqual(summary["oracle_review_status"], "approved")
 
     def test_wrong_expected_fact_and_removed_conflict_are_detected(self) -> None:
         corpus = load_corpus(self.suite / "corpus.json")
