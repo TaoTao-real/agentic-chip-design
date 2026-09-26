@@ -14,7 +14,7 @@ store and must not be copied into a blind Agent workspace.
 | Target component | Implementation in this harness | Status |
 |---|---|---|
 | Design Core | frozen BOOM Chisel source plus generated RTL | implemented legacy adapter |
-| ChipContext | deterministic legacy/raw evidence plus scoped offline queries | CC-02b CLI implemented; no runtime delivery yet |
+| ChipContext | deterministic legacy/raw evidence plus scoped offline queries | CC-03 runtime bridge available for exploratory E0/E1 runs |
 | Loop Engine | `campaign.py`, `interactive.py`, `qualification.py`, `finalize.py` | implemented through CHIA 1.0.1 and Ray |
 | EvidenceStore | immutable campaign directories, hashes and JSON artifacts | implemented as files |
 | KnowledgeStore | `knowledge.py` and generic Design Episodes | implemented with access modes |
@@ -67,6 +67,7 @@ chia-boom resume
 chia-boom finalize
 chia-boom report
 chia-boom interactive
+chia-boom interactive-resume
 chia-boom interactive-finalize
 chia-chipcontext prepare
 chia-chipcontext read-artifact
@@ -96,6 +97,15 @@ failure observations, per-metric baseline/snapshot deltas and collected timing
 paths. The CLI reads trusted store registries, opens stores read-only, renders the
 same deterministic answer as JSON or Markdown, enforces a final UTF-8 byte budget
 and reports logical query work separately from the answer hash.
+
+The interactive BOOM loop additionally accepts `--feedback-arm E0|E1`. Both
+arms receive the same bounded raw candidate-artifact inventory and read tool.
+E1 alone receives a compact deterministic status/failure/PPA/timing summary and
+the five structured domain-query tools. Each completed evaluation is prepared
+automatically, and the session records candidate/source/attempt identity plus
+prepare/query cost. `interactive-resume` continues only the exact saved arm,
+budget, seed, memory mode and frozen tool contract. See
+[`docs/implementation/chipcontext-cc03.md`](../../../docs/implementation/chipcontext-cc03.md).
 
 ## What the published tests establish
 

@@ -5,7 +5,12 @@ import json
 import tempfile
 from pathlib import Path
 
-from chia_boom.interactive import _interactive_system, _meets_auto_stop
+from chia_boom.interactive import (
+    _interactive_system,
+    _interactive_system_with_feedback,
+    _interactive_tool_specs,
+    _meets_auto_stop,
+)
 from chia_boom.knowledge import KnowledgeStore
 
 
@@ -65,6 +70,35 @@ class KnowledgeTests(unittest.TestCase):
         self.assertFalse(_meets_auto_stop(31.92, {"critical_delay_ns": 22.0}, None))
         self.assertTrue(_meets_auto_stop(31.92, {"critical_delay_ns": 22.0}, 20.0))
         self.assertFalse(_meets_auto_stop(31.92, {"critical_delay_ns": 30.0}, 20.0))
+
+    def test_e0_e1_share_raw_tools_and_only_e1_adds_structured_queries(self) -> None:
+        e0 = {
+            item["function"]["name"] for item in _interactive_tool_specs(False, "E0")
+        }
+        e1 = {
+            item["function"]["name"] for item in _interactive_tool_specs(False, "E1")
+        }
+        self.assertIn("read_candidate_artifact", e0)
+        self.assertIn("read_candidate_artifact", e1)
+        self.assertEqual(
+            e1 - e0,
+            {
+                "query_candidate_status",
+                "list_candidate_artifacts",
+                "query_candidate_failure",
+                "compare_candidate_metrics",
+                "query_candidate_timing_paths",
+            },
+        )
+        self.assertEqual(e0 - e1, set())
+        self.assertEqual(
+            _interactive_system_with_feedback("none", "E0"),
+            _interactive_system("none"),
+        )
+        self.assertIn(
+            "deterministic structured facts",
+            _interactive_system_with_feedback("none", "E1"),
+        )
 
 
 if __name__ == "__main__":
