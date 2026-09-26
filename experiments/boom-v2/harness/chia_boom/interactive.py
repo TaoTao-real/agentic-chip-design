@@ -53,6 +53,38 @@ the best measured candidate. Budget inspection so that you evaluate a concrete
 edit instead of exhausting the turn limit on raw reads. Do not claim improvement
 without tool evidence."""
 
+OBSERVATION_TOOLS = {
+    "search_knowledge", "retrieve_knowledge", "read_source", "search_source",
+    "read_timing", "read_generated_rtl", "read_candidate_artifact",
+    "query_candidate_status", "list_candidate_artifacts",
+    "query_candidate_failure", "compare_candidate_metrics",
+    "query_candidate_timing_paths",
+}
+INSPECTION_WARNING_TURNS = 12
+INSPECTION_HARD_LIMIT_TURNS = 16
+
+
+def _advance_inspection_budget(
+    current: int, *, observed: bool, progressed: bool,
+) -> tuple[int, str | None]:
+    if progressed:
+        return 0, None
+    if not observed:
+        return current, None
+    value = current + 1
+    if value == INSPECTION_WARNING_TURNS:
+        return value, (
+            "Inspection budget warning: form a concrete hypothesis now. Raw-read "
+            "tools will be disabled after four more inspection-only turns until "
+            "you apply an edit or evaluate the edited source."
+        )
+    if value == INSPECTION_HARD_LIMIT_TURNS:
+        return value, (
+            "Inspection-only budget is exhausted. The next action must apply a "
+            "concrete edit or evaluate the current edited source."
+        )
+    return value, None
+
 
 def _prepare_interactive_snapshot(
     config: dict[str, Any], output: Path
@@ -573,6 +605,7 @@ def run_interactive_issueq(
         finish_summary = str(saved.get("finish_summary", ""))
         session_usage = list(saved.get("usage", []))
         messages = list(saved["messages"])
+        inspection_only_turns = int(saved.get("inspection_only_turns", 0))
         start_turn = int(saved["turn"]) + 1
     else:
         current_source = baseline_source
@@ -586,6 +619,7 @@ def run_interactive_issueq(
         finished = False
         finish_summary = ""
         session_usage: list[dict[str, Any]] = []
+        inspection_only_turns = 0
         start_turn = 1
     knowledge_root = config.get("knowledge", {}).get("root")
     knowledge = KnowledgeStore(
@@ -658,11 +692,20 @@ def run_interactive_issueq(
                 "content": "Continue by calling an available tool. Use finish only after measured evaluation evidence.",
             })
             continue
+        turn_observed = False
+        turn_progressed = False
         for call in tool_calls:
             call_id = call.get("id")
             fn = (call.get("function") or {}).get("name")
             try:
                 args = json.loads((call.get("function") or {}).get("arguments") or "{}")
+                if fn in OBSERVATION_TOOLS:
+                    turn_observed = True
+                    if inspection_only_turns >= INSPECTION_HARD_LIMIT_TURNS:
+                        raise RuntimeError(
+                            "inspection-only turn budget exhausted; apply a concrete edit "
+                            "or evaluate the current edited source"
+                        )
                 target_episode_retrieved = any(
                     row.get("operation") == "retrieve"
                     and row.get("knowledge_class") == "target-specific-solution"
@@ -788,6 +831,7 @@ def run_interactive_issueq(
                     })
                     content = queried
                 elif fn == "apply_exact_edits":
+                    turn_progressed = True
                     current_source = apply_exact_edits(current_source, args["edits"])
                     diff = make_diff(baseline_source, current_source, target["mutable_file"])
                     content = {
@@ -795,6 +839,7 @@ def run_interactive_issueq(
                         "diff_sha256": sha256_text(diff), "changed_lines": len(diff.splitlines()),
                     }
                 elif fn == "revert_source":
+                    turn_progressed = True
                     if args["target"] == "best":
                         if best_source is None:
                             raise ValueError("no measured valid best candidate exists")
@@ -807,6 +852,7 @@ def run_interactive_issueq(
                         current_parent_id = None
                     content = {"status": "reverted", "target": args["target"], "source_sha256": sha256_text(current_source)}
                 elif fn == "evaluate_candidate":
+                    turn_progressed = True
                     verify_frozen_run(output / "frozen", frozen_fingerprint)
                     if evaluations >= max_evaluations:
                         raise ValueError("EDA evaluation budget exhausted")
@@ -935,6 +981,7 @@ def run_interactive_issueq(
                             "measured_improvement_percent": improvement,
                         }
                 elif fn == "finish":
+                    turn_progressed = True
                     if best_candidate is None:
                         raise ValueError("no measured valid candidate exists; inspect failures and continue")
                     finished = True
@@ -949,6 +996,13 @@ def run_interactive_issueq(
             messages.append({"role": "tool", "tool_call_id": call_id, "content": response_text})
             if finished:
                 break
+        inspection_only_turns, inspection_notice = _advance_inspection_budget(
+            inspection_only_turns,
+            observed=turn_observed,
+            progressed=turn_progressed,
+        )
+        if inspection_notice:
+            messages.append({"role": "user", "content": inspection_notice})
         dump_json(output / "KNOWLEDGE_RETRIEVALS.json", {
             "memory_mode": memory_mode,
             "retrievals": knowledge_retrievals,
@@ -968,6 +1022,7 @@ def run_interactive_issueq(
             "current_parent_source": current_parent_source,
             "current_parent_id": current_parent_id,
             "evaluated_source_sha256s": sorted(evaluated_hashes),
+            "inspection_only_turns": inspection_only_turns,
             "chipcontext_contexts": {
                 key: value.to_dict() for key, value in runtime_contexts.items()
             },
@@ -1007,6 +1062,7 @@ def resume_interactive_issueq(
     required = {
         "seed", "max_turns", "max_evaluations", "memory_mode", "feedback_arm",
         "current_source", "current_parent_source", "evaluated_source_sha256s",
+        "inspection_only_turns",
     }
     missing = sorted(required - set(saved))
     if missing:

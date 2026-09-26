@@ -6,6 +6,9 @@ import tempfile
 from pathlib import Path
 
 from chia_boom.interactive import (
+    INSPECTION_HARD_LIMIT_TURNS,
+    INSPECTION_WARNING_TURNS,
+    _advance_inspection_budget,
     _interactive_system,
     _interactive_system_with_feedback,
     _interactive_tool_specs,
@@ -138,6 +141,26 @@ class KnowledgeTests(unittest.TestCase):
             len(json.dumps(compacted)),
             len(json.dumps(messages)) // 2,
         )
+
+    def test_inspection_budget_warns_blocks_and_resets_without_hardware_hint(self) -> None:
+        current = 0
+        notices = {}
+        for _ in range(INSPECTION_HARD_LIMIT_TURNS):
+            current, notice = _advance_inspection_budget(
+                current, observed=True, progressed=False
+            )
+            if notice:
+                notices[current] = notice
+        self.assertEqual(
+            set(notices), {INSPECTION_WARNING_TURNS, INSPECTION_HARD_LIMIT_TURNS}
+        )
+        self.assertNotIn("prefix", " ".join(notices.values()).lower())
+        self.assertNotIn("priority", " ".join(notices.values()).lower())
+        reset, notice = _advance_inspection_budget(
+            current, observed=False, progressed=True
+        )
+        self.assertEqual(reset, 0)
+        self.assertIsNone(notice)
 
 
 if __name__ == "__main__":

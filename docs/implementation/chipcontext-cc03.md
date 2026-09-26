@@ -24,6 +24,13 @@ reissue any bounded query. This prevents repeated raw RTL bytes from dominating
 provider input without deleting the audit evidence, and is identical in E0 and
 E1.
 
+The same arm-independent action budget warns after 12 consecutive
+inspection-only turns and disables further read/query calls after 16 until the
+Agent edits or evaluates. It constrains tool use only; it contains no target
+bottleneck or transformation hint. This rule was added after the first retained
+pilot exhausted 24 turns on raw reads, performed zero evaluations, and consumed
+723,549 provider-reported tokens.
+
 The E1 push contains candidate/attempt identity, current or historical
 applicability, check outcomes, a grounded failure when one exists, comparable
 post-synthesis delay and LUT deltas, collected timing-path scope, explicit
