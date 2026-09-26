@@ -11,6 +11,7 @@ from unittest import mock
 from chia_boom.information_audit import (
     ANALYSIS_POLICY,
     AuditError,
+    _Reader,
     audit_campaign,
     audit_campaign_pair,
 )
@@ -312,6 +313,14 @@ class InformationAuditTests(unittest.TestCase):
         dump(path, value)
         with self.assertRaisesRegex(AuditError, "provider messages differ"):
             audit_campaign(self.e0, self.root / "audit")
+
+    def test_input_changed_between_reads_fails_closed(self) -> None:
+        reader = _Reader(self.e0)
+        reader.bytes("SESSION.json")
+        path = self.e0 / "SESSION.json"
+        path.write_text(path.read_text() + " ")
+        with self.assertRaisesRegex(AuditError, "changed while"):
+            reader.bytes("SESSION.json")
 
     def test_output_inside_campaign_and_existing_output_are_rejected(self) -> None:
         with self.assertRaisesRegex(AuditError, "outside"):

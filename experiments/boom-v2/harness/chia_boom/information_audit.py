@@ -163,11 +163,15 @@ class _Reader:
         path = self._path(relative)
         value = path.read_bytes()
         key = path.relative_to(self.root).as_posix()
-        self.sources[key] = {
+        observed = {
             "path": key,
             "sha256": _sha_bytes(value),
             "size_bytes": len(value),
         }
+        recorded = self.sources.get(key)
+        if recorded is not None and recorded != observed:
+            raise AuditError("audit input changed while it was being read")
+        self.sources[key] = observed
         return value
 
     def text(self, relative: str | Path) -> str:
