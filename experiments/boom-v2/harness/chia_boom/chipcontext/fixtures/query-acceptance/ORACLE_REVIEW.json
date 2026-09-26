@@ -1,0 +1,10 @@
+{
+  "approved_at": "2026-09-26T06:52:00Z",
+  "approved_by": "PR review 5324992346",
+  "corpus_id": "cc02c-c1-public-v1",
+  "corpus_sha256": "40334ba2e74c32ab7aaacdecd802aa9a159a37000ba20312f26d9b33f56348aa",
+  "review_method": "Compare every expected fact with the cited raw hash and span/pointer; do not use production query output as the oracle.",
+  "reviewer_role": "pr_maintainer",
+  "schema_version": "chipcontext.oracle-review.v1",
+  "status": "approved"
+}

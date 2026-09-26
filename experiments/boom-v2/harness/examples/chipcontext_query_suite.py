@@ -42,11 +42,13 @@ def prepare_store(
     domain: bool = False,
     failure_raw: bool = False,
     large_bytes: int = 0,
+    access: str = "public",
 ) -> tuple[EvidenceStore, Any, QueryScope]:
     inputs = output / "inputs" / name
     shutil.copytree(FIXTURES / fixture_name, inputs)
     request_path = inputs / "request.json"
     request = json.loads(request_path.read_text())
+    request["access"] = access
     if domain:
         shutil.copy(
             FIXTURES / "extraction" / "post_synth_timing_summary.rpt",

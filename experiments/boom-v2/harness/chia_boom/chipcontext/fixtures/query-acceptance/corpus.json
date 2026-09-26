@@ -1,0 +1,641 @@
+{
+  "cases": [
+    {
+      "case_id": "comparison-normal",
+      "category": "normal_comparison",
+      "execution": {
+        "allow_controlled": false,
+        "formats": [
+          "json"
+        ],
+        "max_output_bytes": 65536
+      },
+      "expected": {
+        "assertions": [
+          {
+            "operator": "equals",
+            "pointer": "/query/name",
+            "target": "answer",
+            "value": "compare_metrics"
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/all_comparable",
+            "target": "answer",
+            "value": true
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/any_comparable",
+            "target": "answer",
+            "value": true
+          },
+          {
+            "operator": "length",
+            "pointer": "/conflicts",
+            "target": "answer",
+            "value": 0
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/0/metric_id",
+            "target": "answer",
+            "value": "critical_delay_ns"
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/0/status",
+            "target": "answer",
+            "value": "comparable"
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/0/current/value",
+            "target": "answer",
+            "value": 9.0
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/0/reference/value",
+            "target": "answer",
+            "value": 10.0
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/0/delta",
+            "target": "answer",
+            "value": -1.0
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/0/current/unit",
+            "target": "answer",
+            "value": "ns"
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/1/metric_id",
+            "target": "answer",
+            "value": "slice_luts"
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/1/status",
+            "target": "answer",
+            "value": "comparable"
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/1/current/value",
+            "target": "answer",
+            "value": 102
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/1/reference/value",
+            "target": "answer",
+            "value": 100
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/1/delta",
+            "target": "answer",
+            "value": 2
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/1/current/unit",
+            "target": "answer",
+            "value": "count"
+          },
+          {
+            "operator": "min_length",
+            "pointer": "/source_refs",
+            "target": "answer",
+            "value": 2
+          },
+          {
+            "operator": "equals",
+            "pointer": "/status",
+            "target": "audit",
+            "value": "success"
+          }
+        ],
+        "forbidden": [],
+        "outcome": "success"
+      },
+      "oracle_origin": [
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/result.json",
+          "json_pointer": "/search_evaluation/post_synth",
+          "manual_method": "Manually read current delay=9.0 ns and LUT=102.",
+          "sha256": "d5511748a5df92dc924701d4582c406c17e8869cd34abfe6a7599401202006fb"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/baseline-ppa.json",
+          "json_pointer": "",
+          "manual_method": "Manually read baseline delay=10.0 ns and LUT=100; subtract current-reference.",
+          "sha256": "836729281aea4a79e957eaa07f1747cd5b7133c54704e503a8d6af732096f1c7"
+        },
+        {
+          "artifact": "generated:requests/acceptance/normal-comparison.json",
+          "json_pointer": "/parameters/reference",
+          "manual_method": "Manually verify the comparison explicitly selects the manifest-bound baseline rather than an inferred latest or best result.",
+          "sha256": "76f5a33ef071b547ead4caae6adf7be3f921b3f15d9efd3370a286798edc0bd0"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/request.json",
+          "json_pointer": "/manifest_bindings",
+          "manual_method": "Manually verify the prepare request binds the baseline and qualification to sealed-manifest evidence paths.",
+          "sha256": "78ecc23b73b83a6b6d42b304bcdc9c5e7902b6a7f5638307aced77896805e45b"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/FROZEN_RUN_MANIFEST.json",
+          "json_pointer": "/contract/physical",
+          "manual_method": "Manually verify the frozen part, clock period, and physical tool contract shared by current and reference measurements.",
+          "sha256": "575421501d0a32bf1f1e3aecfd9f890fe29c3586241212cf2f3e23e9d08c1c8a"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/FROZEN_RUN_MANIFEST.json",
+          "json_pointer": "/files",
+          "manual_method": "Manually verify the frozen manifest pins the exact baseline and qualification content hashes named by manifest_bindings.",
+          "sha256": "575421501d0a32bf1f1e3aecfd9f890fe29c3586241212cf2f3e23e9d08c1c8a"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/QUALIFICATION.json",
+          "json_pointer": "/tool_versions",
+          "manual_method": "Manually verify the qualified Vivado and supporting tool versions attached to the frozen comparison contract.",
+          "sha256": "8d54709ec6eb308830b60a063e47362f7130b5809150f24f928ed964bde838b1"
+        }
+      ],
+      "question": "\u5019\u9009\u76f8\u5bf9\u7ed1\u5b9a\u57fa\u7ebf\u7684\u5173\u952e\u5ef6\u8fdf\u548c LUT \u5dee\u503c\u662f\u591a\u5c11\uff1f",
+      "request": {
+        "path": "requests/acceptance/normal-comparison.json",
+        "sha256": "76f5a33ef071b547ead4caae6adf7be3f921b3f15d9efd3370a286798edc0bd0"
+      },
+      "requirement": "CC-02c normal comparison",
+      "schema_version": "chipcontext.acceptance-case.v1",
+      "source_type": "synthetic"
+    },
+    {
+      "case_id": "comparison-missing-stage",
+      "category": "incomparability_conflict",
+      "execution": {
+        "allow_controlled": false,
+        "formats": [
+          "json"
+        ],
+        "max_output_bytes": 65536
+      },
+      "expected": {
+        "assertions": [
+          {
+            "operator": "equals",
+            "pointer": "/query/parameters/stage",
+            "target": "answer",
+            "value": "post_route"
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/all_comparable",
+            "target": "answer",
+            "value": false
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/any_comparable",
+            "target": "answer",
+            "value": false
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/0/status",
+            "target": "answer",
+            "value": "missing"
+          },
+          {
+            "operator": "is_null",
+            "pointer": "/result/comparisons/0/delta",
+            "target": "answer",
+            "value": true
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/1/status",
+            "target": "answer",
+            "value": "missing"
+          },
+          {
+            "operator": "is_null",
+            "pointer": "/result/comparisons/1/delta",
+            "target": "answer",
+            "value": true
+          },
+          {
+            "operator": "min_length",
+            "pointer": "/missing",
+            "target": "answer",
+            "value": 2
+          },
+          {
+            "operator": "equals",
+            "pointer": "/status",
+            "target": "audit",
+            "value": "success"
+          }
+        ],
+        "forbidden": [
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/0/status",
+            "target": "answer",
+            "value": "comparable"
+          }
+        ],
+        "outcome": "unknown"
+      },
+      "oracle_origin": [
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/result.json",
+          "json_pointer": "/search_evaluation",
+          "manual_method": "Manually verify only synthesis/post_synth evidence exists and post_route is null.",
+          "sha256": "d5511748a5df92dc924701d4582c406c17e8869cd34abfe6a7599401202006fb"
+        }
+      ],
+      "question": "\u5019\u9009\u6ca1\u6709 post-route \u6d4b\u91cf\u65f6\u80fd\u5426\u4ea7\u751f delta\uff1f",
+      "request": {
+        "path": "requests/acceptance/missing-stage.json",
+        "sha256": "8f291122e435ea2ac90c3b831286ee8beaf0f536bee66174e51761a284ff0292"
+      },
+      "requirement": "CC-02c missing stage",
+      "schema_version": "chipcontext.acceptance-case.v1",
+      "source_type": "synthetic"
+    },
+    {
+      "case_id": "comparison-raw-legacy-conflict",
+      "category": "incomparability_conflict",
+      "execution": {
+        "allow_controlled": false,
+        "formats": [
+          "json"
+        ],
+        "max_output_bytes": 65536
+      },
+      "expected": {
+        "assertions": [
+          {
+            "operator": "equals",
+            "pointer": "/result/all_comparable",
+            "target": "answer",
+            "value": false
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/any_comparable",
+            "target": "answer",
+            "value": false
+          },
+          {
+            "operator": "min_length",
+            "pointer": "/conflicts",
+            "target": "answer",
+            "value": 2
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/0/status",
+            "target": "answer",
+            "value": "conflict"
+          },
+          {
+            "operator": "is_null",
+            "pointer": "/result/comparisons/0/delta",
+            "target": "answer",
+            "value": true
+          },
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/1/status",
+            "target": "answer",
+            "value": "conflict"
+          },
+          {
+            "operator": "is_null",
+            "pointer": "/result/comparisons/1/delta",
+            "target": "answer",
+            "value": true
+          },
+          {
+            "operator": "equals",
+            "pointer": "/status",
+            "target": "audit",
+            "value": "success"
+          }
+        ],
+        "forbidden": [
+          {
+            "operator": "equals",
+            "pointer": "/result/comparisons/0/status",
+            "target": "answer",
+            "value": "comparable"
+          }
+        ],
+        "outcome": "unknown"
+      },
+      "oracle_origin": [
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/result.json",
+          "json_pointer": "/search_evaluation/post_synth",
+          "manual_method": "Manually read legacy delay/LUT values.",
+          "sha256": "d5511748a5df92dc924701d4582c406c17e8869cd34abfe6a7599401202006fb"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/extraction/post_synth_timing_summary.rpt",
+          "line_span": {
+            "end": 11,
+            "start": 9
+          },
+          "manual_method": "Manually read raw WNS and clock context; derived delay differs from legacy 9.0 ns.",
+          "sha256": "804df99ac66108d27307296fcfa1b7f713df7419e3545aaa55a86c043739401b"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/extraction/post_synth_utilization.rpt",
+          "line_span": {
+            "end": 10,
+            "start": 6
+          },
+          "manual_method": "Manually read raw Slice LUT count 1,234, which differs from legacy 102.",
+          "sha256": "9b338c72cca4eef99e2740ae872b3593c9f62e9129b9ac5af3115b3b847e4c90"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/FROZEN_RUN_MANIFEST.json",
+          "json_pointer": "/contract/physical/clock_period_ns",
+          "manual_method": "Manually combine the frozen 5.0 ns clock period with raw WNS to derive raw critical delay and compare it with legacy 9.0 ns.",
+          "sha256": "575421501d0a32bf1f1e3aecfd9f890fe29c3586241212cf2f3e23e9d08c1c8a"
+        }
+      ],
+      "question": "\u539f\u59cb Vivado \u62a5\u544a\u4e0e legacy \u6307\u6807\u51b2\u7a81\u65f6\u80fd\u5426\u4ea7\u751f delta\uff1f",
+      "request": {
+        "path": "requests/acceptance/raw-legacy-conflict.json",
+        "sha256": "c7532791f7e1575274922115fd8949eca58517bbdfd4b8afd554446d68ca60e2"
+      },
+      "requirement": "CC-02c conflict preservation",
+      "schema_version": "chipcontext.acceptance-case.v1",
+      "source_type": "synthetic"
+    },
+    {
+      "case_id": "permission-controlled-denied",
+      "category": "permission_integrity",
+      "execution": {
+        "allow_controlled": false,
+        "formats": [
+          "json"
+        ],
+        "max_output_bytes": 65536
+      },
+      "expected": {
+        "assertions": [
+          {
+            "operator": "equals",
+            "pointer": "/error",
+            "target": "error",
+            "value": "permission_denied"
+          },
+          {
+            "operator": "equals",
+            "pointer": "/status",
+            "target": "audit",
+            "value": "rejected"
+          },
+          {
+            "operator": "equals",
+            "pointer": "/error_code",
+            "target": "audit",
+            "value": "permission_denied"
+          },
+          {
+            "operator": "is_null",
+            "pointer": "/answer_ref",
+            "target": "audit",
+            "value": true
+          },
+          {
+            "operator": "gte",
+            "pointer": "/cost/wall_time_ns",
+            "target": "audit",
+            "value": 1
+          }
+        ],
+        "forbidden": [
+          {
+            "operator": "equals",
+            "pointer": "/status",
+            "target": "audit",
+            "value": "success"
+          }
+        ],
+        "outcome": "rejection"
+      },
+      "oracle_origin": [
+        {
+          "artifact": "generated:inputs/controlled/request.json",
+          "json_pointer": "/access",
+          "manual_method": "Manually verify the prepared envelope is controlled while the case grants public access only.",
+          "sha256": "f6b60413b119a3e67814e769114556ea746de889166cbc35ed07890432cbc824"
+        }
+      ],
+      "question": "public \u8c03\u7528\u80fd\u5426\u8bfb\u53d6 controlled evidence\uff1f",
+      "request": {
+        "path": "requests/acceptance/controlled-denied.json",
+        "sha256": "80286fcc26ec03b6ceac05092a14e05fd5735ce280566ccb14646820ed00f8d6"
+      },
+      "requirement": "CC-02c authorization rejection",
+      "schema_version": "chipcontext.acceptance-case.v1",
+      "source_type": "synthetic"
+    },
+    {
+      "case_id": "integrity-corrupt-roots",
+      "category": "permission_integrity",
+      "execution": {
+        "allow_controlled": false,
+        "formats": [
+          "json"
+        ],
+        "max_output_bytes": 65536
+      },
+      "expected": {
+        "assertions": [
+          {
+            "operator": "equals",
+            "pointer": "/error",
+            "target": "error",
+            "value": "integrity_error"
+          },
+          {
+            "operator": "equals",
+            "pointer": "/status",
+            "target": "audit",
+            "value": "rejected"
+          },
+          {
+            "operator": "equals",
+            "pointer": "/error_code",
+            "target": "audit",
+            "value": "integrity_error"
+          },
+          {
+            "operator": "is_null",
+            "pointer": "/answer_ref",
+            "target": "audit",
+            "value": true
+          },
+          {
+            "operator": "gte",
+            "pointer": "/cost/wall_time_ns",
+            "target": "audit",
+            "value": 1
+          }
+        ],
+        "forbidden": [
+          {
+            "operator": "equals",
+            "pointer": "/status",
+            "target": "audit",
+            "value": "success"
+          }
+        ],
+        "outcome": "rejection"
+      },
+      "oracle_origin": [
+        {
+          "artifact": "generated:stores/corrupt/ROOTS.json",
+          "manual_method": "Manually verify bytes are [] rather than the required roots object.",
+          "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      ],
+      "question": "store metadata \u4e0d\u662f\u5408\u6cd5\u5bf9\u8c61\u65f6\u662f\u5426 fail closed\uff1f",
+      "request": {
+        "path": "requests/acceptance/corrupt-metadata.json",
+        "sha256": "e4d1014b7f5857f890e63485dd264fb46a902364183d4d04a57dbe79c6e96ab1"
+      },
+      "requirement": "CC-02c integrity rejection",
+      "schema_version": "chipcontext.acceptance-case.v1",
+      "source_type": "synthetic"
+    },
+    {
+      "case_id": "budget-post-scan-rejected",
+      "category": "budget_rejection",
+      "execution": {
+        "allow_controlled": false,
+        "formats": [
+          "json"
+        ],
+        "max_output_bytes": 1024
+      },
+      "expected": {
+        "assertions": [
+          {
+            "operator": "equals",
+            "pointer": "/error",
+            "target": "error",
+            "value": "budget_exceeded"
+          },
+          {
+            "operator": "equals",
+            "pointer": "/status",
+            "target": "audit",
+            "value": "rejected"
+          },
+          {
+            "operator": "equals",
+            "pointer": "/error_code",
+            "target": "audit",
+            "value": "budget_exceeded"
+          },
+          {
+            "operator": "is_null",
+            "pointer": "/answer_ref",
+            "target": "audit",
+            "value": false
+          },
+          {
+            "operator": "gte",
+            "pointer": "/output/attempted_output_bytes",
+            "target": "audit",
+            "value": 1025
+          },
+          {
+            "operator": "equals",
+            "pointer": "/output/returned_bytes",
+            "target": "audit",
+            "value": 0
+          },
+          {
+            "operator": "gte",
+            "pointer": "/cost/artifact_scan_bytes",
+            "target": "audit",
+            "value": 1
+          },
+          {
+            "operator": "gte",
+            "pointer": "/cost/hash_bytes",
+            "target": "audit",
+            "value": 1
+          }
+        ],
+        "forbidden": [
+          {
+            "operator": "equals",
+            "pointer": "/status",
+            "target": "audit",
+            "value": "success"
+          }
+        ],
+        "outcome": "rejection"
+      },
+      "oracle_origin": [
+        {
+          "artifact": "generated:requests/acceptance/post-scan-budget.json",
+          "json_pointer": "/parameters/artifact_ref",
+          "manual_method": "Manually verify the query names the exact registered artifact reference used by the scoped read.",
+          "sha256": "2d2cf196027171127ac2685729f7b6fb93e8711b8e68a1361100eec267bea443"
+        },
+        {
+          "artifact": "generated:stores/success/artifacts/7bd66024d6e7cd1a3897a3b1adb259ca0340be40ffce2da5bcfe3c36b25588d3.json",
+          "json_pointer": "",
+          "manual_method": "Manually verify the registered evaluation_record metadata binds that artifact reference to the result payload hash and byte size.",
+          "sha256": "b68d04399a17e25aa703389f1ad07aa483e6a4854805b05279316b0388da52ae"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/result.json",
+          "json_pointer": "",
+          "manual_method": "Manually verify the exact evaluation_record payload bytes that must be scanned and hashed before response serialization.",
+          "sha256": "d5511748a5df92dc924701d4582c406c17e8869cd34abfe6a7599401202006fb"
+        }
+      ],
+      "question": "\u8bc1\u636e\u626b\u63cf\u5b8c\u6210\u4f46\u6700\u7ec8\u8f93\u51fa\u8d85\u9884\u7b97\u65f6\u662f\u5426\u62d2\u7edd\u5e76\u4fdd\u7559\u6210\u672c\uff1f",
+      "request": {
+        "path": "requests/acceptance/post-scan-budget.json",
+        "sha256": "2d2cf196027171127ac2685729f7b6fb93e8711b8e68a1361100eec267bea443"
+      },
+      "requirement": "CC-02c post-scan budget rejection",
+      "schema_version": "chipcontext.acceptance-case.v1",
+      "source_type": "synthetic"
+    }
+  ],
+  "corpus_id": "cc02c-c1-public-v1",
+  "corpus_revision": "3",
+  "execution_limits": {
+    "attempt_timeout_seconds": 30,
+    "case_timeout_seconds": 120,
+    "max_pages": 64,
+    "max_total_bytes": 524288
+  },
+  "implemented_case_count": 6,
+  "oracle_review": {
+    "record": "ORACLE_REVIEW.json",
+    "required": true
+  },
+  "planned_case_count": 32,
+  "schema_version": "chipcontext.acceptance-corpus.v1"
+}
