@@ -312,13 +312,23 @@ def _structured_metric_ids(content: dict[str, Any]) -> set[str]:
     return {str(row.get("metric_id")) for row in comparisons if row.get("metric_id")}
 
 
-def _lossy_fields(family: str, last_evaluation: dict[str, Any] | None) -> list[str]:
+def _information_gaps(
+    family: str, last_evaluation: dict[str, Any] | None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "lossy_fields": [],
+        "derived_relation_fields": [],
+        "unavailable_fields": [],
+        "compression_evidence": None,
+        "derived_relation_evidence": None,
+    }
     if not last_evaluation:
-        return []
+        return result
     content = last_evaluation.get("content") or {}
     structured = content.get("structured_feedback")
     if not isinstance(structured, dict):
-        return []
+        return result
+    base = dict(last_evaluation["source_ref"])
     if family == "E4":
         raw = set((content.get("post_synth") or {}).keys())
         represented = _structured_metric_ids(content)
@@ -326,42 +336,91 @@ def _lossy_fields(family: str, last_evaluation: dict[str, Any] | None) -> list[s
             "critical_delay_ns", "slice_luts", "slice_registers", "wns_ns",
             "tns_ns", "failing_endpoints", "total_endpoints",
         }
-        return sorted((raw & material) - represented)
+        result["lossy_fields"] = sorted((raw & material) - represented)
+        if result["lossy_fields"]:
+            result["compression_evidence"] = {
+                "raw_or_wrapper_source": base | {"json_pointer": "/post_synth"},
+                "structured_source": base | {
+                    "json_pointer": "/structured_feedback/metrics"
+                },
+            }
+        return result
     if family == "E6":
-        missing = []
-        if content.get("best_post_synth") is not None:
-            missing.append("best_relative_delta")
-        missing.append("parent_relative_delta")
-        return missing
+        current = content.get("post_synth")
+        best = content.get("best_post_synth")
+        parent = content.get("parent_post_synth")
+        operand_sources = []
+        if isinstance(current, dict) and isinstance(best, dict):
+            result["derived_relation_fields"].append("best_relative_delta")
+            operand_sources.extend([
+                base | {"json_pointer": "/post_synth"},
+                base | {"json_pointer": "/best_post_synth"},
+            ])
+        else:
+            result["unavailable_fields"].append("best_relative_delta")
+        if isinstance(current, dict) and isinstance(parent, dict):
+            result["derived_relation_fields"].append("parent_relative_delta")
+            operand_sources.extend([
+                base | {"json_pointer": "/post_synth"},
+                base | {"json_pointer": "/parent_post_synth"},
+            ])
+        else:
+            result["unavailable_fields"].append("parent_relative_delta")
+        if operand_sources:
+            result["derived_relation_evidence"] = {
+                "operand_sources": operand_sources,
+                "structured_source": base | {
+                    "json_pointer": "/structured_feedback/metrics"
+                },
+            }
+        return result
     if family == "E7":
-        return ["critical_path_signature_change", "endpoint_or_path_group_movement"]
+        current_paths = (structured.get("timing_paths") or {}).get("paths")
+        reference_paths = content.get("parent_timing_paths")
+        fields = [
+            "critical_path_signature_change", "endpoint_or_path_group_movement",
+        ]
+        if isinstance(current_paths, list) and current_paths and isinstance(
+            reference_paths, list
+        ) and reference_paths:
+            result["derived_relation_fields"] = fields
+            result["derived_relation_evidence"] = {
+                "operand_sources": [
+                    base | {"json_pointer": "/structured_feedback/timing_paths/paths"},
+                    base | {"json_pointer": "/parent_timing_paths"},
+                ],
+                "structured_source": base | {
+                    "json_pointer": "/structured_feedback/timing_paths"
+                },
+            }
+        else:
+            result["unavailable_fields"] = fields
+        return result
     if family == "E8":
-        return ["current_branch_history"]
-    if family == "E9" and (structured.get("cost") is None):
-        return ["evaluation_and_query_cost"]
-    return []
-
-
-def _compression_evidence(
-    family: str, last_evaluation: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    if not last_evaluation or not _lossy_fields(family, last_evaluation):
-        return None
-    base = dict(last_evaluation["source_ref"])
-    pointers = {
-        "E4": ("/post_synth", "/structured_feedback/metrics"),
-        "E6": ("/post_synth", "/structured_feedback/metrics"),
-        "E7": ("/raw_evidence/artifacts", "/structured_feedback/timing_paths"),
-        "E8": ("/candidate_id", "/structured_feedback"),
-        "E9": ("/evaluations_remaining", "/structured_feedback/status"),
-    }
-    raw_pointer, structured_pointer = pointers.get(
-        family, ("", "/structured_feedback")
-    )
-    return {
-        "raw_or_wrapper_source": base | {"json_pointer": raw_pointer},
-        "structured_source": base | {"json_pointer": structured_pointer},
-    }
+        branch_history = content.get("branch_history")
+        if branch_history is not None:
+            result["lossy_fields"] = ["current_branch_history"]
+            result["compression_evidence"] = {
+                "raw_or_wrapper_source": base | {"json_pointer": "/branch_history"},
+                "structured_source": base | {"json_pointer": "/structured_feedback"},
+            }
+        else:
+            result["unavailable_fields"] = ["current_branch_history"]
+        return result
+    if family == "E9" and structured.get("cost") is None:
+        if content.get("agent_visible_cost") is not None:
+            result["lossy_fields"] = ["evaluation_and_query_cost"]
+            result["compression_evidence"] = {
+                "raw_or_wrapper_source": base | {
+                    "json_pointer": "/agent_visible_cost"
+                },
+                "structured_source": base | {
+                    "json_pointer": "/structured_feedback/status"
+                },
+            }
+        else:
+            result["unavailable_fields"] = ["evaluation_and_query_cost"]
+    return result
 
 
 def _available_channels(
@@ -369,9 +428,15 @@ def _available_channels(
     tool_names: set[str],
     prior_events: list[dict[str, Any]],
     last_evaluation: dict[str, Any] | None,
+    messages: list[dict[str, Any]],
 ) -> set[str]:
     channels = {
-        event["channel"] for event in prior_events if family in event["families"]
+        event["channel"]
+        for event in prior_events
+        if family in event["families"]
+        and _message_tool_state(messages, event) in {
+            "inline_current_request", "visible_recent_tool_result",
+        }
     }
     for tool, families in TOOL_FAMILIES.items():
         if tool in STATE_CHANGING_TOOLS:
@@ -408,7 +473,9 @@ def _coverage_for_decision(
     request_ref = _source(reader, request_path, "/request/messages")
     for family, definition in EVIDENCE_FAMILIES.items():
         family_events = [event for event in prior_events if family in event["families"]]
-        channels = _available_channels(family, names, prior_events, last_evaluation)
+        channels = _available_channels(
+            family, names, prior_events, last_evaluation, messages,
+        )
         component_notes: list[dict[str, Any]] = []
         if family == "E2":
             component_notes = [
@@ -447,7 +514,10 @@ def _coverage_for_decision(
             else "available_not_seen" if primary != "unavailable"
             else "not_available"
         )
-        lossy = _lossy_fields(family, last_evaluation)
+        gaps = _information_gaps(family, last_evaluation)
+        lossy = gaps["lossy_fields"]
+        derived = gaps["derived_relation_fields"]
+        unavailable_fields = gaps["unavailable_fields"]
         stale = working_dirty and family in {"E3", "E4", "E5", "E6", "E7", "E9"}
         if family == "E2" and last_evaluation:
             diagnostic = "unavailable"
@@ -455,6 +525,10 @@ def _coverage_for_decision(
             diagnostic = "stale_or_historical"
         elif lossy:
             diagnostic = "lossy_structured_representation"
+        elif derived:
+            diagnostic = "derived_relation_not_materialized"
+        elif unavailable_fields:
+            diagnostic = "unavailable"
         elif primary == "unavailable":
             diagnostic = "unavailable"
         elif consumption == "available_not_seen":
@@ -478,7 +552,10 @@ def _coverage_for_decision(
             "consumption": consumption,
             "diagnostic": diagnostic,
             "lossy_fields": lossy,
-            "compression_evidence": _compression_evidence(family, last_evaluation),
+            "derived_relation_fields": derived,
+            "unavailable_fields": unavailable_fields,
+            "compression_evidence": gaps["compression_evidence"],
+            "derived_relation_evidence": gaps["derived_relation_evidence"],
             "working_state": "not_evaluated" if working_dirty else "evaluated_or_initial",
             "source_refs": [unique_sources[key] for key in sorted(unique_sources)],
         })
@@ -704,10 +781,12 @@ def _parse_campaign(campaign: Path) -> dict[str, Any]:
                     decisions[-1]["outcome_candidate_id"] = content.get("candidate_id")
                     decisions[-1]["outcome_candidate_valid"] = content.get("candidate_valid")
                     decisions[-1]["outcome_became_best"] = became_best
+                    decisions[-1]["outcome_evaluation_ordinal"] = evaluation_index
                 if pending_design_decision is not None:
                     pending_design_decision["outcome_candidate_id"] = content.get("candidate_id")
                     pending_design_decision["outcome_candidate_valid"] = content.get("candidate_valid")
                     pending_design_decision["outcome_became_best"] = became_best
+                    pending_design_decision["outcome_evaluation_ordinal"] = evaluation_index
                     pending_design_decision = None
 
     event_public = []
@@ -757,18 +836,50 @@ def _parse_campaign(campaign: Path) -> dict[str, Any]:
     return analysis
 
 
-def _anchor(analysis: dict[str, Any], candidate_suffix: str) -> dict[str, Any]:
-    matched = []
-    for decision in analysis["decisions"]:
-        candidate_id = str(decision.get("outcome_candidate_id", ""))
-        if candidate_id.endswith(candidate_suffix):
-            matched.append(decision)
+def _design_decision_for_candidate(
+    analysis: dict[str, Any], candidate_id: str,
+) -> dict[str, Any]:
+    matched = [
+        decision for decision in analysis["decisions"]
+        if decision.get("outcome_candidate_id") == candidate_id
+    ]
     for decision in matched:
         if "apply_exact_edits" in decision.get("actions", []):
             return decision
     if matched:
         return matched[0]
-    raise AuditError(f"required pair anchor is missing: {candidate_suffix}")
+    raise AuditError("RESULT best candidate has no measured decision lineage")
+
+
+def _final_best_anchor(analysis: dict[str, Any]) -> dict[str, Any]:
+    candidate_id = analysis["result_summary"].get("best_candidate_id")
+    if not candidate_id:
+        raise AuditError("pair audit campaign has no RESULT best candidate")
+    decision = _design_decision_for_candidate(analysis, str(candidate_id))
+    if not decision.get("outcome_candidate_valid"):
+        raise AuditError("RESULT best candidate is not a valid measured outcome")
+    return decision
+
+
+def _ordinal_anchor(
+    analysis: dict[str, Any], evaluation_ordinal: int,
+) -> tuple[dict[str, Any], str]:
+    exact = [
+        decision for decision in analysis["decisions"]
+        if decision.get("outcome_evaluation_ordinal") == evaluation_ordinal
+    ]
+    for decision in exact:
+        if "apply_exact_edits" in decision.get("actions", []):
+            return decision, "exact_evaluation_ordinal"
+    if exact:
+        return exact[0], "exact_evaluation_ordinal"
+    finish = [
+        decision for decision in analysis["decisions"]
+        if decision.get("decision_class") == "finish_or_stop"
+    ]
+    if finish and int(analysis["result_summary"].get("evaluations") or 0) < evaluation_ordinal:
+        return finish[-1], "campaign_stopped_before_evaluation_ordinal"
+    raise AuditError("campaign lacks the requested evaluation-ordinal anchor")
 
 
 def _coverage_map(analysis: dict[str, Any], decision_id: str) -> dict[str, dict[str, Any]]:
@@ -782,37 +893,40 @@ def _coverage_map(analysis: dict[str, Any], decision_id: str) -> dict[str, dict[
 def _pair_comparison(e0: dict[str, Any], e1: dict[str, Any]) -> dict[str, Any]:
     if e0["arm"] != "E0" or e1["arm"] != "E1" or e0["seed"] != e1["seed"]:
         raise AuditError("pair audit requires matched E0/E1 campaigns and seed")
-    e0_c4 = _anchor(e0, "candidate-04")
-    e1_c4 = _anchor(e1, "candidate-04")
-    e1_c3 = _anchor(e1, "candidate-03")
+    e0_best = _final_best_anchor(e0)
+    e1_best = _final_best_anchor(e1)
+    e0_best_ordinal = int(e0_best["outcome_evaluation_ordinal"])
+    e1_aligned, e1_alignment_status = _ordinal_anchor(e1, e0_best_ordinal)
     maps = {
-        "e0_before_candidate_04": _coverage_map(e0, e0_c4["decision_id"]),
-        "e1_before_candidate_04": _coverage_map(e1, e1_c4["decision_id"]),
-        "e1_before_best_candidate_03": _coverage_map(e1, e1_c3["decision_id"]),
+        "e0_before_final_best": _coverage_map(e0, e0_best["decision_id"]),
+        "e1_at_e0_final_best_ordinal": _coverage_map(
+            e1, e1_aligned["decision_id"]
+        ),
+        "e1_before_final_best": _coverage_map(e1, e1_best["decision_id"]),
     }
     q1 = [
-        family for family, row in maps["e0_before_candidate_04"].items()
+        family for family, row in maps["e0_before_final_best"].items()
         if row["consumption"] == "actually_seen"
     ]
     q2 = [
         {
             "family_id": family,
-            "e0_consumption": maps["e0_before_candidate_04"][family]["consumption"],
-            "e1_availability": maps["e1_before_candidate_04"][family]["availability"],
-            "e1_exposure": maps["e1_before_candidate_04"][family]["exposure"],
-            "e1_consumption": maps["e1_before_candidate_04"][family]["consumption"],
-            "e1_diagnostic": maps["e1_before_candidate_04"][family]["diagnostic"],
+            "e0_consumption": maps["e0_before_final_best"][family]["consumption"],
+            "e1_availability": maps["e1_at_e0_final_best_ordinal"][family]["availability"],
+            "e1_exposure": maps["e1_at_e0_final_best_ordinal"][family]["exposure"],
+            "e1_consumption": maps["e1_at_e0_final_best_ordinal"][family]["consumption"],
+            "e1_diagnostic": maps["e1_at_e0_final_best_ordinal"][family]["diagnostic"],
         }
         for family in EVIDENCE_FAMILIES
     ]
     q3_components = {
-        "current_candidate_generated_rtl": maps["e1_before_candidate_04"]["E2"]["component_notes"],
-        "candidate_diff": maps["e1_before_candidate_04"]["E1"],
-        "parent_best_ppa": maps["e1_before_candidate_04"]["E6"],
-        "wns_tns_failing_endpoints": maps["e1_before_candidate_04"]["E4"],
-        "timing_topology": maps["e1_before_candidate_04"]["E5"],
-        "critical_path_movement": maps["e1_before_candidate_04"]["E7"],
-        "branch_history": maps["e1_before_candidate_04"]["E8"],
+        "current_candidate_generated_rtl": maps["e1_at_e0_final_best_ordinal"]["E2"]["component_notes"],
+        "candidate_diff": maps["e1_at_e0_final_best_ordinal"]["E1"],
+        "parent_best_ppa": maps["e1_at_e0_final_best_ordinal"]["E6"],
+        "wns_tns_failing_endpoints": maps["e1_at_e0_final_best_ordinal"]["E4"],
+        "timing_topology": maps["e1_at_e0_final_best_ordinal"]["E5"],
+        "critical_path_movement": maps["e1_at_e0_final_best_ordinal"]["E7"],
+        "branch_history": maps["e1_at_e0_final_best_ordinal"]["E8"],
     }
     e0_reads = int(e0["tool_counts"].get("read_candidate_artifact", 0))
     e1_reads = int(e1["tool_counts"].get("read_candidate_artifact", 0))
@@ -838,7 +952,7 @@ def _pair_comparison(e0: dict[str, Any], e1: dict[str, Any]) -> dict[str, Any]:
                 "change": "differential_result raw reads removed",
                 "e0_reads": e0["raw_artifact_read_kinds"].get("differential_result", 0),
                 "e1_reads": e1["raw_artifact_read_kinds"].get("differential_result", 0),
-                "e1_family_consumption": maps["e1_before_candidate_04"]["E3"]["consumption"],
+                "e1_family_consumption": maps["e1_at_e0_final_best_ordinal"]["E3"]["consumption"],
                 "assessment": "raw detail reduced; correctness family remained pushed",
             },
             {
@@ -846,37 +960,65 @@ def _pair_comparison(e0: dict[str, Any], e1: dict[str, Any]) -> dict[str, Any]:
                 "change": "post_synth_timing_paths raw reads changed",
                 "e0_reads": e0["raw_artifact_read_kinds"].get("post_synth_timing_paths", 0),
                 "e1_reads": e1["raw_artifact_read_kinds"].get("post_synth_timing_paths", 0),
-                "e1_family_consumption": maps["e1_before_candidate_04"]["E5"]["consumption"],
+                "e1_family_consumption": maps["e1_at_e0_final_best_ordinal"]["E5"]["consumption"],
                 "assessment": "timing detail consumption increased",
             },
         ],
     }
-    q5 = [
+    q5_lossy = [
         {
             "family_id": family,
             "lossy_fields": row["lossy_fields"],
             "compression_evidence": row["compression_evidence"],
         }
-        for family, row in maps["e1_before_candidate_04"].items()
+        for family, row in maps["e1_at_e0_final_best_ordinal"].items()
         if row["lossy_fields"]
+    ]
+    q5_derived = [
+        {
+            "family_id": family,
+            "derived_relation_fields": row["derived_relation_fields"],
+            "derived_relation_evidence": row["derived_relation_evidence"],
+        }
+        for family, row in maps["e1_at_e0_final_best_ordinal"].items()
+        if row["derived_relation_fields"]
+    ]
+    q5_unavailable = [
+        {
+            "family_id": family,
+            "unavailable_fields": row["unavailable_fields"],
+        }
+        for family, row in maps["e1_at_e0_final_best_ordinal"].items()
+        if row["unavailable_fields"]
     ]
     return _sealed_record("chipcontext.information-pair.v1", {
         "seed": e0["seed"],
         "alignment": {
             "rule": "decision_class_and_evaluation_ordinal_descriptive_only",
             "same_candidate_claim": False,
+            "e0_final_best_candidate_id": e0_best.get("outcome_candidate_id"),
+            "e0_final_best_evaluation_ordinal": e0_best_ordinal,
+            "e1_final_best_candidate_id": e1_best.get("outcome_candidate_id"),
+            "e1_final_best_evaluation_ordinal": e1_best.get(
+                "outcome_evaluation_ordinal"
+            ),
+            "e1_ordinal_alignment_status": e1_alignment_status,
             "anchors": {
-                "e0_before_candidate_04": e0_c4["decision_id"],
-                "e1_before_candidate_04": e1_c4["decision_id"],
-                "e1_before_best_candidate_03": e1_c3["decision_id"],
+                "e0_before_final_best": e0_best["decision_id"],
+                "e1_at_e0_final_best_ordinal": e1_aligned["decision_id"],
+                "e1_before_final_best": e1_best["decision_id"],
             },
         },
         "questions": {
-            "Q1_e0_consumed_families_before_candidate_04": q1,
+            "Q1_e0_consumed_families_before_final_best": q1,
             "Q2_corresponding_e1_state": q2,
             "Q3_requested_components": q3_components,
             "Q4_raw_read_reduction": q4,
-            "Q5_structured_compression_loss": q5,
+            "Q5_information_gaps": {
+                "confirmed_structured_compression_loss": q5_lossy,
+                "derived_relation_not_materialized": q5_derived,
+                "unavailable": q5_unavailable,
+            },
         },
         "causal_claim": "none",
         "limitation": (
@@ -923,9 +1065,9 @@ def _markdown(single: list[dict[str, Any]], pair: dict[str, Any]) -> str:
         lines.extend([
             "## Pair findings",
             "",
-            "### Q1 — E0 evidence consumed before candidate-04",
+            "### Q1 — E0 evidence consumed before its final best candidate",
             "",
-            ", ".join(questions["Q1_e0_consumed_families_before_candidate_04"]) or "None",
+            ", ".join(questions["Q1_e0_consumed_families_before_final_best"]) or "None",
             "",
             "### Q2 — Corresponding E1 evidence state",
             "",
@@ -947,11 +1089,31 @@ def _markdown(single: list[dict[str, Any]], pair: dict[str, Any]) -> str:
             f"{q4['e0_baseline_timing_reads']}/{q4['e1_baseline_timing_reads']}. Counts alone "
             "do not establish information quality.",
             "",
-            "### Q5 — Structured compression loss",
+            "### Q5 — Evidence-qualified information gaps",
             "",
         ])
-        for row in questions["Q5_structured_compression_loss"]:
+        q5 = questions["Q5_information_gaps"]
+        lines.append("Confirmed structured compression loss:")
+        for row in q5["confirmed_structured_compression_loss"]:
             lines.append(f"- {row['family_id']}: {', '.join(row['lossy_fields'])}")
+        if not q5["confirmed_structured_compression_loss"]:
+            lines.append("- None")
+        lines.append("")
+        lines.append("Derived relations not materialized:")
+        for row in q5["derived_relation_not_materialized"]:
+            lines.append(
+                f"- {row['family_id']}: {', '.join(row['derived_relation_fields'])}"
+            )
+        if not q5["derived_relation_not_materialized"]:
+            lines.append("- None")
+        lines.append("")
+        lines.append("Unavailable fields:")
+        for row in q5["unavailable"]:
+            lines.append(
+                f"- {row['family_id']}: {', '.join(row['unavailable_fields'])}"
+            )
+        if not q5["unavailable"]:
+            lines.append("- None")
         lines.extend([
             "",
             "## Interpretation boundary",

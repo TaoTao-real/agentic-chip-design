@@ -12,6 +12,7 @@ from chia_boom.information_audit import (
     ANALYSIS_POLICY,
     AuditError,
     _Reader,
+    _available_channels,
     audit_campaign,
     audit_campaign_pair,
 )
@@ -74,9 +75,8 @@ def call(name: str, call_id: str, arguments: dict | None = None) -> dict:
     }
 
 
-def evaluation(arm: str, index: int, valid: bool = True) -> dict:
-    candidate_id = f"NeutralQueue-{arm}-seed41-candidate-{index:02d}"
-    ppa = None if not valid else {
+def ppa(index: int) -> dict:
+    return {
         "clock_period_ns": 5.0,
         "critical_delay_ns": 9.0 - index * 0.25,
         "slice_luts": 1000 + index,
@@ -86,6 +86,14 @@ def evaluation(arm: str, index: int, valid: bool = True) -> dict:
         "failing_endpoints": 20 - index,
         "total_endpoints": 100,
     }
+
+
+def evaluation(
+    arm: str, index: int, valid: bool = True, best_index: int | None = None,
+    evaluation_count: int = 4,
+) -> dict:
+    candidate_id = f"NeutralQueue-{arm}-seed41-candidate-{index:02d}"
+    current_ppa = None if not valid else ppa(index)
     artifacts = [
         {
             "kind": "candidate_diff", "content_ref": f"{index:064x}",
@@ -108,12 +116,12 @@ def evaluation(arm: str, index: int, valid: bool = True) -> dict:
         "correctness_ok": valid,
         "candidate_valid": valid,
         "promotable": valid,
-        "post_synth": ppa,
+        "post_synth": current_ppa,
         "candidate_id": candidate_id,
         "raw_error_tail": "" if valid else "neutral elaboration failure",
-        "evaluations_remaining": 4 - index,
+        "evaluations_remaining": evaluation_count - index,
         "baseline_post_synth": {"critical_delay_ns": 10.0, "slice_luts": 1000},
-        "best_post_synth": ppa if valid else None,
+        "best_post_synth": ppa(best_index) if best_index is not None else None,
         "raw_evidence": {
             "candidate_id": candidate_id,
             "attempt_id": f"attempt-{index:02d}",
@@ -149,8 +157,17 @@ def evaluation(arm: str, index: int, valid: bool = True) -> dict:
     return value
 
 
-def make_campaign(root: Path, arm: str) -> Path:
-    campaign = root / f"synthetic-{arm.lower()}"
+def make_campaign(
+    root: Path,
+    arm: str,
+    *,
+    evaluation_count: int = 4,
+    non_best_indices: set[int] | None = None,
+    first_e1_invalid: bool = True,
+    suffix: str = "",
+) -> Path:
+    non_best_indices = non_best_indices or set()
+    campaign = root / f"synthetic-{arm.lower()}{suffix}"
     messages = [{
         "role": "user",
         "content": "Optimize NeutralQueue. Baseline post-synthesis critical delay is 10.0 ns and Slice LUTs are 1000.",
@@ -186,21 +203,29 @@ def make_campaign(root: Path, arm: str) -> Path:
 
     # A consumed baseline RTL read becomes archived by later decision points.
     add_turn([call("read_generated_rtl", "rtl-1", {"file": "Neutral.sv"})], ["module Neutral; endmodule\n"])
-    for index in range(1, 5):
+    running_best: int | None = None
+    saved_evaluations: dict[int, dict] = {}
+    for index in range(1, evaluation_count + 1):
+        valid = not (arm == "E1" and first_e1_invalid and index == 1)
+        if valid and index not in non_best_indices:
+            running_best = index
+        value = evaluation(
+            arm, index, valid=valid, best_index=running_best,
+            evaluation_count=evaluation_count,
+        )
+        saved_evaluations[index] = value
         edit = call("apply_exact_edits", f"edit-{index}", {"edits": [{"old": f"v{index}", "new": f"w{index}"}]})
         if index == 1:
             # Exercise multiple actions sharing one pre-action decision point.
             evaluate = call("evaluate_candidate", f"eval-{index}")
-            value = evaluation(arm, index, valid=(arm == "E0"))
             add_turn([edit, evaluate], [
                 {"status": "applied", "source_sha256": f"{index:064x}", "diff_sha256": f"{index + 1:064x}"},
                 value,
             ])
         else:
             add_turn([edit], [{"status": "applied", "source_sha256": f"{index:064x}", "diff_sha256": f"{index + 1:064x}"}])
-            add_turn([call("evaluate_candidate", f"eval-{index}")], [evaluation(arm, index)])
+            add_turn([call("evaluate_candidate", f"eval-{index}")], [value])
         if index in ({1, 3, 4} if arm == "E0" else {2, 4}):
-            value = evaluation(arm, index, valid=(arm != "E1" or index != 1))
             ref = value["raw_evidence"]["artifacts"][0]["content_ref"]
             add_turn([
                 call("read_candidate_artifact", f"raw-{index}", {
@@ -208,20 +233,23 @@ def make_campaign(root: Path, arm: str) -> Path:
                     "start_line": 1, "line_count": 8, "limit_bytes": 4096,
                 })
             ], [f"synthetic candidate diff {index}\n"])
+    if running_best is None:
+        raise AssertionError("synthetic campaign requires a valid best candidate")
+    final_best = saved_evaluations[running_best]
     add_turn([call("finish", "finish-1", {"summary": "synthetic finish"})], [{
         "status": "accepted",
-        "best_candidate_id": f"NeutralQueue-{arm}-seed41-candidate-04",
-        "best_post_synth": evaluation(arm, 4)["post_synth"],
+        "best_candidate_id": final_best["candidate_id"],
+        "best_post_synth": final_best["post_synth"],
     }])
     dump(campaign / "SESSION.json", {
         "memory_mode": "none", "feedback_arm": arm, "seed": 41,
-        "messages": messages, "status": "finished", "evaluations": 4,
+        "messages": messages, "status": "finished", "evaluations": evaluation_count,
     })
     dump(campaign / "RESULT.json", {
         "memory_mode": "none", "feedback_arm": arm, "status": "finished",
-        "evaluations": 4,
-        "best_candidate": {"id": f"NeutralQueue-{arm}-seed41-candidate-04"},
-        "best_post_synth": evaluation(arm, 4)["post_synth"],
+        "evaluations": evaluation_count,
+        "best_candidate": {"id": final_best["candidate_id"]},
+        "best_post_synth": final_best["post_synth"],
     })
     return campaign
 
@@ -299,12 +327,80 @@ class InformationAuditTests(unittest.TestCase):
         )
         losses = {
             row["family_id"]: row
-            for row in pair["questions"]["Q5_structured_compression_loss"]
+            for row in pair["questions"]["Q5_information_gaps"][
+                "confirmed_structured_compression_loss"
+            ]
         }
-        self.assertIn("E7", losses)
-        self.assertIn("critical_path_signature_change", losses["E7"]["lossy_fields"])
-        self.assertIn("raw_or_wrapper_source", losses["E7"]["compression_evidence"])
-        self.assertIn("structured_source", losses["E7"]["compression_evidence"])
+        self.assertEqual(set(losses), {"E4"})
+        self.assertIn("wns_ns", losses["E4"]["lossy_fields"])
+        self.assertIn("raw_or_wrapper_source", losses["E4"]["compression_evidence"])
+        self.assertIn("structured_source", losses["E4"]["compression_evidence"])
+        unavailable = {
+            row["family_id"]: row["unavailable_fields"]
+            for row in pair["questions"]["Q5_information_gaps"]["unavailable"]
+        }
+        self.assertIn("critical_path_signature_change", unavailable["E7"])
+        self.assertIn("current_branch_history", unavailable["E8"])
+        self.assertIn("evaluation_and_query_cost", unavailable["E9"])
+
+    def test_archived_push_does_not_pollute_current_availability(self) -> None:
+        raw = '{"post_synth":{"critical_delay_ns":9.0}}'
+        event = {
+            "call_id": "eval-old",
+            "name": "evaluate_candidate",
+            "raw_content": raw,
+            "content_sha256": hashlib.sha256(raw.encode()).hexdigest(),
+            "channel": "pushed",
+            "families": ["E4"],
+        }
+        messages = [{
+            "role": "tool",
+            "tool_call_id": "eval-old",
+            "content": json.dumps({
+                "status": "archived_tool_result",
+                "content_sha256": event["content_sha256"],
+            }),
+        }]
+        channels = _available_channels(
+            "E4", {"compare_candidate_metrics"}, [event], None, messages,
+        )
+        self.assertEqual(channels, {"structured_pull"})
+
+    def test_pair_anchors_three_evaluations_with_candidate_two_best(self) -> None:
+        e0 = make_campaign(
+            self.root, "E0", evaluation_count=3, non_best_indices={3},
+            suffix="-three",
+        )
+        e1 = make_campaign(
+            self.root, "E1", evaluation_count=3, non_best_indices={3},
+            first_e1_invalid=False, suffix="-three",
+        )
+        output = self.root / "audit-three"
+        audit_campaign_pair(e0, e1, output)
+        alignment = json.loads(
+            (output / "PAIR_COMPARISON.json").read_text()
+        )["alignment"]
+        self.assertTrue(alignment["e0_final_best_candidate_id"].endswith("candidate-02"))
+        self.assertEqual(alignment["e0_final_best_evaluation_ordinal"], 2)
+        self.assertTrue(alignment["e1_final_best_candidate_id"].endswith("candidate-02"))
+
+    def test_pair_anchors_five_evaluations_with_non_best_candidate_four(self) -> None:
+        e0 = make_campaign(
+            self.root, "E0", evaluation_count=5, non_best_indices={4},
+            suffix="-five",
+        )
+        e1 = make_campaign(
+            self.root, "E1", evaluation_count=5, non_best_indices={4},
+            first_e1_invalid=False, suffix="-five",
+        )
+        output = self.root / "audit-five"
+        audit_campaign_pair(e0, e1, output)
+        alignment = json.loads(
+            (output / "PAIR_COMPARISON.json").read_text()
+        )["alignment"]
+        self.assertTrue(alignment["e0_final_best_candidate_id"].endswith("candidate-05"))
+        self.assertEqual(alignment["e0_final_best_evaluation_ordinal"], 5)
+        self.assertTrue(alignment["e1_final_best_candidate_id"].endswith("candidate-05"))
 
     def test_provider_request_tamper_fails_closed(self) -> None:
         path = self.e0 / "turns/turn-01/provider-metadata.json"
