@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 import subprocess
+import time
 from pathlib import Path
 
 
@@ -211,11 +212,14 @@ def main() -> None:
     parser.add_argument("--jobs", type=int, default=1)
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=False)
+    driver_started = time.monotonic_ns()
+    interface_started = time.monotonic_ns()
     base_files = list(args.baseline.glob("*.sv"))
     interface_ok, baseline_signature, candidate_signature = compare_port_signatures(
         args.baseline, args.candidate, args.top
     )
     baseline_top = top_file(args.baseline, args.top)
+    interface_ns = time.monotonic_ns() - interface_started
     if not interface_ok:
         result = {
             "cycles": 0,
@@ -226,9 +230,17 @@ def main() -> None:
             "failure_class": "candidate_interface_mismatch",
             "baseline_signature": baseline_signature,
             "candidate_signature": candidate_signature,
+            "stage_timing_ns": {
+                "interface_check": interface_ns,
+                "testbench_prepare": None,
+                "verilator_build": None,
+                "differential_run": None,
+                "driver_total": time.monotonic_ns() - driver_started,
+            },
         }
         (args.out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
         raise SystemExit(2)
+    prepare_started = time.monotonic_ns()
     candidate_dir = args.out / "candidate-renamed"
     candidate_dir.mkdir()
     rename_modules(args.candidate, candidate_dir, "__candidate")
@@ -276,12 +288,31 @@ def main() -> None:
         "-j", str(max(1, args.jobs)),
         "--top-module", "diff_tb", "--Mdir", str(args.out / "obj_dir"), *sources,
     ]
+    prepare_ns = time.monotonic_ns() - prepare_started
+    build_started = time.monotonic_ns()
     build = subprocess.run(command, text=True, capture_output=True)
+    build_ns = time.monotonic_ns() - build_started
     (args.out / "build.stdout").write_text(build.stdout)
     (args.out / "build.stderr").write_text(build.stderr)
     if build.returncode:
+        result = {
+            "cycles": 0, "seed": args.seed, "scenario": args.scenario,
+            "passed": False, "interface_ok": True,
+            "failure_class": "verilator_build_failure",
+            "interface_signature": baseline_signature,
+            "stage_timing_ns": {
+                "interface_check": interface_ns,
+                "testbench_prepare": prepare_ns,
+                "verilator_build": build_ns,
+                "differential_run": None,
+                "driver_total": time.monotonic_ns() - driver_started,
+            },
+        }
+        (args.out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
         raise SystemExit(build.returncode)
+    run_started = time.monotonic_ns()
     run = subprocess.run([str(args.out / "obj_dir/Vdiff_tb")], text=True, capture_output=True)
+    run_ns = time.monotonic_ns() - run_started
     (args.out / "run.stdout").write_text(run.stdout)
     (args.out / "run.stderr").write_text(run.stderr)
     result = {
@@ -290,6 +321,13 @@ def main() -> None:
         "interface_ok": True,
         "interface_signature": baseline_signature,
         "passed": run.returncode == 0 and f"PASS cycles={args.cycles}" in run.stdout,
+        "stage_timing_ns": {
+            "interface_check": interface_ns,
+            "testbench_prepare": prepare_ns,
+            "verilator_build": build_ns,
+            "differential_run": run_ns,
+            "driver_total": time.monotonic_ns() - driver_started,
+        },
     }
     (args.out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     raise SystemExit(0 if result["passed"] else 1)
