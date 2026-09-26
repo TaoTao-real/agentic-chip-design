@@ -136,6 +136,36 @@
           "json_pointer": "",
           "manual_method": "Manually read baseline delay=10.0 ns and LUT=100; subtract current-reference.",
           "sha256": "836729281aea4a79e957eaa07f1747cd5b7133c54704e503a8d6af732096f1c7"
+        },
+        {
+          "artifact": "generated:requests/acceptance/normal-comparison.json",
+          "json_pointer": "/parameters/reference",
+          "manual_method": "Manually verify the comparison explicitly selects the manifest-bound baseline rather than an inferred latest or best result.",
+          "sha256": "76f5a33ef071b547ead4caae6adf7be3f921b3f15d9efd3370a286798edc0bd0"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/request.json",
+          "json_pointer": "/manifest_bindings",
+          "manual_method": "Manually verify the prepare request binds the baseline and qualification to sealed-manifest evidence paths.",
+          "sha256": "78ecc23b73b83a6b6d42b304bcdc9c5e7902b6a7f5638307aced77896805e45b"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/FROZEN_RUN_MANIFEST.json",
+          "json_pointer": "/contract/physical",
+          "manual_method": "Manually verify the frozen part, clock period, and physical tool contract shared by current and reference measurements.",
+          "sha256": "575421501d0a32bf1f1e3aecfd9f890fe29c3586241212cf2f3e23e9d08c1c8a"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/FROZEN_RUN_MANIFEST.json",
+          "json_pointer": "/files",
+          "manual_method": "Manually verify the frozen manifest pins the exact baseline and qualification content hashes named by manifest_bindings.",
+          "sha256": "575421501d0a32bf1f1e3aecfd9f890fe29c3586241212cf2f3e23e9d08c1c8a"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/QUALIFICATION.json",
+          "json_pointer": "/tool_versions",
+          "manual_method": "Manually verify the qualified Vivado and supporting tool versions attached to the frozen comparison contract.",
+          "sha256": "8d54709ec6eb308830b60a063e47362f7130b5809150f24f928ed964bde838b1"
         }
       ],
       "question": "\u5019\u9009\u76f8\u5bf9\u7ed1\u5b9a\u57fa\u7ebf\u7684\u5173\u952e\u5ef6\u8fdf\u548c LUT \u5dee\u503c\u662f\u591a\u5c11\uff1f",
@@ -336,6 +366,12 @@
           },
           "manual_method": "Manually read raw Slice LUT count 1,234, which differs from legacy 102.",
           "sha256": "9b338c72cca4eef99e2740ae872b3593c9f62e9129b9ac5af3115b3b847e4c90"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/FROZEN_RUN_MANIFEST.json",
+          "json_pointer": "/contract/physical/clock_period_ns",
+          "manual_method": "Manually combine the frozen 5.0 ns clock period with raw WNS to derive raw critical delay and compare it with legacy 9.0 ns.",
+          "sha256": "575421501d0a32bf1f1e3aecfd9f890fe29c3586241212cf2f3e23e9d08c1c8a"
         }
       ],
       "question": "\u539f\u59cb Vivado \u62a5\u544a\u4e0e legacy \u6307\u6807\u51b2\u7a81\u65f6\u80fd\u5426\u4ea7\u751f delta\uff1f",
@@ -588,7 +624,7 @@
     }
   ],
   "corpus_id": "cc02c-c1-public-v1",
-  "corpus_revision": "2",
+  "corpus_revision": "3",
   "execution_limits": {
     "attempt_timeout_seconds": 30,
     "case_timeout_seconds": 120,

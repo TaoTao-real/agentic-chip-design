@@ -62,7 +62,7 @@ class ChipContextAcceptanceTests(unittest.TestCase):
         manifest = json.loads((self.root / "run" / "run-manifest.json").read_text())
         self.assertEqual(
             manifest["oracle_origin_validation"],
-            {"origin_count": 11, "located_span_count": 10},
+            {"origin_count": 17, "located_span_count": 16},
         )
 
     def test_summary_rebuilds_from_case_results(self) -> None:

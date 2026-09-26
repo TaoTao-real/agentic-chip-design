@@ -594,10 +594,10 @@ def run_acceptance(
     registry = registry.resolve(strict=True)
     corpus = load_corpus(corpus_path)
     review = load_review(corpus_path, corpus)
-    origin_validation = validate_oracle_origins(registry, corpus)
     requests = {
         case["case_id"]: resolve_request(registry, case) for case in corpus["cases"]
     }
+    origin_validation = validate_oracle_origins(registry, corpus)
     if require_approved_oracle and review["status"] != "approved":
         raise AcceptanceError("formal acceptance requires an approved oracle review")
     if output.exists():
