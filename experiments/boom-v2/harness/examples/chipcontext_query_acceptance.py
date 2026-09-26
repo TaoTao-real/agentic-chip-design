@@ -423,7 +423,12 @@ def run_cli(
             audit = json.loads(audit_path.read_text())
         except (UnicodeError, json.JSONDecodeError):
             pass
-    status = "success" if completed.returncode == 0 else "rejected"
+    if completed.returncode == 0:
+        status = "success"
+    elif completed.returncode == 2:
+        status = "rejected"
+    else:
+        status = "runner_error"
     response = None
     error = None
     try:
@@ -444,8 +449,14 @@ def run_cli(
         "outer_wall_time_ns": time.monotonic_ns() - started,
     }
     if status == "runner_error":
-        result["runner_error"] = "CLI output was not valid JSON"
-        result["cost_unknown_reason"] = "query output could not be associated with a valid response"
+        result["runner_error"] = (
+            "CLI output was invalid" if completed.returncode in {0, 2}
+            else f"CLI exited with unexpected code {completed.returncode}"
+        )
+        if audit is None:
+            result["cost_unknown_reason"] = (
+                "query output could not be associated with a trusted audit"
+            )
     elif audit is None:
         result["query_status"] = "runner_error"
         result["runner_error"] = "trusted attempt audit is missing or invalid"

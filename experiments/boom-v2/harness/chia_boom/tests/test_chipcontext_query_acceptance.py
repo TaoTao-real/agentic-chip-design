@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 HARNESS = Path(__file__).parents[2]
@@ -18,6 +20,7 @@ from chipcontext_query_acceptance import (  # noqa: E402
     load_corpus,
     rebuild_summary_from_run,
     run_acceptance,
+    run_cli,
     verify_case,
 )
 from chipcontext_query_acceptance_fixture import build_acceptance_fixture  # noqa: E402
@@ -59,7 +62,7 @@ class ChipContextAcceptanceTests(unittest.TestCase):
         manifest = json.loads((self.root / "run" / "run-manifest.json").read_text())
         self.assertEqual(
             manifest["oracle_origin_validation"],
-            {"origin_count": 9, "located_span_count": 8},
+            {"origin_count": 11, "located_span_count": 10},
         )
 
     def test_summary_rebuilds_from_case_results(self) -> None:
@@ -114,6 +117,60 @@ class ChipContextAcceptanceTests(unittest.TestCase):
         }
         passed, _ = verify_case(
             conflict, query_status="success", targets=conflict_targets
+        )
+        self.assertFalse(passed)
+
+    def test_cli_exit_one_cannot_satisfy_a_rejection_oracle(self) -> None:
+        corpus = load_corpus(self.suite / "corpus.json")
+        rejection = next(
+            case for case in corpus["cases"]
+            if case["case_id"] == "permission-controlled-denied"
+        )
+        audit_path = self.root / "unexpected-exit.audit.json"
+        audit = {
+            "schema_version": "chipcontext.query-attempt.v1",
+            "status": "rejected",
+            "operation": "candidate_status",
+            "answer_ref": None,
+            "error_code": "permission_denied",
+            "output": {
+                "format": "json",
+                "max_output_bytes": 65536,
+                "attempted_output_bytes": 0,
+                "returned_bytes": 0,
+            },
+            "cost": {"wall_time_ns": 1},
+        }
+
+        def fake_run(*_args, **_kwargs):
+            audit_path.write_text(json.dumps(audit))
+            return subprocess.CompletedProcess(
+                args=[],
+                returncode=1,
+                stdout="",
+                stderr=json.dumps({
+                    "error": "permission_denied",
+                    "message": "synthetic crash output",
+                }),
+            )
+
+        with mock.patch(
+            "chipcontext_query_acceptance.subprocess.run", side_effect=fake_run
+        ):
+            observed = run_cli(
+                self.suite / "trusted-stores.json",
+                self.suite / rejection["request"]["path"],
+                rejection["execution"],
+                "json",
+                audit_path,
+                30,
+            )
+        self.assertEqual(observed["query_status"], "runner_error")
+        self.assertEqual(observed["exit_code"], 1)
+        passed, _ = verify_case(
+            rejection,
+            query_status=observed["query_status"],
+            targets={"answer": None, "error": None, "audit": observed["audit"]},
         )
         self.assertFalse(passed)
 

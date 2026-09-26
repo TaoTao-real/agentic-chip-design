@@ -559,10 +559,22 @@
       },
       "oracle_origin": [
         {
-          "artifact": "chia_boom/chipcontext/fixtures/success/request.json",
-          "json_pointer": "/artifacts/0",
-          "manual_method": "Manually verify a registered report must be scanned and hashed before response serialization.",
-          "sha256": "78ecc23b73b83a6b6d42b304bcdc9c5e7902b6a7f5638307aced77896805e45b"
+          "artifact": "generated:requests/acceptance/post-scan-budget.json",
+          "json_pointer": "/parameters/artifact_ref",
+          "manual_method": "Manually verify the query names the exact registered artifact reference used by the scoped read.",
+          "sha256": "2d2cf196027171127ac2685729f7b6fb93e8711b8e68a1361100eec267bea443"
+        },
+        {
+          "artifact": "generated:stores/success/artifacts/7bd66024d6e7cd1a3897a3b1adb259ca0340be40ffce2da5bcfe3c36b25588d3.json",
+          "json_pointer": "",
+          "manual_method": "Manually verify the registered evaluation_record metadata binds that artifact reference to the result payload hash and byte size.",
+          "sha256": "b68d04399a17e25aa703389f1ad07aa483e6a4854805b05279316b0388da52ae"
+        },
+        {
+          "artifact": "chia_boom/chipcontext/fixtures/success/result.json",
+          "json_pointer": "",
+          "manual_method": "Manually verify the exact evaluation_record payload bytes that must be scanned and hashed before response serialization.",
+          "sha256": "d5511748a5df92dc924701d4582c406c17e8869cd34abfe6a7599401202006fb"
         }
       ],
       "question": "\u8bc1\u636e\u626b\u63cf\u5b8c\u6210\u4f46\u6700\u7ec8\u8f93\u51fa\u8d85\u9884\u7b97\u65f6\u662f\u5426\u62d2\u7edd\u5e76\u4fdd\u7559\u6210\u672c\uff1f",
@@ -576,7 +588,7 @@
     }
   ],
   "corpus_id": "cc02c-c1-public-v1",
-  "corpus_revision": "1",
+  "corpus_revision": "2",
   "execution_limits": {
     "attempt_timeout_seconds": 30,
     "case_timeout_seconds": 120,
