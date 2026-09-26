@@ -86,6 +86,17 @@ def _advance_inspection_budget(
     return value, None
 
 
+def _available_tool_specs(
+    tool_specs: list[dict[str, Any]], inspection_only_turns: int,
+) -> list[dict[str, Any]]:
+    if inspection_only_turns < INSPECTION_HARD_LIMIT_TURNS:
+        return tool_specs
+    return [
+        spec for spec in tool_specs
+        if (spec.get("function") or {}).get("name") not in OBSERVATION_TOOLS
+    ]
+
+
 def _prepare_interactive_snapshot(
     config: dict[str, Any], output: Path
 ) -> dict[str, Any]:
@@ -672,8 +683,10 @@ def run_interactive_issueq(
         dump_json(turn_dir / "messages-before.json", messages)
         model_messages = _messages_for_model(messages)
         dump_json(turn_dir / "model-messages-before.json", model_messages)
+        visible_tool_specs = _available_tool_specs(tool_specs, inspection_only_turns)
+        dump_json(turn_dir / "tool-specs.json", visible_tool_specs)
         result = get(llm.chat_turn.chia_remote(
-            llm, model_messages, tool_specs,
+            llm, model_messages, visible_tool_specs,
             _chia_display_name=f"deepseek-interactive:{target_id}:turn-{turn:02d}",
         ))
         metadata = json.loads(result.stream_result) if result.stream_result else {}

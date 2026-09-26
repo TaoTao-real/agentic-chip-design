@@ -9,6 +9,7 @@ from chia_boom.interactive import (
     INSPECTION_HARD_LIMIT_TURNS,
     INSPECTION_WARNING_TURNS,
     _advance_inspection_budget,
+    _available_tool_specs,
     _interactive_system,
     _interactive_system_with_feedback,
     _interactive_tool_specs,
@@ -161,6 +162,13 @@ class KnowledgeTests(unittest.TestCase):
         )
         self.assertEqual(reset, 0)
         self.assertIsNone(notice)
+        specs = _interactive_tool_specs(False, "E1")
+        limited = _available_tool_specs(specs, INSPECTION_HARD_LIMIT_TURNS)
+        names = {row["function"]["name"] for row in limited}
+        self.assertIn("apply_exact_edits", names)
+        self.assertIn("evaluate_candidate", names)
+        self.assertNotIn("read_generated_rtl", names)
+        self.assertNotIn("query_candidate_status", names)
 
 
 if __name__ == "__main__":
