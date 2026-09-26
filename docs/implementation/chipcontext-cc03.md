@@ -69,13 +69,13 @@ portable example does not contain valid server paths or credentials.
 python -m chia_boom.cli interactive \
   --config <frozen-private-config> \
   --output <campaign-root>/e0-seed41 \
-  --seed 41 --max-turns 24 --max-evaluations 5 \
+  --seed 41 --max-turns 48 --max-evaluations 5 \
   --memory-mode none --feedback-arm E0
 
 python -m chia_boom.cli interactive \
   --config <frozen-private-config> \
   --output <campaign-root>/e1-seed41 \
-  --seed 41 --max-turns 24 --max-evaluations 5 \
+  --seed 41 --max-turns 48 --max-evaluations 5 \
   --memory-mode none --feedback-arm E1
 ```
 
@@ -109,3 +109,7 @@ first verified improvement, best final QoR, provider usage, model calls, EDA
 evaluations, invalid candidates, and ChipContext overhead. One matched pair is
 an end-to-end smoke, not evidence of stable benefit; the exploratory target is
 three pairs per arm.
+
+The first completed pair and its machine-readable measurements are recorded in
+[`chipcontext-cc03-e0-e1-seed41.md`](chipcontext-cc03-e0-e1-seed41.md) and
+[`chipcontext-cc03-e0-e1-seed41.json`](chipcontext-cc03-e0-e1-seed41.json).

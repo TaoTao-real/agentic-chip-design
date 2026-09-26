@@ -1,0 +1,398 @@
+{
+  "baseline": {
+    "post_route": {
+      "critical_delay_ns": 28.962,
+      "slice_luts": 50160
+    },
+    "post_synth": {
+      "critical_delay_ns": 31.92,
+      "slice_luts": 49214
+    }
+  },
+  "comparison": {
+    "agent_raw_queries": {
+      "e0": 9,
+      "e1": 4
+    },
+    "candidate_validity": {
+      "e0_total": 4,
+      "e0_valid": 2,
+      "e1_total": 4,
+      "e1_valid": 3
+    },
+    "chipcontext_total_wall_time": {
+      "e0_seconds": 0.504290848,
+      "e1_minus_e0_seconds": 0.167758517,
+      "e1_seconds": 0.672049365
+    },
+    "final_post_route": {
+      "e0_delay_ns": 21.643,
+      "e0_improvement_vs_baseline_percent": 25.271044817346866,
+      "e1_delay_ns": 23.711,
+      "e1_improvement_vs_baseline_percent": 18.130653960361858,
+      "e1_relative_delay_percent": 9.55505244189807
+    },
+    "first_verified_improvement": {
+      "e0_seconds": 600.3661489486694,
+      "e1_minus_e0_seconds": 121.00407671928406,
+      "e1_relative_percent": 20.15504653804685,
+      "e1_seconds": 721.3702256679535
+    },
+    "fixed_budget_best_post_synth": {
+      "e0_delay_ns": 20.147,
+      "e1_delay_ns": 22.446,
+      "e1_relative_delay_percent": 11.411128207673604
+    },
+    "search_wall": {
+      "e0_seconds": 1832.090548992157,
+      "e1_relative_percent": 9.234635014977478,
+      "e1_seconds": 2001.2774243354797
+    },
+    "tokens": {
+      "e0_total": 1281580,
+      "e1_reduction_percent": 4.327470778258088,
+      "e1_total": 1226120
+    }
+  },
+  "decision": {
+    "reason": "E1 used fewer tokens and produced a higher valid-candidate rate, but E0 found the first improvement sooner and produced better post-synthesis and final post-route QoR. One pair cannot establish stable benefit.",
+    "status": "needs_adjustment"
+  },
+  "experiment_date": "2026-09-26",
+  "frozen_search": {
+    "max_evaluations": 5,
+    "max_turns": 48,
+    "memory_mode": "none",
+    "model": "deepseek-v4-pro",
+    "model_provider": "deepseek-official",
+    "seed": 41
+  },
+  "implementation_commit": "8384c1846ca2fd05c7e3828647fe427e33ec9b7f",
+  "issue": "https://github.com/TaoTao-real/agentic-chip-design/issues/17",
+  "monetary_cost": {
+    "currency": null,
+    "missing_reason": "provider billing amount was not returned in the saved usage records; token counts are complete",
+    "value": null
+  },
+  "retained_failed_e1_pilots": [
+    {
+      "confirmed_tokens": 723549,
+      "id": "cc03-e1-seed41",
+      "outcome": "24 turns, zero evaluations; inspection loop exhausted budget"
+    },
+    {
+      "confirmed_tokens": 863697,
+      "id": "cc03-e1-seed41-v2",
+      "outcome": "48 read turns, zero evaluations; retained and aborted"
+    },
+    {
+      "confirmed_tokens": 188257,
+      "id": "cc03-e1-seed41-v3",
+      "outcome": "inspection budget did not remove read tools; retained and aborted"
+    },
+    {
+      "confirmed_tokens": 705934,
+      "id": "cc03-e1-seed41-v4",
+      "outcome": "one no-op evaluation; raw attempt artifacts were not registered; superseded by artifact discovery fix"
+    }
+  ],
+  "runs": [
+    {
+      "arm": "E0",
+      "best_post_synth": {
+        "clock_period_ns": 5.0,
+        "critical_delay_ns": 20.147,
+        "failing_endpoints": 27494,
+        "slice_luts": 49418,
+        "slice_registers": 15762,
+        "timing_report_sha256": "47750c0131c3e9f477f99d57783d3235e0ace12582bdb419edc7de470dd1d0b1",
+        "tns_ns": -173352.281,
+        "total_endpoints": 29159,
+        "utilization_report_sha256": "e962105c3de2285b5e1fdac72bf6ea2b89b1f92f668deb774213edd06e5b3ae3",
+        "wns_ns": -15.147
+      },
+      "candidate_source_sha256": "6432deba532819a52fcd012cc292126461ee30c65939c606fbb44fa4592ae0ba",
+      "chipcontext": {
+        "artifact_scan_bytes": 16143604,
+        "contexts": 4,
+        "cost_entries": 13,
+        "entry_counts": {
+          "agent_query": 9,
+          "automatic_raw_inventory": 4
+        },
+        "hash_bytes": 16704747,
+        "prepare_wall_time_ns": 334066458,
+        "query_wall_time_by_kind_ns": {
+          "agent_query": 108291656,
+          "automatic_raw_inventory": 61932734
+        },
+        "query_wall_time_ns": 170224390,
+        "total_wall_time_ns": 504290848
+      },
+      "evaluations": [
+        {
+          "active_seconds": 454.77407433791086,
+          "candidate_index": 1,
+          "candidate_valid": true,
+          "failure_class": null,
+          "post_synth": {
+            "clock_period_ns": 5.0,
+            "critical_delay_ns": 23.841,
+            "failing_endpoints": 27827,
+            "slice_luts": 51225,
+            "slice_registers": 15762,
+            "timing_report_sha256": "c397b98626d175eb4d741179537d2e02ee8142c13bc6b9962ec9f822889666f3",
+            "tns_ns": -199267.828,
+            "total_endpoints": 29159,
+            "utilization_report_sha256": "7de46c64de0c0a5d11027f27ddb4a67ca5930d2e04afe0feca50e0e60cde9fe5",
+            "wns_ns": -18.841
+          },
+          "promotable": true,
+          "stage": "synthesis",
+          "status": "complete"
+        },
+        {
+          "active_seconds": 123.33617025904823,
+          "candidate_index": 2,
+          "candidate_valid": false,
+          "failure_class": "candidate_tool_failure",
+          "post_synth": null,
+          "promotable": false,
+          "stage": "elaboration",
+          "status": "candidate_invalid"
+        },
+        {
+          "active_seconds": 169.08710197999608,
+          "candidate_index": 3,
+          "candidate_valid": false,
+          "failure_class": "candidate_correctness_failure",
+          "post_synth": null,
+          "promotable": false,
+          "stage": "correctness",
+          "status": "candidate_invalid"
+        },
+        {
+          "active_seconds": 493.440520934877,
+          "candidate_index": 4,
+          "candidate_valid": true,
+          "failure_class": null,
+          "post_synth": {
+            "clock_period_ns": 5.0,
+            "critical_delay_ns": 20.147,
+            "failing_endpoints": 27494,
+            "slice_luts": 49418,
+            "slice_registers": 15762,
+            "timing_report_sha256": "47750c0131c3e9f477f99d57783d3235e0ace12582bdb419edc7de470dd1d0b1",
+            "tns_ns": -173352.281,
+            "total_endpoints": 29159,
+            "utilization_report_sha256": "e962105c3de2285b5e1fdac72bf6ea2b89b1f92f668deb774213edd06e5b3ae3",
+            "wns_ns": -15.147
+          },
+          "promotable": true,
+          "stage": "synthesis",
+          "status": "complete"
+        }
+      ],
+      "feedback_arm": "E0",
+      "final_result_sha256": "d7a74e24b192817721ed92fb23a5f1cd2c4125ec05d4f725987456d250085540",
+      "final_valid": true,
+      "finalization_active_seconds": 2926.8285635359352,
+      "first_verified_improvement_seconds": 600.3661489486694,
+      "frozen_run_fingerprint": "3826a28dbbd542da77f7871127aa4579e36b12797ea435938e8c1c4205104c00",
+      "http_attempts": 42,
+      "http_statuses": {
+        "200": 42
+      },
+      "model_calls": 42,
+      "post_route": {
+        "clock_period_ns": 5.0,
+        "critical_delay_ns": 21.643,
+        "failing_endpoints": 29179,
+        "slice_luts": 50210,
+        "slice_registers": 15782,
+        "timing_report_sha256": "074ae1e4ad22568719d8027433568f383c006c08e3b8f141ebdd0363aa5a9a69",
+        "tns_ns": -276862.938,
+        "total_endpoints": 29181,
+        "utilization_report_sha256": "2940800454b296955359aa84655935fc82b62638a5e2fd7a64361470ad712662",
+        "wns_ns": -16.643
+      },
+      "provider_api_seconds": 588.5575641214382,
+      "regression": {
+        "normal_finish_marker": true,
+        "returncode": 0,
+        "simulator_sha256": "ef3107c5e3256bcb1a0c1772525210bbe086b8cae2b31bba1d291f802883d0c0",
+        "success": true
+      },
+      "search_result_sha256": "00ef2272795d882f6eb344e6c58a2e19a683c318b160f9da0480f2ed431f53e5",
+      "search_wall_seconds": 1832.090548992157,
+      "usage": {
+        "completion_tokens": 55277,
+        "prompt_cache_hit_tokens": 717184,
+        "prompt_cache_miss_tokens": 509119,
+        "prompt_tokens": 1226303,
+        "total_tokens": 1281580
+      },
+      "usage_missing_calls": 0,
+      "valid_improvement": true
+    },
+    {
+      "arm": "E1",
+      "best_post_synth": {
+        "clock_period_ns": 5.0,
+        "critical_delay_ns": 22.446,
+        "failing_endpoints": 28493,
+        "slice_luts": 50783,
+        "slice_registers": 15762,
+        "timing_report_sha256": "2df5086bf69b18d50326def8d8822eb57840e55b7022469bc6ed3829d403f5c1",
+        "tns_ns": -209523.328,
+        "total_endpoints": 29159,
+        "utilization_report_sha256": "d37fd75d86794f930aeda981c4fd43662babaacd9db98631b8c2fdbda6b62820",
+        "wns_ns": -17.446
+      },
+      "candidate_source_sha256": "f5bd57baeef85a5c6d1f3b276817880aecbb6e30dafbf2a2eee8fdecbcf1fd4b",
+      "chipcontext": {
+        "artifact_scan_bytes": 34399144,
+        "contexts": 4,
+        "cost_entries": 12,
+        "entry_counts": {
+          "agent_query": 4,
+          "automatic_raw_inventory": 4,
+          "automatic_structured_feedback": 4
+        },
+        "hash_bytes": 35849205,
+        "prepare_wall_time_ns": 325023507,
+        "query_wall_time_by_kind_ns": {
+          "agent_query": 85201018,
+          "automatic_raw_inventory": 67837995,
+          "automatic_structured_feedback": 193986845
+        },
+        "query_wall_time_ns": 347025858,
+        "total_wall_time_ns": 672049365
+      },
+      "evaluations": [
+        {
+          "active_seconds": 35.354015184915625,
+          "candidate_index": 1,
+          "candidate_valid": false,
+          "failure_class": "candidate_tool_failure",
+          "post_synth": null,
+          "promotable": false,
+          "stage": "elaboration",
+          "status": "candidate_invalid"
+        },
+        {
+          "active_seconds": 460.79271481197793,
+          "candidate_index": 2,
+          "candidate_valid": true,
+          "failure_class": null,
+          "post_synth": {
+            "clock_period_ns": 5.0,
+            "critical_delay_ns": 23.657,
+            "failing_endpoints": 27494,
+            "slice_luts": 50715,
+            "slice_registers": 15762,
+            "timing_report_sha256": "2da6f92062c73ee794eecd47ee1d142bd22d4440aa71584c5ca61d119ea7e1c8",
+            "tns_ns": -191272.906,
+            "total_endpoints": 29159,
+            "utilization_report_sha256": "7f8a7692e46b18d608c63c193148a5080abe0a4c1a8463fae48a81981b5e1a0c",
+            "wns_ns": -18.657
+          },
+          "promotable": true,
+          "stage": "synthesis",
+          "status": "complete"
+        },
+        {
+          "active_seconds": 484.25966384704225,
+          "candidate_index": 3,
+          "candidate_valid": true,
+          "failure_class": null,
+          "post_synth": {
+            "clock_period_ns": 5.0,
+            "critical_delay_ns": 22.446,
+            "failing_endpoints": 28493,
+            "slice_luts": 50783,
+            "slice_registers": 15762,
+            "timing_report_sha256": "2df5086bf69b18d50326def8d8822eb57840e55b7022469bc6ed3829d403f5c1",
+            "tns_ns": -209523.328,
+            "total_endpoints": 29159,
+            "utilization_report_sha256": "d37fd75d86794f930aeda981c4fd43662babaacd9db98631b8c2fdbda6b62820",
+            "wns_ns": -17.446
+          },
+          "promotable": true,
+          "stage": "synthesis",
+          "status": "complete"
+        },
+        {
+          "active_seconds": 463.7909441421507,
+          "candidate_index": 4,
+          "candidate_valid": true,
+          "failure_class": null,
+          "post_synth": {
+            "clock_period_ns": 5.0,
+            "critical_delay_ns": 22.527,
+            "failing_endpoints": 27880,
+            "slice_luts": 50937,
+            "slice_registers": 15791,
+            "timing_report_sha256": "ed9ce1b6f8d1fdb6cbd95a122aa41fa43d02afad56ed0532cedd9f9abf4c79fd",
+            "tns_ns": -191051.859,
+            "total_endpoints": 29216,
+            "utilization_report_sha256": "fd162b25a676f5e5d892cbb72acf6ec4923d5d1cb630e4547f18ddbbcf957466",
+            "wns_ns": -17.527
+          },
+          "promotable": true,
+          "stage": "synthesis",
+          "status": "complete"
+        }
+      ],
+      "feedback_arm": "E1",
+      "final_result_sha256": "8dfddb687ba92b259837f673fb7d699b4f28a281bd2924c6bcccbb52f8e4680d",
+      "final_valid": true,
+      "finalization_active_seconds": 3102.726044962066,
+      "first_verified_improvement_seconds": 721.3702256679535,
+      "frozen_run_fingerprint": "3826a28dbbd542da77f7871127aa4579e36b12797ea435938e8c1c4205104c00",
+      "http_attempts": 42,
+      "http_statuses": {
+        "200": 42
+      },
+      "model_calls": 42,
+      "post_route": {
+        "clock_period_ns": 5.0,
+        "critical_delay_ns": 23.711,
+        "failing_endpoints": 29167,
+        "slice_luts": 50774,
+        "slice_registers": 15770,
+        "timing_report_sha256": "6f5758cd1aff26fc5d0537d0916f5e71cffa9862a67d65c9b8cb9069d716bbdd",
+        "tns_ns": -344163.094,
+        "total_endpoints": 29167,
+        "utilization_report_sha256": "c24ae28017bc6aeb27fc0195affcb66e68ee30c471fe121a813687f0ba1fd02c",
+        "wns_ns": -18.711
+      },
+      "provider_api_seconds": 553.7079418826615,
+      "regression": {
+        "normal_finish_marker": true,
+        "returncode": 0,
+        "simulator_sha256": "5ed2e59dfe2210dfa7e1f66cfaa31f4a7e5ccc3ca1cfbe45f8a6afab25c2a44e",
+        "success": true
+      },
+      "search_result_sha256": "2296490b2c730ed9246f3775038e1f41081f4f1cb0fc8df786d9391e97654af4",
+      "search_wall_seconds": 2001.2774243354797,
+      "usage": {
+        "completion_tokens": 44726,
+        "prompt_cache_hit_tokens": 654848,
+        "prompt_cache_miss_tokens": 526546,
+        "prompt_tokens": 1181394,
+        "total_tokens": 1226120
+      },
+      "usage_missing_calls": 0,
+      "valid_improvement": true
+    }
+  ],
+  "schema_version": "chipcontext.cc03-exploratory-pair.v1",
+  "scope": "single matched exploratory pair; not a stability claim",
+  "target": {
+    "clock_period_ns": 5.0,
+    "device": "xc7z020clg400-1",
+    "id": "T0-issue-queue",
+    "tool": "Vivado 2024.1"
+  }
+}
