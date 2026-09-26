@@ -1758,6 +1758,17 @@ def run_interactive_issueq(
             "candidates": list(cc03t_state["trace_candidates"].values()),
             "candidate_pool": pool.to_dict(),
             "parent_selections": cc03t_state["parent_selections"],
+            "unexecuted_policy_slots": [
+                {
+                    "evaluation_slot": slot,
+                    "status": "not_executed",
+                    "reason": (
+                        "agent_finished" if result["status"] == "finished"
+                        else "turn_limit_exhausted"
+                    ),
+                }
+                for slot in range(evaluations + 1, max_evaluations + 1)
+            ],
         }))
         dump_json(output / "VISIBILITY_MANIFEST.json", signed_record({
             "schema_version": "chia-boom.visibility-manifest-set.v1",

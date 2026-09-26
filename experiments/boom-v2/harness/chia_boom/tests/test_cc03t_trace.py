@@ -287,6 +287,11 @@ class TraceTests(unittest.TestCase):
                 trace["transitions"][0]["source_after_sha256"],
             )
             self.assertEqual(second["evaluation_ref"], "evaluation-c2")
+            dag = json.loads((root / "trace-0/CANDIDATE_DAG.json").read_text())
+            self.assertEqual(
+                [row["evaluation_slot"] for row in dag["unexecuted_policy_slots"]],
+                [3, 4, 5],
+            )
             self.assertEqual(trace["provenance"]["result"]["sha256"], __import__("hashlib").sha256(
                 (campaign / "RESULT.json").read_bytes()
             ).hexdigest())

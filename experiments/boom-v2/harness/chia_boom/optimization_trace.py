@@ -1000,6 +1000,17 @@ def build_trace(campaign: Path, output: Path) -> dict[str, Any]:
         "candidates": [row.to_dict() for row in candidates.values()],
         "candidate_pool": pool.to_dict(),
         "parent_selections": parent_selections,
+        "unexecuted_policy_slots": [
+            {
+                "evaluation_slot": slot,
+                "status": "not_executed",
+                "reason": (
+                    "run_finished" if result.get("status") == "finished"
+                    else "run_stopped"
+                ),
+            }
+            for slot in range(len(rows) + 1, int(session.get("max_evaluations", len(rows))) + 1)
+        ],
     })
     trace = signed_record({
         "schema_version": TRACE_SCHEMA,
