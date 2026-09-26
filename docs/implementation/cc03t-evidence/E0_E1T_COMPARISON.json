@@ -1,0 +1,55 @@
+{
+  "causal_limits": [
+    "The pair diverged in tool actions and validation work, so the total token and wall-time differences cannot be attributed solely to 573 bytes of TraceTail per request.",
+    "Provider sampling was not seed-controlled.",
+    "Dfail, Dperf, and end-to-end cases were not run after the registered D0 gate failed.",
+    "No PPA or verified QoR comparison exists because neither arm produced a valid candidate."
+  ],
+  "conclusion": "inconclusive_at_d0_protocol_gate",
+  "content_hash": "0ff02ad40935e110f289858e7794c223f73ba830cfbc9dbc701b886b79117c4d",
+  "controlled_file_sha256": "a63dcbedd7ecc40c4ab4c9e81e540ac680f9172f20294896189cc29f66379cfa",
+  "decision_gate_status": "failed",
+  "experiment_b_executed": false,
+  "experiment_id": "cc03t-minimal-trace-v1",
+  "fixed_eda_active_time_view": "not_available_no_vivado_call",
+  "fixed_evaluation_view": "not_comparable_no_verified_candidate",
+  "fixed_synthesis_view": "empty_common_range_zero_synthesis_calls",
+  "next_action": "Keep the TraceTail schema frozen and first add a separately preregistered decision protocol that guarantees submit-or-stop within an inspection budget; then rerun from a new experiment version.",
+  "pair": {
+    "e0": {
+      "candidate_validation_active_ns": null,
+      "evaluations": 0,
+      "model_api_active_ns": 164536677778,
+      "model_calls": 24,
+      "synthesis_calls": 0,
+      "tokens": 273180,
+      "tool_calls": 41,
+      "total_wall_ns": 165723758242,
+      "valid_candidates": 0
+    },
+    "e1t": {
+      "candidate_validation_active_ns": 170762765092,
+      "evaluations": 1,
+      "model_api_active_ns": 335254961187,
+      "model_calls": 23,
+      "synthesis_calls": 0,
+      "tokens": 434057,
+      "tool_calls": 31,
+      "total_wall_ns": 506615309397,
+      "trace_feedback_active_ns": 273375,
+      "trace_tail_total_bytes": 13179,
+      "valid_candidates": 0
+    },
+    "e1t_minus_e0": {
+      "evaluations": 1,
+      "model_calls": -1,
+      "synthesis_calls": 0,
+      "tokens": 160877,
+      "tool_calls": -10,
+      "total_wall_ns": 340891551155,
+      "valid_candidates": 0
+    },
+    "pair_id": "D0-seed41"
+  },
+  "schema_version": "chia-boom.cc03t-public-comparison.v1"
+}

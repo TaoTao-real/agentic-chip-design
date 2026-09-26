@@ -1,0 +1,49 @@
+{
+  "content_hash": "9f2ad5f8a89d0bc9f44876e1a12a962a5b47cd2b1ca0bf22af1c22120ec53171",
+  "experiment_id": "cc03t-minimal-trace-v1",
+  "policy_revision": "baseline-3-best-2-v1",
+  "real_search_reached_multiple_baseline_siblings": false,
+  "reason": "D0 decision gate stopped the experiment before the five-slot end-to-end policy",
+  "runs": [
+    {
+      "baseline_candidate_id": "candidate-00",
+      "candidate_count": 1,
+      "controlled_content_hash": "9b6f475196f7a714f0818cb403376337356d2dc97f832ce7ce1da59515e7b3b6",
+      "controlled_file_sha256": "fff549fba9408a82491a4b7d022d3b54d6a10c65109515542f443875a7dedb12",
+      "current_best_candidate_id": "candidate-00",
+      "current_candidate_id": "candidate-00",
+      "evaluation_slot": 1,
+      "run_id": "d0-seed41-e0",
+      "selected_parent_id": "candidate-00",
+      "selection_reason": "baseline_exploration",
+      "unexecuted_policy_slots": [
+        {
+          "evaluation_slot": 1,
+          "reason": "turn_limit_exhausted",
+          "status": "not_executed"
+        }
+      ]
+    },
+    {
+      "baseline_candidate_id": "candidate-00",
+      "candidate_count": 2,
+      "candidate_parent_edges": [
+        {
+          "candidate_id": "T0-issue-queue-E1T-seed41-candidate-01",
+          "evaluation_status": "candidate_invalid",
+          "parent_candidate_id": "candidate-00"
+        }
+      ],
+      "controlled_content_hash": "f69d19b6d6e16c11172f2708485f52fa04a2df4ea5f4a62cd3ba2e8a5da7cb3c",
+      "controlled_file_sha256": "8f936a441243f1d2a10db8962af71685ee2460f3b7c89543fdb9adcafb00acb8",
+      "current_best_candidate_id": "candidate-00",
+      "current_candidate_id": "T0-issue-queue-E1T-seed41-candidate-01",
+      "evaluation_slot": 1,
+      "run_id": "d0-seed41-e1t",
+      "selected_parent_id": "candidate-00",
+      "selection_reason": "baseline_exploration",
+      "unexecuted_policy_slots": []
+    }
+  ],
+  "schema_version": "chia-boom.cc03t-public-candidate-dag-summary.v1"
+}

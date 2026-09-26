@@ -1,0 +1,45 @@
+{
+  "contains_patch": false,
+  "contains_prompt_or_log": false,
+  "contains_source": false,
+  "content_hash": "1d550fbc835abf9b86951c232c1e5eb0f7bcd4789803f5c6d2326c41428ac238",
+  "controlled_report_hash": "240dd87a1a8c9e5dbb18a8b0632e716bf4d09c72dcad9ead317ab242d0da9e86",
+  "controlled_root_manifest_file_sha256": "dfc72c6d31a67de63e3e9d66c90dd14bf453247c55e7c7fc8cec3cb6679ac1a8",
+  "experiment_id": "cc03t-minimal-trace-v1",
+  "runs": [
+    {
+      "actions": 41,
+      "arm": "E0",
+      "controlled_manifest_content_hash": "fc628ee828fc7fd49dd07f2be125da596b8817a041aa35473ad0974f530f1d69",
+      "controlled_manifest_file_sha256": "d7b01de6ec1e84429312f4511793de5cdca70341d936a9151e9a7ee95e4703fe",
+      "cost_spans": 137,
+      "decision_points": 0,
+      "evaluation_records": 1,
+      "run_id": "d0-seed41-e0",
+      "run_trace_content_hash": "59c0ca66f012b22fda2f89ff73c4982ee6fe6c686a4940795f1709c9f7d58584",
+      "run_trace_file_sha256": "7f695892ea6277f64d6624f358a03fbb4ae1317490463e27aebe4a7b2be672b7",
+      "trace_build_eda_calls": 0,
+      "trace_build_model_calls": 0,
+      "trace_build_simulator_calls": 0,
+      "transitions": 0
+    },
+    {
+      "actions": 31,
+      "arm": "E1T",
+      "controlled_manifest_content_hash": "1e653f47f7d4b00415d75cb9240e9cc0ad8d35f451f3c2123d26bd9c46b601bd",
+      "controlled_manifest_file_sha256": "c11c3be90ebaa8a05380c02b72461be8e308ce41f1785c62980fe28853a6106e",
+      "cost_spans": 130,
+      "decision_points": 1,
+      "evaluation_records": 2,
+      "run_id": "d0-seed41-e1t",
+      "run_trace_content_hash": "4a11cf66df6351ad00d65efef6caf3ebd851bbb1cc44c2c7daf2adf931fc83a1",
+      "run_trace_file_sha256": "dcdcbb4f33dc0bad48dc3ae4869b035a30a4ab0ada5d62f59488ad80e1674ac5",
+      "trace_build_eda_calls": 0,
+      "trace_build_model_calls": 0,
+      "trace_build_simulator_calls": 0,
+      "transitions": 1
+    }
+  ],
+  "schema_version": "chia-boom.cc03t-public-trace-summary.v1",
+  "usage_class": "redacted_public_summary"
+}

@@ -219,13 +219,33 @@ class TraceTests(unittest.TestCase):
             pairs.append({
                 "pair_id": f"Dperf-{seed}", "scenario": "Dperf",
                 "arms": [
-                    {"arm": "E0", "candidate_valid": True, "became_new_best": True, "ppa": ppa(8, 100)},
-                    {"arm": "E1T", "candidate_valid": True, "became_new_best": False, "ppa": ppa(9, 100)},
+                    {"arm": "E0", "evaluations": 1, "parent_identity_ok": True,
+                     "candidate_valid": True, "became_new_best": True, "ppa": ppa(8, 100)},
+                    {"arm": "E1T", "evaluations": 1, "parent_identity_ok": True,
+                     "candidate_valid": True, "became_new_best": False, "ppa": ppa(9, 100)},
                 ],
             })
         gate = decision_gate(pairs)
         self.assertFalse(gate["passed"])
         self.assertIn("Dperf: E1T lost at least two paired decisions", gate["failures"])
+
+    def test_decision_gate_does_not_call_missing_transition_a_parent_mismatch(self) -> None:
+        pairs = [{
+            "pair_id": "D0-seed41", "scenario": "D0",
+            "arms": [
+                {"arm": "E0", "evaluations": 0, "parent_identity_ok": None,
+                 "candidate_valid": False, "became_new_best": False, "ppa": None},
+                {"arm": "E1T", "evaluations": 1, "parent_identity_ok": True,
+                 "candidate_valid": False, "became_new_best": False, "ppa": None},
+            ],
+        }]
+        gate = decision_gate(pairs)
+        self.assertIn(
+            "D0-seed41: E0 violated single-candidate protocol", gate["failures"]
+        )
+        self.assertNotIn(
+            "D0-seed41: E0 parent identity mismatch", gate["failures"]
+        )
 
     def _write_campaign(self, root: Path) -> Path:
         campaign = root / "campaign"

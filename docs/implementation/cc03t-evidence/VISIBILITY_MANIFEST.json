@@ -1,0 +1,34 @@
+{
+  "common_context_hash": "04ff67bfc4f5cf342a6cd919ab535bfbe8ac306ee080890395772ee3b9b4484c",
+  "common_context_hash_equal": true,
+  "content_hash": "c39491ccae214b778fec85ca5914c170dc2eecc92ebf28f49e7f732845bfe03c",
+  "controlled_root_file_sha256": "9df4b77559e3261fb7fe4189d321873425651f35d8883276e96e914517e83c51",
+  "experiment_id": "cc03t-minimal-trace-v1",
+  "only_intended_visibility_difference": "E1T deterministic TraceTail",
+  "pair_id": "D0-seed41",
+  "raw_permissions_hash": "10a36049f233ccc74c7c8077dded228a96d4073f8115cdbd23f0a705ec39b8c7",
+  "raw_permissions_hash_equal": true,
+  "runs": [
+    {
+      "controlled_content_hash": "158251315d8738dc2d9f4dd8f93d863572075dd9b5d6ad157b52e3ee02c798d7",
+      "controlled_file_sha256": "06c575a655c83a1449cf3498116c13e3f64dbc7287fa0360586015ba3ff46e62",
+      "request_count": 24,
+      "run_id": "d0-seed41-e0",
+      "trace_tail_bytes_per_request": 0,
+      "trace_tail_total_bytes": 0,
+      "treatment_hash": "055999d149567bc5875d2b3944beb6b0124211b8a629d0421fe3f88ccdcab191"
+    },
+    {
+      "controlled_content_hash": "b65c1e956e025bb71fd79f8475767dafdaebfe5a61b887e5caf4a6a433c7bb72",
+      "controlled_file_sha256": "5160bb9ae85da42f470a0102e50bfe59fc83c15d02762cba790d29c7c0909c48",
+      "request_count": 23,
+      "run_id": "d0-seed41-e1t",
+      "trace_tail_bytes_per_request": 573,
+      "trace_tail_total_bytes": 13179,
+      "treatment_hash": "525d771d1631a328177a9fe88ef7340ec8caed3f4f4471882b988c1d50037803"
+    }
+  ],
+  "schema_version": "chia-boom.cc03t-public-visibility-summary.v1",
+  "tool_schema_hash": "5ba501dd7e7727b20521295bb13d62c34a853bd43fc780fc9e7c00a214d36cf7",
+  "tool_schema_hash_equal": true
+}

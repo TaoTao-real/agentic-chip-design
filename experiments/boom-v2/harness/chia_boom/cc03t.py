@@ -530,8 +530,9 @@ def summarize_run(run_dir: Path) -> dict[str, Any]:
         "qor_curves": curves,
         "selected_parent_id": selected_parent,
         "transition_parent_id": transition.get("from_candidate_id") if transition else None,
-        "parent_identity_ok": bool(
-            transition and selected_parent == transition.get("from_candidate_id")
+        "parent_identity_ok": (
+            selected_parent == transition.get("from_candidate_id")
+            if transition is not None else None
         ),
     }
 
@@ -560,7 +561,7 @@ def decision_gate(pair_results: list[dict[str, Any]]) -> dict[str, Any]:
         for arm_name, arm_row in arms.items():
             if arm_row.get("evaluations") != 1:
                 failures.append(f"{pair['pair_id']}: {arm_name} violated single-candidate protocol")
-            if not arm_row.get("parent_identity_ok"):
+            elif arm_row.get("parent_identity_ok") is not True:
                 failures.append(f"{pair['pair_id']}: {arm_name} parent identity mismatch")
         for key in ("common_context_hash", "tool_schema_hash", "raw_permissions_hash"):
             if e0.get("initial_visibility", {}).get(key) != e1t.get("initial_visibility", {}).get(key):
