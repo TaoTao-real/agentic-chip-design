@@ -181,14 +181,27 @@ QueryCost 明确区分请求校验、store 解析、证据查询和首次渲染�
 完整。接口、示例、错误语义、计量口径与受控校准见
 [`implementation/chipcontext-cc02b.md`](implementation/chipcontext-cc02b.md)。
 
-## 当前没有实现
+## CC-03：Agent runtime bridge
 
-- 没有把 packet 交给 Agent，也没有新增 `feedback_mode`；
+CC-03 已把候选评估自动绑定为 ChipContext snapshot，并在下一轮 Agent 请求前
+提供同权限的 raw artifact 访问；E1 额外获得紧凑 structured feedback 和六类
+只读查询。candidate、source、attempt 与 resume 均按内容身份核对，最终候选仍
+必须通过原有差分、布局布线和完整 MegaBOOM 回归。
+
+首个 seed 41 匹配对已经完成。E1 的 token 和无效候选更少，但 E0 更快找到
+改善并取得更好的最终后布局布线延迟，因此当前结论是 `needs_adjustment`，不能
+声称 structured feedback 已提高整体优化收益。实现和结果分别见
+[`implementation/chipcontext-cc03.md`](implementation/chipcontext-cc03.md) 与
+[`implementation/chipcontext-cc03-e0-e1-seed41.md`](implementation/chipcontext-cc03-e0-e1-seed41.md)。
+
+## 当前边界
+
 - 没有 DesignIndex、源码到 RTL 的实体映射；
-- 没有 CC-03 runtime bridge、CC-04 Agent 消融、CC-05 留出模块；
+- 没有完成三 seed 稳定性判断、正式 CC-04 Agent 消融或 CC-05 留出模块；
 - 没有 CC-06 AI workload 或软硬件协同设计；
 - 当前字节预算只防止序列化溢出，不表示已经找到最优 token 预算；
-- 尚未声称 ChipContext 提高了优化成功率、速度、token 效率或 QoR。
+- 单个配对只构成 exploratory smoke，尚未声称 ChipContext 稳定提高优化成功率、
+  速度、token 效率或 QoR。
 
 ## CC-02c：独立黑盒验收（C1）
 

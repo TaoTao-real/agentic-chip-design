@@ -14,6 +14,13 @@ from .artifacts import (
     sha256_text,
 )
 from .campaign import _evaluate_with_infra_retries
+from .chipcontext.runtime import (
+    FEEDBACK_ARMS,
+    RuntimeContext,
+    build_structured_feedback,
+    prepare_runtime_context,
+    query_runtime_context,
+)
 from .core import apply_exact_edits, canonical_hash, lineage_fields, make_diff
 from .deepseek import DeepSeekOfficialToolLLM
 from .finalize import BoomFinalizationNode, finalize_candidate
@@ -42,7 +49,52 @@ must remain within 105% of baseline. Discover bottlenecks yourself from source,
 generated RTL, raw timing evidence, and measured candidate results. No human
 diagnosis or historical solution is available. Never ask for a suggested
 optimization. Inspect, form hypotheses, edit, evaluate, repair, and finish with
-the best measured candidate. Do not claim improvement without tool evidence."""
+the best measured candidate. Budget inspection so that you evaluate a concrete
+edit instead of exhausting the turn limit on raw reads. Do not claim improvement
+without tool evidence."""
+
+OBSERVATION_TOOLS = {
+    "search_knowledge", "retrieve_knowledge", "read_source", "search_source",
+    "read_timing", "read_generated_rtl", "read_candidate_artifact",
+    "query_candidate_status", "list_candidate_artifacts",
+    "query_candidate_failure", "compare_candidate_metrics",
+    "query_candidate_timing_paths",
+}
+INSPECTION_WARNING_TURNS = 12
+INSPECTION_HARD_LIMIT_TURNS = 16
+
+
+def _advance_inspection_budget(
+    current: int, *, observed: bool, progressed: bool,
+) -> tuple[int, str | None]:
+    if progressed:
+        return 0, None
+    if not observed:
+        return current, None
+    value = current + 1
+    if value == INSPECTION_WARNING_TURNS:
+        return value, (
+            "Inspection budget warning: form a concrete hypothesis now. Raw-read "
+            "tools will be disabled after four more inspection-only turns until "
+            "you apply an edit or evaluate the edited source."
+        )
+    if value == INSPECTION_HARD_LIMIT_TURNS:
+        return value, (
+            "Inspection-only budget is exhausted. The next action must apply a "
+            "concrete edit or evaluate the current edited source."
+        )
+    return value, None
+
+
+def _available_tool_specs(
+    tool_specs: list[dict[str, Any]], inspection_only_turns: int,
+) -> list[dict[str, Any]]:
+    if inspection_only_turns < INSPECTION_HARD_LIMIT_TURNS:
+        return tool_specs
+    return [
+        spec for spec in tool_specs
+        if (spec.get("function") or {}).get("name") not in OBSERVATION_TOOLS
+    ]
 
 
 def _prepare_interactive_snapshot(
@@ -126,6 +178,60 @@ def _interactive_system(memory_mode: str) -> str:
             "every remembered hypothesis with correctness and EDA tools.",
         )
     raise ValueError(f"unknown memory mode: {memory_mode}")
+
+
+def _interactive_system_with_feedback(memory_mode: str, feedback_arm: str) -> str:
+    value = _interactive_system(memory_mode)
+    if feedback_arm == "E1":
+        return value + (
+            "\nAfter each evaluation, ChipContext supplies deterministic structured facts "
+            "from the same raw artifacts available to the control arm. Use its query tools "
+            "to inspect missing, conflicting, or source-linked evidence before the next edit."
+        )
+    if feedback_arm != "E0":
+        raise ValueError(f"unknown feedback arm: {feedback_arm}")
+    return value
+
+
+def _messages_for_model(
+    messages: list[dict[str, Any]], *, keep_recent_tool_results: int = 4,
+) -> list[dict[str, Any]]:
+    """Keep the full audit transcript on disk while bounding repeated prompt bytes.
+
+    Old tool results stay addressable through the same read/search/query tools.
+    Their content is replaced only in the next model request by an identity
+    marker; assistant tool calls and their corresponding tool responses remain
+    structurally paired for API compatibility.
+    """
+
+    tool_indexes = [
+        index for index, message in enumerate(messages)
+        if message.get("role") == "tool"
+    ]
+    retained = set(tool_indexes[-keep_recent_tool_results:])
+    tool_names: dict[str, str] = {}
+    for message in messages:
+        if message.get("role") != "assistant":
+            continue
+        for call in message.get("tool_calls") or []:
+            call_id = str(call.get("id", ""))
+            tool_names[call_id] = str((call.get("function") or {}).get("name", "unknown"))
+
+    compacted: list[dict[str, Any]] = []
+    for index, message in enumerate(messages):
+        copied = dict(message)
+        if message.get("role") == "tool" and index not in retained:
+            original = str(message.get("content", ""))
+            call_id = str(message.get("tool_call_id", ""))
+            copied["content"] = json.dumps({
+                "status": "archived_tool_result",
+                "tool": tool_names.get(call_id, "unknown"),
+                "content_sha256": sha256_text(original),
+                "content_chars": len(original),
+                "instruction": "Reissue the tool query if these bytes are needed again.",
+            }, sort_keys=True)
+        compacted.append(copied)
+    return compacted
 
 
 TOOL_SPECS: list[dict[str, Any]] = [
@@ -258,6 +364,144 @@ TOOL_SPECS: list[dict[str, Any]] = [
 ]
 
 
+RAW_EVIDENCE_TOOL_SPECS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "read_candidate_artifact",
+            "description": (
+                "Read a bounded line range from a raw artifact belonging to an "
+                "evaluated candidate. Use refs returned by evaluate_candidate."
+            ),
+            "strict": True,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "candidate_id": {"type": "string"},
+                    "artifact_ref": {"type": "string"},
+                    "start_line": {"type": "integer", "minimum": 1},
+                    "line_count": {"type": "integer", "minimum": 1, "maximum": 400},
+                    "limit_bytes": {"type": "integer", "minimum": 1, "maximum": 65536},
+                },
+                "required": [
+                    "candidate_id", "artifact_ref", "start_line", "line_count",
+                    "limit_bytes",
+                ],
+                "additionalProperties": False,
+            },
+        },
+    },
+]
+
+
+STRUCTURED_EVIDENCE_TOOL_SPECS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "query_candidate_status",
+            "description": "Query grounded check, binding, applicability, missing, and conflict status.",
+            "strict": True,
+            "parameters": {
+                "type": "object",
+                "properties": {"candidate_id": {"type": "string"}},
+                "required": ["candidate_id"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_candidate_artifacts",
+            "description": "List authorized raw artifact refs for one evaluated candidate.",
+            "strict": True,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "candidate_id": {"type": "string"},
+                    "stage": {"type": "string"},
+                    "kinds": {"type": "array", "items": {"type": "string"}},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+                },
+                "required": ["candidate_id", "stage", "kinds", "limit"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_candidate_failure",
+            "description": "Query a recorded check and any grounded mismatch observation separately.",
+            "strict": True,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "candidate_id": {"type": "string"},
+                    "check": {"type": "string"},
+                },
+                "required": ["candidate_id", "check"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "compare_candidate_metrics",
+            "description": "Compare explicit current metrics with the frozen bound baseline.",
+            "strict": True,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "candidate_id": {"type": "string"},
+                    "stage": {"type": "string", "enum": ["post_synth", "post_route"]},
+                    "metric_ids": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["candidate_id", "stage", "metric_ids"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_candidate_timing_paths",
+            "description": "Query collected timing paths and report coverage without claiming global coverage.",
+            "strict": True,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "candidate_id": {"type": "string"},
+                    "extraction_ref": {"type": "string"},
+                    "stage": {"type": "string", "enum": ["post_synth", "post_route"]},
+                    "path_group": {"type": "string"},
+                    "source": {"type": "string"},
+                    "destination": {"type": "string"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+                },
+                "required": [
+                    "candidate_id", "extraction_ref", "stage", "path_group",
+                    "source", "destination", "limit",
+                ],
+                "additionalProperties": False,
+            },
+        },
+    },
+]
+
+
+def _interactive_tool_specs(memory_enabled: bool, feedback_arm: str) -> list[dict[str, Any]]:
+    if feedback_arm not in FEEDBACK_ARMS:
+        raise ValueError(f"unknown feedback arm: {feedback_arm}")
+    return (
+        (MEMORY_TOOL_SPECS if memory_enabled else [])
+        + TOOL_SPECS
+        + RAW_EVIDENCE_TOOL_SPECS
+        + (STRUCTURED_EVIDENCE_TOOL_SPECS if feedback_arm == "E1" else [])
+    )
+
+
 def _numbered(lines: list[str], start: int, end: int) -> str:
     start = max(1, start)
     end = min(len(lines), max(start, end))
@@ -312,16 +556,27 @@ def _meets_auto_stop(
 def run_interactive_issueq(
     config: dict[str, Any], output: Path, *, seed: int = 41,
     max_turns: int = 24, max_evaluations: int = 5,
-    memory_mode: str = "none", auto_stop_improvement_percent: float | None = None,
+    memory_mode: str = "none", feedback_arm: str = "E0",
+    auto_stop_improvement_percent: float | None = None,
+    _resume: bool = False,
 ) -> dict[str, Any]:
     if memory_mode not in MEMORY_MODES:
         raise ValueError(f"unknown memory mode: {memory_mode}")
+    if feedback_arm not in FEEDBACK_ARMS:
+        raise ValueError(f"unknown feedback arm: {feedback_arm}")
     output.mkdir(parents=True, exist_ok=True)
-    if (output / "SESSION.json").exists() or (output / "RESULT.json").exists():
+    session_path = output / "SESSION.json"
+    result_path = output / "RESULT.json"
+    if not _resume and (session_path.exists() or result_path.exists()):
         raise FileExistsError(f"interactive campaign already contains state: {output}")
+    if _resume and not session_path.is_file():
+        raise FileNotFoundError("interactive campaign has no saved session")
     if len(config["targets"]) != 1:
         raise ValueError("interactive mode requires exactly one configured target")
-    config = _prepare_interactive_snapshot(config, output)
+    config = (
+        _load_interactive_snapshot(config, output)
+        if _resume else _prepare_interactive_snapshot(config, output)
+    )
     frozen_fingerprint = load_json(output / "INTERACTIVE_MANIFEST.json")[
         "frozen_run_fingerprint"
     ]
@@ -334,17 +589,49 @@ def run_interactive_issueq(
     timing = baseline_input(config, target_id, "baseline-timing.txt").read_text()
     baseline = load_json(baseline_input(config, target_id, "baseline-ppa.json"))
     baseline["maximum_lut_ratio"] = config["physical"]["maximum_lut_ratio"]
-    current_source = baseline_source
-    current_parent_source = baseline_source
-    current_parent_id: str | None = None
-    best_source: str | None = None
-    best_ppa: dict[str, Any] | None = None
-    best_candidate: dict[str, Any] | None = None
-    evaluated_hashes: set[str] = set()
-    evaluations = 0
-    finished = False
-    finish_summary = ""
-    session_usage: list[dict[str, Any]] = []
+    saved = load_json(session_path) if _resume else None
+    if saved is not None:
+        frozen_fields = {
+            "seed": seed,
+            "max_turns": max_turns,
+            "max_evaluations": max_evaluations,
+            "memory_mode": memory_mode,
+            "feedback_arm": feedback_arm,
+            "auto_stop_improvement_percent": auto_stop_improvement_percent,
+        }
+        for name, expected in frozen_fields.items():
+            if saved.get(name) != expected:
+                raise RuntimeError(f"interactive resume changed frozen field: {name}")
+        if saved.get("status") == "finished":
+            raise RuntimeError("interactive campaign is already finished")
+        current_source = str(saved["current_source"])
+        current_parent_source = str(saved["current_parent_source"])
+        current_parent_id = saved.get("current_parent_id")
+        best_candidate = saved.get("best_candidate")
+        best_source = str(best_candidate["source"]) if best_candidate else None
+        best_ppa = saved.get("best_post_synth")
+        evaluated_hashes = set(saved.get("evaluated_source_sha256s", []))
+        evaluations = int(saved["evaluations"])
+        finished = False
+        finish_summary = str(saved.get("finish_summary", ""))
+        session_usage = list(saved.get("usage", []))
+        messages = list(saved["messages"])
+        inspection_only_turns = int(saved.get("inspection_only_turns", 0))
+        start_turn = int(saved["turn"]) + 1
+    else:
+        current_source = baseline_source
+        current_parent_source = baseline_source
+        current_parent_id: str | None = None
+        best_source: str | None = None
+        best_ppa: dict[str, Any] | None = None
+        best_candidate: dict[str, Any] | None = None
+        evaluated_hashes: set[str] = set()
+        evaluations = 0
+        finished = False
+        finish_summary = ""
+        session_usage: list[dict[str, Any]] = []
+        inspection_only_turns = 0
+        start_turn = 1
     knowledge_root = config.get("knowledge", {}).get("root")
     knowledge = KnowledgeStore(
         memory_mode, Path(knowledge_root) if knowledge_root else None
@@ -357,20 +644,31 @@ def run_interactive_issueq(
             "target memory mode requires an explicitly mounted private "
             "target-specific Design Episode directory"
         )
-    knowledge_retrievals: list[dict[str, Any]] = []
-    tool_specs = (MEMORY_TOOL_SPECS if knowledge.enabled else []) + TOOL_SPECS
+    knowledge_retrievals: list[dict[str, Any]] = (
+        list(saved.get("knowledge_retrievals", [])) if saved else []
+    )
+    tool_specs = _interactive_tool_specs(knowledge.enabled, feedback_arm)
+    runtime_contexts: dict[str, RuntimeContext] = {
+        key: RuntimeContext.from_dict(value)
+        for key, value in (saved.get("chipcontext_contexts", {}) if saved else {}).items()
+    }
+    chipcontext_costs: list[dict[str, Any]] = (
+        list(saved.get("chipcontext_costs", [])) if saved else []
+    )
     dump_json(output / "KNOWLEDGE_MANIFEST.json", knowledge.manifest())
-    messages: list[dict[str, Any]] = [{
-        "role": "user",
-        "content": (
-            "Optimize target " + target_id + " in file " + target["mutable_file"] + ".\n"
-            "Baseline post-synthesis critical delay is " + str(baseline["critical_delay_ns"]) +
-            " ns and Slice LUTs are " + str(baseline["slice_luts"]) + ".\n"
-            "You have at most five EDA evaluations. Start by inspecting raw evidence with tools."
-        ),
-    }]
+    if saved is None:
+        messages = [{
+            "role": "user",
+            "content": (
+                "Optimize target " + target_id + " in file " + target["mutable_file"] + ".\n"
+                "Baseline post-synthesis critical delay is " + str(baseline["critical_delay_ns"]) +
+                " ns and Slice LUTs are " + str(baseline["slice_luts"]) + ".\n"
+                f"You have at most {max_evaluations} EDA evaluations. "
+                "Start by inspecting raw evidence with tools."
+            ),
+        }]
     llm = DeepSeekOfficialToolLLM(
-        system_message=_interactive_system(memory_mode),
+        system_message=_interactive_system_with_feedback(memory_mode, feedback_arm),
         model=config["model"]["id"], base_url=config["model"]["api_base"],
         max_tokens=int(config["model"]["max_output_tokens"]),
         timeout_seconds=int(config["model"]["timeout_seconds"]),
@@ -379,12 +677,16 @@ def run_interactive_issueq(
     )
     evaluator = BoomCandidateEvaluationNode()
 
-    for turn in range(1, max_turns + 1):
+    for turn in range(start_turn, max_turns + 1):
         turn_dir = output / "turns" / f"turn-{turn:02d}"
         turn_dir.mkdir(parents=True)
         dump_json(turn_dir / "messages-before.json", messages)
+        model_messages = _messages_for_model(messages)
+        dump_json(turn_dir / "model-messages-before.json", model_messages)
+        visible_tool_specs = _available_tool_specs(tool_specs, inspection_only_turns)
+        dump_json(turn_dir / "tool-specs.json", visible_tool_specs)
         result = get(llm.chat_turn.chia_remote(
-            llm, messages, tool_specs,
+            llm, model_messages, visible_tool_specs,
             _chia_display_name=f"deepseek-interactive:{target_id}:turn-{turn:02d}",
         ))
         metadata = json.loads(result.stream_result) if result.stream_result else {}
@@ -403,11 +705,20 @@ def run_interactive_issueq(
                 "content": "Continue by calling an available tool. Use finish only after measured evaluation evidence.",
             })
             continue
+        turn_observed = False
+        turn_progressed = False
         for call in tool_calls:
             call_id = call.get("id")
             fn = (call.get("function") or {}).get("name")
             try:
                 args = json.loads((call.get("function") or {}).get("arguments") or "{}")
+                if fn in OBSERVATION_TOOLS:
+                    turn_observed = True
+                    if inspection_only_turns >= INSPECTION_HARD_LIMIT_TURNS:
+                        raise RuntimeError(
+                            "inspection-only turn budget exhausted; apply a concrete edit "
+                            "or evaluate the current edited source"
+                        )
                 target_episode_retrieved = any(
                     row.get("operation") == "retrieve"
                     and row.get("knowledge_class") == "target-specific-solution"
@@ -457,7 +768,83 @@ def run_interactive_issueq(
                         (rtl_root / name).read_text(), str(args["query"]),
                         int(args["max_lines"]), 3,
                     )
+                elif fn in {
+                    "read_candidate_artifact", "query_candidate_status",
+                    "list_candidate_artifacts", "query_candidate_failure",
+                    "compare_candidate_metrics", "query_candidate_timing_paths",
+                }:
+                    candidate_id = str(args["candidate_id"])
+                    context = runtime_contexts.get(candidate_id)
+                    if context is None:
+                        raise ValueError("candidate has no prepared ChipContext evidence")
+                    if fn == "read_candidate_artifact":
+                        queried = query_runtime_context(
+                            context,
+                            working_source=current_source,
+                            operation="read_artifact",
+                            parameters={
+                                "artifact_ref": str(args["artifact_ref"]),
+                                "start_line": int(args["start_line"]),
+                                "line_count": int(args["line_count"]),
+                                "limit_bytes": int(args["limit_bytes"]),
+                            },
+                        )
+                    elif feedback_arm != "E1":
+                        raise ValueError("structured evidence queries are unavailable in E0")
+                    elif fn == "query_candidate_status":
+                        queried = query_runtime_context(
+                            context, working_source=current_source,
+                            operation="candidate_status",
+                        )
+                    elif fn == "list_candidate_artifacts":
+                        parameters: dict[str, Any] = {
+                            "limit": int(args["limit"]),
+                            "kinds": list(args["kinds"]),
+                        }
+                        if args["stage"]:
+                            parameters["stage"] = str(args["stage"])
+                        queried = query_runtime_context(
+                            context, working_source=current_source,
+                            operation="candidate_artifacts", parameters=parameters,
+                        )
+                    elif fn == "query_candidate_failure":
+                        queried = query_runtime_context(
+                            context, working_source=current_source,
+                            operation="failure",
+                            parameters={"check": str(args["check"])},
+                        )
+                    elif fn == "compare_candidate_metrics":
+                        queried = query_runtime_context(
+                            context, working_source=current_source,
+                            operation="compare_metrics",
+                            parameters={
+                                "reference": "bound_baseline",
+                                "stage": str(args["stage"]),
+                                "metric_ids": list(args["metric_ids"]),
+                            },
+                        )
+                    else:
+                        parameters = {
+                            "extraction_ref": str(args["extraction_ref"]),
+                            "stage": str(args["stage"]),
+                            "limit": int(args["limit"]),
+                        }
+                        for name in ("path_group", "source", "destination"):
+                            if args[name]:
+                                parameters[name] = str(args[name])
+                        queried = query_runtime_context(
+                            context, working_source=current_source,
+                            operation="timing_paths", parameters=parameters,
+                        )
+                    chipcontext_costs.append({
+                        "candidate_id": candidate_id,
+                        "kind": "agent_query",
+                        "operation": fn,
+                        "cost": queried["cost"],
+                    })
+                    content = queried
                 elif fn == "apply_exact_edits":
+                    turn_progressed = True
                     current_source = apply_exact_edits(current_source, args["edits"])
                     diff = make_diff(baseline_source, current_source, target["mutable_file"])
                     content = {
@@ -465,6 +852,7 @@ def run_interactive_issueq(
                         "diff_sha256": sha256_text(diff), "changed_lines": len(diff.splitlines()),
                     }
                 elif fn == "revert_source":
+                    turn_progressed = True
                     if args["target"] == "best":
                         if best_source is None:
                             raise ValueError("no measured valid best candidate exists")
@@ -477,6 +865,7 @@ def run_interactive_issueq(
                         current_parent_id = None
                     content = {"status": "reverted", "target": args["target"], "source_sha256": sha256_text(current_source)}
                 elif fn == "evaluate_candidate":
+                    turn_progressed = True
                     verify_frozen_run(output / "frozen", frozen_fingerprint)
                     if evaluations >= max_evaluations:
                         raise ValueError("EDA evaluation budget exhausted")
@@ -495,7 +884,7 @@ def run_interactive_issueq(
                         mutable_file=target["mutable_file"],
                     )
                     candidate = CandidateArtifact(
-                        campaign_id=output.name, target=target_id, arm="I", seed=seed,
+                        campaign_id=output.name, target=target_id, arm=feedback_arm, seed=seed,
                         index=evaluations, parent_id=lineage["parent_id"],
                         source=current_source, diff=lineage["diff"],
                         baseline_diff=lineage["baseline_diff"],
@@ -508,7 +897,9 @@ def run_interactive_issueq(
                             "risk": "checked by differential verification",
                         }], selected_hypothesis=0,
                         visible_feedback="interactive tool transcript",
-                        request_sha256=sha256_text(json.dumps(messages, sort_keys=True)),
+                        request_sha256=sha256_text(
+                            json.dumps(model_messages, sort_keys=True)
+                        ),
                         response_sha256=sha256_text(json.dumps(assistant, sort_keys=True)),
                         usage=metadata.get("usage"), attempts=metadata.get("attempts", []),
                         model_elapsed_seconds=float(metadata.get("elapsed_seconds", 0.0)),
@@ -531,6 +922,27 @@ def run_interactive_issueq(
                         "infrastructure_attempts": attempts_used,
                     }
                     dump_json(candidate_dir / "result.json", row)
+                    runtime_context = prepare_runtime_context(
+                        campaign_root=output,
+                        candidate_dir=candidate_dir,
+                        candidate=candidate,
+                        evaluation=evaluation,
+                        target_id=target_id,
+                        infrastructure_attempts=attempts_used,
+                    )
+                    runtime_contexts[candidate.id] = runtime_context
+                    inventory = query_runtime_context(
+                        runtime_context,
+                        working_source=current_source,
+                        operation="candidate_artifacts",
+                        parameters={"limit": 100},
+                    )
+                    chipcontext_costs.append({
+                        "candidate_id": candidate.id,
+                        "kind": "automatic_raw_inventory",
+                        "operation": "candidate_artifacts",
+                        "cost": inventory["cost"],
+                    })
                     ppa = evaluation.post_synth or {}
                     if evaluation.candidate_valid and isinstance(ppa.get("critical_delay_ns"), (int, float)):
                         if best_ppa is None or (ppa["critical_delay_ns"], ppa.get("slice_luts", 10**18)) < (best_ppa["critical_delay_ns"], best_ppa.get("slice_luts", 10**18)):
@@ -544,6 +956,27 @@ def run_interactive_issueq(
                         "slice_luts": baseline["slice_luts"],
                     }
                     content["best_post_synth"] = best_ppa
+                    content["raw_evidence"] = {
+                        "candidate_id": candidate.id,
+                        "attempt_id": runtime_context.attempt_id,
+                        "snapshot_ref": runtime_context.snapshot_ref,
+                        "artifacts": inventory["answer"]["result"]["artifacts"],
+                        "read_tool": "read_candidate_artifact",
+                    }
+                    if feedback_arm == "E1":
+                        structured = build_structured_feedback(
+                            runtime_context, working_source=current_source
+                        )
+                        content["structured_feedback"] = {
+                            key: value for key, value in structured.items()
+                            if key != "cost"
+                        }
+                        chipcontext_costs.append({
+                            "candidate_id": candidate.id,
+                            "kind": "automatic_structured_feedback",
+                            "content_hash": structured["content_hash"],
+                            "cost": structured["cost"],
+                        })
                     if evaluation.candidate_valid and _meets_auto_stop(
                         float(baseline["critical_delay_ns"]), ppa,
                         auto_stop_improvement_percent,
@@ -561,6 +994,7 @@ def run_interactive_issueq(
                             "measured_improvement_percent": improvement,
                         }
                 elif fn == "finish":
+                    turn_progressed = True
                     if best_candidate is None:
                         raise ValueError("no measured valid candidate exists; inspect failures and continue")
                     finished = True
@@ -575,6 +1009,13 @@ def run_interactive_issueq(
             messages.append({"role": "tool", "tool_call_id": call_id, "content": response_text})
             if finished:
                 break
+        inspection_only_turns, inspection_notice = _advance_inspection_budget(
+            inspection_only_turns,
+            observed=turn_observed,
+            progressed=turn_progressed,
+        )
+        if inspection_notice:
+            messages.append({"role": "user", "content": inspection_notice})
         dump_json(output / "KNOWLEDGE_RETRIEVALS.json", {
             "memory_mode": memory_mode,
             "retrievals": knowledge_retrievals,
@@ -586,6 +1027,19 @@ def run_interactive_issueq(
             "best_post_synth": best_ppa, "usage": session_usage,
             "messages": messages, "finish_summary": finish_summary,
             "memory_mode": memory_mode, "knowledge_retrievals": knowledge_retrievals,
+            "feedback_arm": feedback_arm,
+            "seed": seed,
+            "max_turns": max_turns,
+            "max_evaluations": max_evaluations,
+            "current_source": current_source,
+            "current_parent_source": current_parent_source,
+            "current_parent_id": current_parent_id,
+            "evaluated_source_sha256s": sorted(evaluated_hashes),
+            "inspection_only_turns": inspection_only_turns,
+            "chipcontext_contexts": {
+                key: value.to_dict() for key, value in runtime_contexts.items()
+            },
+            "chipcontext_costs": chipcontext_costs,
             "auto_stop_improvement_percent": auto_stop_improvement_percent,
         })
         if finished:
@@ -599,12 +1053,46 @@ def run_interactive_issueq(
             "slice_luts": baseline["slice_luts"],
         }, "usage": session_usage, "finish_summary": finish_summary,
         "memory_mode": memory_mode,
+        "feedback_arm": feedback_arm,
         "auto_stop_improvement_percent": auto_stop_improvement_percent,
         "knowledge_retrievals": knowledge_retrievals,
         "knowledge_response_chars": sum(int(row["response_chars"]) for row in knowledge_retrievals),
+        "chipcontext_contexts": {
+            key: value.to_dict() for key, value in runtime_contexts.items()
+        },
+        "chipcontext_costs": chipcontext_costs,
     }
     dump_json(output / "RESULT.json", result)
     return result
+
+
+def resume_interactive_issueq(
+    config: dict[str, Any], output: Path,
+) -> dict[str, Any]:
+    """Continue a saved interactive session without changing its experiment contract."""
+
+    saved = load_json(output / "SESSION.json")
+    required = {
+        "seed", "max_turns", "max_evaluations", "memory_mode", "feedback_arm",
+        "current_source", "current_parent_source", "evaluated_source_sha256s",
+        "inspection_only_turns",
+    }
+    missing = sorted(required - set(saved))
+    if missing:
+        raise RuntimeError(
+            "interactive session predates resumable CC-03 state: " + ", ".join(missing)
+        )
+    return run_interactive_issueq(
+        config,
+        output,
+        seed=int(saved["seed"]),
+        max_turns=int(saved["max_turns"]),
+        max_evaluations=int(saved["max_evaluations"]),
+        memory_mode=str(saved["memory_mode"]),
+        feedback_arm=str(saved["feedback_arm"]),
+        auto_stop_improvement_percent=saved.get("auto_stop_improvement_percent"),
+        _resume=True,
+    )
 
 
 def finalize_interactive_issueq(config: dict[str, Any], output: Path) -> dict[str, Any]:

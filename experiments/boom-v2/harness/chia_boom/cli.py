@@ -15,7 +15,11 @@ from .deployment import doctor
 from .environment import load_config
 from .finalize import finalize_campaign, reconcile_interactive_finalization
 from .frozen import seal_frozen_run, verify_frozen_run, verify_qualification
-from .interactive import finalize_interactive_issueq, run_interactive_issueq
+from .interactive import (
+    finalize_interactive_issueq,
+    resume_interactive_issueq,
+    run_interactive_issueq,
+)
 from .qualification import qualify
 from .smoke import run_baseline_smoke
 
@@ -163,9 +167,23 @@ def command_interactive(args: argparse.Namespace) -> int:
             config, args.output, seed=args.seed,
             max_turns=args.max_turns, max_evaluations=args.max_evaluations,
             memory_mode=args.memory_mode,
+            feedback_arm=args.feedback_arm,
             auto_stop_improvement_percent=args.auto_stop_improvement_percent,
         )
         save_profile(args.output / "CHIA_PROFILE.json")
+        print(json.dumps(result, indent=2))
+        return 0 if result.get("best_candidate") else 3
+    finally:
+        stop_collector()
+
+
+def command_interactive_resume(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    validate_config(config)
+    connect(args.output.name, args.output / "profiler-resume")
+    try:
+        result = resume_interactive_issueq(config, args.output)
+        save_profile(args.output / "CHIA_PROFILE_RESUME.json")
         print(json.dumps(result, indent=2))
         return 0 if result.get("best_candidate") else 3
     finally:
@@ -229,12 +247,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--memory-mode", choices=("none", "generic", "target"), default="none"
     )
     interactive.add_argument(
+        "--feedback-arm", choices=("E0", "E1"), default="E0",
+        help="E0 exposes raw candidate artifacts; E1 adds structured ChipContext feedback.",
+    )
+    interactive.add_argument(
         "--auto-stop-improvement-percent", type=float, default=None,
         help="Stop search after a valid candidate reaches this post-synthesis delay improvement.",
     )
     interactive_finalize = sub.add_parser("interactive-finalize")
     interactive_finalize.add_argument("--config", type=Path, required=True)
     interactive_finalize.add_argument("--output", type=Path, required=True)
+    interactive_resume = sub.add_parser("interactive-resume")
+    interactive_resume.add_argument("--config", type=Path, required=True)
+    interactive_resume.add_argument("--output", type=Path, required=True)
     interactive_reconcile = sub.add_parser("interactive-reconcile")
     interactive_reconcile.add_argument("--config", type=Path, required=True)
     interactive_reconcile.add_argument("--output", type=Path, required=True)
@@ -259,6 +284,8 @@ def main() -> None:
         code = command_finalize(args)
     elif args.command == "interactive":
         code = command_interactive(args)
+    elif args.command == "interactive-resume":
+        code = command_interactive_resume(args)
     elif args.command == "interactive-finalize":
         code = command_interactive_finalize(args)
     elif args.command == "interactive-reconcile":
