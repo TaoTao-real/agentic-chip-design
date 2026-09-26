@@ -29,6 +29,26 @@
 
 第一段主要由确定性程序完成，不默认另建一个 LLM 来扫描日志。Agent 可调查和设计，但不能自行认证测量或修改验收规则。
 
+## OptimizationTrace：优化过程的关系视图
+
+当前阶段新增 OptimizationTrace 作为 sealed artifacts / ChipLedger 事实之上的确定性关系视图，用来表达：
+
+~~~text
+state → action → candidate → evaluation → outcome/cost
+~~~
+
+它不替代原始 evidence，也不由模型填写。能从 candidate lineage、source hash、evaluation、timing/PPA 与 cost deterministic derive 的关系必须保留 provenance；缺失、不可比和未知状态显式化。
+
+职责边界：
+
+- ChipLedger / sealed artifacts：保存 source、patch、candidate、evaluation、tool output、model request、timing、cost 等事实；
+- OptimizationTrace：组织 DecisionPoint、DesignState、Action、Transition、CostSpan 等关系；
+- ChipContext：从 Trace 和当前 evidence 中选择当前决策需要的少量上下文；
+- ChipLoop / SearchPolicy：以后可以消费 Trace 做 stopping、candidate selection 或搜索策略，但 v1 不实现智能策略；
+- KnowledgeStore：仍用于受控慢循环经验，不自动接收 Trace audit 或 analysis-only 结果。
+
+v1 只实现 deterministic Trace，不引入 LLM trace miner、semantic label 或因果判断。详细设计见 [OptimizationTrace v1](optimization-trace.md)。
+
 ## 慢循环
 
 Episode → 跨任务复验 → 经验候选 → 人工审核 → 诊断、清单或通用操作提案。
