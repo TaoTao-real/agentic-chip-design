@@ -69,6 +69,11 @@ chia-boom report
 chia-boom interactive
 chia-boom interactive-resume
 chia-boom interactive-finalize
+chia-boom trace-build
+chia-boom cc03t-prepare
+chia-boom cc03t-run
+chia-boom cc03t-resume
+chia-boom cc03t-report
 chia-chipcontext prepare
 chia-chipcontext read-artifact
 chia-chipcontext query
@@ -106,6 +111,13 @@ automatically, and the session records candidate/source/attempt identity plus
 prepare/query cost. `interactive-resume` continues only the exact saved arm,
 budget, seed, memory mode and frozen tool contract. See
 [`docs/implementation/chipcontext-cc03.md`](../../../docs/implementation/chipcontext-cc03.md).
+
+CC-03T adds a separate matched E0/E1T experiment. Both arms use the same raw
+tools and deterministic `baseline-3-best-2-v1` parent policy; E1T alone receives
+a bounded TraceTail built from its own selected-parent ancestry. Use
+[`chia_boom/config/cc03t-experiment.example.json`](chia_boom/config/cc03t-experiment.example.json)
+with controlled fixture paths. The protocol and result boundary are documented
+in [`docs/implementation/cc03t-minimal-trace-search-result.md`](../../../docs/implementation/cc03t-minimal-trace-search-result.md).
 
 ## What the published tests establish
 

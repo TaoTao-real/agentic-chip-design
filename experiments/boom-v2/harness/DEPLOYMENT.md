@@ -409,3 +409,26 @@ EvidenceStore。
 公开仓库可以据此验证“环境、冻结、搜索和最终验证链路是否重新运行”。由于
 已知候选、历史完整会话、内部 Q1 fixture 和原始 EvidenceStore 不公开，它
 不能单独证明历史搜索会生成同一个候选或取得相同 PPA 数值。
+
+## 11. CC-03T Minimal Trace 实验
+
+先复制 `chia_boom/config/cc03t-experiment.example.json`，仅在受控服务器把
+两个 fixture 的占位路径替换为封存的 seed41 campaign。不要把受控路径、
+源码、补丁或日志提交到公开仓库。
+
+```bash
+export DEEPSEEK_API_KEY='<由运行者提供>'
+
+chia-boom cc03t-prepare \
+  --config "$AGENTIC_CHIP_LAB_ROOT/config.json" \
+  --manifest "$AGENTIC_CHIP_LAB_ROOT/cc03t-experiment.json" \
+  --output "$AGENTIC_CHIP_LAB_ROOT/cc03t-minimal-trace-v1"
+
+chia-boom cc03t-run --output "$AGENTIC_CHIP_LAB_ROOT/cc03t-minimal-trace-v1"
+chia-boom cc03t-resume --output "$AGENTIC_CHIP_LAB_ROOT/cc03t-minimal-trace-v1"
+chia-boom cc03t-report --output "$AGENTIC_CHIP_LAB_ROOT/cc03t-minimal-trace-v1"
+```
+
+`cc03t-run` 串行执行 DecisionPoint pair。Experiment A 不通过时不会启动
+seed46。网络或基础设施中断后使用同一目录 resume；不要创建新目录规避已经
+生成的无效候选。prepare 和 trace-build 不读取 API key，也不运行硬件工具。
