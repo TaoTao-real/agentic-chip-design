@@ -22,10 +22,10 @@ Three clean replays produced identical record hashes:
 
 | Record | SHA-256 |
 |---|---|
-| Audit manifest | `55be095f1ec6ef133fc3137a3425cb8b554fedc72a5f610dd81bed61a6982061` |
-| Decision points | `4634daa515693dabfd8b0337631b45f9f5c95cf81e42a66096f5059fe44b4237` |
-| Evidence coverage | `e858b038f927300e9cc57cac4cc72ab59d2fa3b4b1bd875a98db33a81418e7dc` |
-| Pair comparison | `b7d03964b35af6a79d1502e8648160f9331b8599eb63cae5fc0e8fc90384bb23` |
+| Audit manifest | `fd9fb90161f9619109c4c8123edd91b4203d050deb2e418e7edb3cb0f0f26d3d` |
+| Decision points | `88387b573c3bc4b8e71400bd97341048e0b941750efc93575a1d9695d0584891` |
+| Evidence coverage | `52abdd75c28b0c6ecf0c452c0404dff3a039f1ddffc59eed05a0ffbc58674f27` |
+| Pair comparison | `34ea22c821ec07d876d9c32496146b154c2aafc479b105f9aa625293c5254e96` |
 
 The audit reconstructed 21 decision points and 210 decision-by-evidence-family rows from 216 hashed input files per arm.
 
@@ -40,12 +40,12 @@ Before producing its final new best, E0 had consumed source/diff evidence, corre
 E1 retained the same broad evidence families, but the representation remained state-oriented:
 
 - current-candidate generated RTL was unavailable; the `read_generated_rtl` tool exposed only frozen baseline RTL;
-- parent-relative and best-relative deltas were not computed;
+- best-relative operands existed but the relation was not materialized; parent-relative operands were incomplete;
 - no explicit critical-path signature or endpoint/path-group movement was produced;
 - no current-branch search-history summary was exposed;
 - evaluation and query cost were excluded from Agent-visible structured feedback.
 
-The structured PPA block contained delay and LUT deltas but omitted WNS, TNS, registers, endpoint counts, and failing endpoints. Those values were still present in the outer evaluation response, so this is a structured-representation loss rather than complete delivery loss in seed41.
+The structured PPA block contained delay and LUT deltas but omitted WNS, TNS, registers, endpoint counts, and failing endpoints. Those values were still present in the outer evaluation response, so E4 is a confirmed structured-representation loss rather than complete delivery loss in seed41. The other gaps do not meet that evidence bar: best-relative is a derivable relation that was not materialized, while parent-relative, path movement, branch history, and evaluation/query cost lack sufficient Agent-visible operands or a richer representation.
 
 ### What the 9-to-4 raw-read reduction means
 
@@ -63,13 +63,11 @@ The combination of automatic top-three timing paths and more timing reads is con
 
 ## Consequence for DecisionPacket work
 
-The next feedback revision should be tested around decision transitions rather than adding more timing detail. The evidenced candidate fields are:
+The next feedback revision should be tested around decision transitions rather than adding more timing detail. The audit separates confirmed loss from hypotheses for later experiments:
 
-1. current versus parent delay/LUT and correctness transition;
-2. current versus best delay/LUT and new-best/promotable state;
-3. critical-path signature and endpoint/path-group movement with coverage limits;
-4. bounded current-branch history and remaining evaluation budget;
-5. validation cost kept separate from design facts.
+1. E4 scalar fields are confirmed structured omissions with dual source evidence;
+2. current-versus-best delta is derivable from cited operands but was not materialized;
+3. parent-relative delta, path movement, branch history, and validation cost require new evidence capture before they can be called compression losses.
 
 This report does not authorize those schema changes by itself. Issue #20 must test them at frozen decision points before claiming that they improve search quality.
 

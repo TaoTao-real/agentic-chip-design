@@ -33,7 +33,13 @@ Decision points are created immediately before `apply_exact_edits`, `evaluate_ca
 - `continue_after_non_best`
 - `finish_or_stop`
 
-Each decision point contains one row for evidence families E1–E10. Availability, current exposure, and historical consumption are independent fields. An exact tool result counts as consumed only after it appears in a real provider request; an assistant claim does not count.
+Each decision point contains one row for evidence families E1–E10. Availability, current exposure, and historical consumption are independent fields. A historical pushed result contributes `pushed` availability only while its full bytes remain inline or visible in the current request; an archived hash records exposure and past consumption but does not preserve current push availability. An exact tool result counts as consumed only after it appears in a real provider request; an assistant claim does not count.
+
+Information gaps are evidence-qualified:
+
+- `lossy_structured_representation` requires a richer source for the same fact and a structured source that omitted it;
+- `derived_relation_not_materialized` requires cited operands but no materialized relation;
+- `unavailable` means the required fact or operands cannot be cited from Agent-visible evidence.
 
 ## Outputs
 
@@ -57,4 +63,4 @@ KnowledgeStore fails closed if an analysis-only file is placed in an episode dir
 
 ## Interpretation
 
-The pair report aligns different trajectories only by decision class and evaluation ordinal. It never claims the E0 and E1 candidates are the same design and never attributes a QoR difference causally to an observed information difference.
+The pair report derives each arm's final-best anchor from `RESULT.json` and measured decision lineage. It aligns different trajectories only by decision class and evaluation ordinal, and records an early-stop status if the comparison arm never reaches that ordinal. It never claims the E0 and E1 candidates are the same design and never attributes a QoR difference causally to an observed information difference.

@@ -402,6 +402,29 @@ class InformationAuditTests(unittest.TestCase):
         self.assertEqual(alignment["e0_final_best_evaluation_ordinal"], 5)
         self.assertTrue(alignment["e1_final_best_candidate_id"].endswith("candidate-05"))
 
+    def test_pair_records_when_comparison_arm_stops_before_anchor_ordinal(self) -> None:
+        e0 = make_campaign(
+            self.root, "E0", evaluation_count=5, suffix="-early-stop",
+        )
+        e1 = make_campaign(
+            self.root, "E1", evaluation_count=3, first_e1_invalid=False,
+            suffix="-early-stop",
+        )
+        output = self.root / "audit-early-stop"
+        audit_campaign_pair(e0, e1, output)
+        alignment = json.loads(
+            (output / "PAIR_COMPARISON.json").read_text()
+        )["alignment"]
+        self.assertEqual(
+            alignment["e1_ordinal_alignment_status"],
+            "campaign_stopped_before_evaluation_ordinal",
+        )
+        self.assertTrue(
+            alignment["anchors"]["e1_at_e0_final_best_ordinal"].startswith(
+                "E1-decision-"
+            )
+        )
+
     def test_provider_request_tamper_fails_closed(self) -> None:
         path = self.e0 / "turns/turn-01/provider-metadata.json"
         value = json.loads(path.read_text())

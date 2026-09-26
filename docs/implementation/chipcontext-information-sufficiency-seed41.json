@@ -20,10 +20,10 @@
     "E1": "fc49f6eb98512f5ad6382a09c436cccefb6116aa8516338c7c9baa57e080b6d8"
   },
   "record_hashes": {
-    "AUDIT_MANIFEST.json": "55be095f1ec6ef133fc3137a3425cb8b554fedc72a5f610dd81bed61a6982061",
-    "DECISION_POINTS.json": "4634daa515693dabfd8b0337631b45f9f5c95cf81e42a66096f5059fe44b4237",
-    "EVIDENCE_COVERAGE.json": "e858b038f927300e9cc57cac4cc72ab59d2fa3b4b1bd875a98db33a81418e7dc",
-    "PAIR_COMPARISON.json": "b7d03964b35af6a79d1502e8648160f9331b8599eb63cae5fc0e8fc90384bb23"
+    "AUDIT_MANIFEST.json": "fd9fb90161f9619109c4c8123edd91b4203d050deb2e418e7edb3cb0f0f26d3d",
+    "DECISION_POINTS.json": "88387b573c3bc4b8e71400bd97341048e0b941750efc93575a1d9695d0584891",
+    "EVIDENCE_COVERAGE.json": "52abdd75c28b0c6ecf0c452c0404dff3a039f1ddffc59eed05a0ffbc58674f27",
+    "PAIR_COMPARISON.json": "34ea22c821ec07d876d9c32496146b154c2aafc479b105f9aa625293c5254e96"
   },
   "raw_reads": {
     "E0_candidate_artifact_reads": 9,
@@ -59,30 +59,26 @@
       "tns_ns",
       "total_endpoints",
       "wns_ns"
-    ],
-    "E6_candidate_transition": [
-      "best_relative_delta",
-      "parent_relative_delta"
-    ],
-    "E7_critical_path_movement": [
-      "critical_path_signature_change",
-      "endpoint_or_path_group_movement"
-    ],
-    "E8_branch_history": [
-      "current_branch_history"
-    ],
-    "E9_cost_and_validation": [
-      "evaluation_and_query_cost"
     ]
   },
   "unavailable": [
-    "current_candidate_generated_rtl"
+    "current_candidate_generated_rtl",
+    "parent_relative_delta",
+    "critical_path_signature_change",
+    "endpoint_or_path_group_movement",
+    "current_branch_history",
+    "evaluation_and_query_cost"
   ],
   "interpretation": [
     "The five-read reduction came from seven fewer differential-result reads while candidate timing-path reads increased by two.",
-    "Scalar PPA omissions are losses in the structured sub-packet, but those fields remained visible in the outer evaluation response in this run.",
-    "E1 exposed more timing evidence, so lower QoR cannot be described as a simple lack of timing detail.",
-    "Parent/best-relative deltas, explicit critical-path movement, branch history, and validation cost were not expressed as decision-oriented structured facts."
+    "Only the E4 scalar PPA omissions have a cited richer source for the same facts and therefore qualify as confirmed structured compression loss.",
+    "Best-relative delta has cited operands but was not materialized; parent-relative, path movement, branch history, and evaluation/query cost are unavailable at the required evidence bar.",
+    "E1 exposed more timing evidence, so lower QoR cannot be described as a simple lack of timing detail."
   ],
-  "causal_claim": "none"
+  "causal_claim": "none",
+  "derived_relation_not_materialized": {
+    "E6_candidate_transition": [
+      "best_relative_delta"
+    ]
+  }
 }
