@@ -44,7 +44,8 @@ state → action → candidate → evaluation → outcome/cost
 - ChipLedger / sealed artifacts：保存 source、patch、candidate、evaluation、tool output、model request、timing、cost 等事实；
 - OptimizationTrace：组织 DecisionPoint、DesignState、Action、Transition、CostSpan 等关系；
 - ChipContext：从 Trace 和当前 evidence 中选择当前决策需要的少量上下文；
-- ChipLoop / SearchPolicy：以后可以消费 Trace 做 stopping、candidate selection 或搜索策略，但 v1 不实现智能策略；
+- Candidate DAG / Candidate Pool：保存可回退、可重新分叉的搜索节点，避免把 Trace 误用成“只能沿最新 candidate 继续”的线性链；
+- ChipLoop / SearchPolicy：从 Candidate Pool 选择下一轮 parent，并把 ParentSelection 写回 Trace。第一版使用固定的 baseline-breadth → current-best-exploitation 策略，E0/E1T 共用同一策略；后续才考虑 Bayesian / evolutionary / learned policy；
 - KnowledgeStore：仍用于受控慢循环经验，不自动接收 Trace audit 或 analysis-only 结果。
 
 v1 只实现 deterministic Trace，不引入 LLM trace miner、semantic label 或因果判断。详细设计见 [OptimizationTrace v1](optimization-trace.md)。
