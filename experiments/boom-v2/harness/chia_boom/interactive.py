@@ -1042,6 +1042,16 @@ def run_interactive_issueq(
                     "cannot safely replay a turn after an assistant response was "
                     "published; retain the artifacts and classify the run as blocked"
                 )
+            metadata_path = turn_dir / "provider-metadata.json"
+            if metadata_path.is_file():
+                retry_index = 1
+                while (
+                    turn_dir / f"provider-metadata-failed-{retry_index:02d}.json"
+                ).exists():
+                    retry_index += 1
+                metadata_path.replace(
+                    turn_dir / f"provider-metadata-failed-{retry_index:02d}.json"
+                )
         else:
             turn_dir.mkdir(parents=True)
         dump_json(turn_dir / "messages-before.json", messages)
@@ -1079,6 +1089,7 @@ def run_interactive_issueq(
         ))
         model_wall_ns = time.monotonic_ns() - model_started_ns
         metadata = json.loads(result.stream_result) if result.stream_result else {}
+        metadata["client_wall_time_ns"] = model_wall_ns
         dump_json(turn_dir / "provider-metadata.json", metadata)
         if cc03t is not None:
             provider_seconds = metadata.get("elapsed_seconds")

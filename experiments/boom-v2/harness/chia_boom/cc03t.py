@@ -317,13 +317,28 @@ def materialize_fixture(manifest: dict[str, Any], scenario: str) -> dict[str, An
     }
 
 
-def _provider_tokens(result: dict[str, Any]) -> int | None:
-    values = []
-    for usage in result.get("usage", []):
-        if not isinstance(usage, dict) or not isinstance(usage.get("total_tokens"), int):
-            return None
-        values.append(int(usage["total_tokens"]))
-    return sum(values)
+def _provider_usage(run_dir: Path) -> tuple[int | None, int, int | None, int | None]:
+    values: list[int] = []
+    active_values: list[int] = []
+    wall_values: list[int] = []
+    paths = sorted((run_dir / "turns").glob("turn-*/provider-metadata*.json"))
+    for path in paths:
+        metadata = load_json(path)
+        usage = metadata.get("usage")
+        if isinstance(usage, dict) and isinstance(usage.get("total_tokens"), int):
+            values.append(int(usage["total_tokens"]))
+        elapsed = metadata.get("elapsed_seconds")
+        if isinstance(elapsed, (int, float)):
+            active_values.append(int(float(elapsed) * 1_000_000_000))
+        wall = metadata.get("client_wall_time_ns")
+        if isinstance(wall, int):
+            wall_values.append(wall)
+    return (
+        (sum(values) if len(values) == len(paths) else None),
+        len(paths),
+        (sum(active_values) if len(active_values) == len(paths) else None),
+        (sum(wall_values) if len(wall_values) == len(paths) else None),
+    )
 
 
 def _tool_counts(run_dir: Path) -> dict[str, int]:
@@ -464,7 +479,17 @@ def summarize_run(run_dir: Path) -> dict[str, Any]:
         int(row["wall_time_ns"]) for row in timeline
         if row.get("leaf", True) and isinstance(row.get("wall_time_ns"), int)
     )
+    timeline_model_wall_ns = sum(
+        int(row["wall_time_ns"]) for row in timeline
+        if row.get("stage") == "model_api"
+        and isinstance(row.get("wall_time_ns"), int)
+    )
     curves = _qor_curves(run_dir, result, timeline)
+    provider_tokens, model_calls, provider_active_ns, provider_wall_ns = _provider_usage(run_dir)
+    if provider_active_ns is not None:
+        model_ns = provider_active_ns
+    if provider_wall_ns is not None:
+        total_wall_ns = total_wall_ns - timeline_model_wall_ns + provider_wall_ns
     selections = state.get("parent_selections", [])
     selected_parent = (
         selections[0].get("selected_parent_id") if selections else None
@@ -481,10 +506,11 @@ def summarize_run(run_dir: Path) -> dict[str, Any]:
         "ppa": evaluation.get("ppa") if evaluation else None,
         "parent_delta": transition.get("parent_delta") if transition else None,
         "best_delta": transition.get("best_delta") if transition else None,
-        "provider_tokens": _provider_tokens(result),
-        "model_calls": len(result.get("usage", [])),
+        "provider_tokens": provider_tokens,
+        "model_calls": model_calls,
         **counts,
         "model_api_active_ns": model_ns or None,
+        "model_api_wall_ns": provider_wall_ns,
         "candidate_validation_active_ns": validation_ns or None,
         "vivado_active_ns": vivado_ns or None,
         "trace_feedback_active_ns": trace_feedback_ns,
